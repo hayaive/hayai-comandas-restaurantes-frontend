@@ -29,8 +29,11 @@ used both for primary actions and for everything that is currently selected.
 >    used to open the mobile inspector sheet the instant a finger pressed
 >    down, because `onSelect` fired on `pointerdown` rather than on release —
 >    see *Floor plan editor* below for the tap/drag threshold that replaced
->    it. A visual pass to make tables and chairs read as real wood is tracked
->    separately (design work, not yet reflected in the *Colour* section).
+>    it. A follow-up visual pass then gave tables and chairs a real-wood
+>    finish ("necesito que las mesas parezcan mesas reales de madera y las
+>    sillas también parezcan sillas") — a new `--wood-*` token family plus a
+>    reusable SVG gradient/pattern in `TableShape.tsx`/`FloorPlanCanvas.tsx`;
+>    see *Colour* and *Floor plan editor* below.
 >
 > Decisions that were reversed are recorded below with their reasoning rather
 > than deleted, so nobody re-litigates them by accident.
@@ -149,6 +152,8 @@ Never hardcode a hex in a component.
 | Danger (fill) | `--destructive` | `#b91c1c` | `#dc2626` |
 | Surface | `--surface` | `#ffffff` | `#141414` |
 | Background | `--bg` | `#fafafa` | `#0a0a0a` |
+| Wood sheen / rim (table + chair finish) | `--wood-grain-1/2/3`, `--wood-rim` | `#f0d9ae` / `#d3a86e` / `#a97a45` / `#7c5330` | `#c99a63` / `#a97a45` / `#7c5330` / `#4a3018` |
+| Chair wood | `--wood-seat` / `--wood-seat-rim` | `#c9986a` / `#6b4423` | `#96703f` / `#3a2512` |
 
 `--primary`/`--accent` are literally the same value as `--active-bg`/
 `--active-soft-fg` (light/dark respectively) — see the split note just below
@@ -160,6 +165,48 @@ warm gray with a cool brand hue is the classic "two grays fighting" failure,
 so the neutrals sit at zero saturation and let the (now brown) brand be the
 only hue on screen — plus the gray ambient wash, which is neutral by design
 and therefore does not compete with anything.
+
+### Wood finish (floor plan tables and chairs), and why it does not compete with state
+
+The client asked for tables and chairs to read as real wood rather than flat
+geometric shapes. The `--wood-*` family is a deliberately **more golden,
+honey-oak hue** than `--accent`/`--active` (a muted, dark coffee brown,
+`#6f4a2e`/`#7d5436`) — the two must never be confusable, since a wood-finished
+table sitting next to a *selected* brown-ringed table is exactly the situation
+where that would matter.
+
+The harder problem is that a table's fill/stroke is this product's primary
+"what state is this" signal (see *THESIS* above) and wood is, unavoidably,
+another color layered on the same shape. This was resolved by keeping the two
+jobs on different parts of the shape instead of blending them:
+
+- The **status fill** (`status.svgFillClass`, the pale `-soft` tint) and the
+  **status stroke** (`status.svgStrokeClass`, the saturated ring) are
+  completely untouched — same classes, same values, same audited contrast.
+- The wood is a `radialGradient` (`#wood-grain-sheen`) layered on top, whose
+  first stop is `stop-opacity: 0` at its own center. Because a table's label
+  and seat-count text sit right at that center, they are rendered against
+  essentially the unmodified status-soft fill; the wood only becomes visible
+  once the gradient reaches roughly its outer half, i.e. toward the rim, right
+  where the saturated status stroke already lives.
+- A second, low-opacity (`0.5`) grain-line `<pattern>` (`#wood-grain-lines`)
+  adds fine streaks across the whole shape; at that opacity over a pale base
+  its effect on text contrast is negligible.
+
+Net effect: a table's *center* still reads its exact pre-existing status
+colour (free/reserved/occupied are still told apart primarily by that pale
+fill plus the label/occupant-name colours), its *rim* reads as a genuinely
+wood-toned edge, and its *stroke* — unchanged — is still the crisp,
+high-saturation ring that is the fastest thing to spot across a room. Chairs
+use a flat `--wood-seat` fill instead of a gradient (too small a shape for one
+to read at `SEAT_RADIUS = 7`); selected-table chairs still fall back to the
+existing `fill-active-soft` treatment, unchanged.
+
+Both gradient/pattern `<defs>` are declared exactly once, in
+`FloorPlanCanvas.tsx`, and referenced by every `TableShape` via
+`fill="url(#...)"` — the cost does not scale with the number of tables drawn,
+and no SVG filter (`feTurbulence`, blur) is used, per the host-stand-tablet
+performance constraint elsewhere in this document.
 
 ### Tokens that are split in dark mode, and why
 
@@ -410,6 +457,27 @@ The notes that still matter:
   horizontal-scroll surface in the product.
 - `TableInspectorPanel` (≥ md) and `MobileTableSheet` (< md) share one
   `TableInspectorForm`, so both stay in sync.
+- **Wood finish** (follow-up request, "necesito que las mesas parezcan mesas
+  reales de madera y las sillas también parezcan sillas") — see *Colour →
+  Wood finish* above for the full contrast reasoning. Mechanically:
+  - `geometry.ts`'s `getSeatPositions` now returns `{ x, y, angle }` instead of
+    a bare point. `angle` is the degrees to rotate a chair so its backrest
+    faces away from the table: exact (`0/90/180/-90`) for a square table's
+    four edge normals, and derived from the seat's own radial position
+    (equivalent) for a circular one. `SEAT_RADIUS` and the function's call
+    sites are otherwise unchanged.
+  - Each seat in `TableShape.tsx` is now a `<g transform="translate(...)
+    rotate(angle)">` holding two rects — a small backrest rail and a seat
+    pad — filled `fill-wood-seat`/`stroke-wood-seat-rim` (or the existing
+    `fill-active-soft` when the table is selected, unchanged from before).
+  - The table body's own fill/stroke classes are untouched; two more shapes of
+    the same geometry are layered on top, filled from the shared
+    `#wood-grain-sheen` radial gradient and `#wood-grain-lines` pattern
+    declared once in `FloorPlanCanvas.tsx`'s `<defs>` (`pointer-events-none`,
+    so they cannot interfere with the drag/select handlers on the wrapping
+    `<g>`, which were not touched by this pass).
+  - No SVG filter is used (no `feTurbulence`, no blur) — gradients and a
+    reusable pattern only, per the host-stand-tablet performance note.
 
 ## Responsive
 

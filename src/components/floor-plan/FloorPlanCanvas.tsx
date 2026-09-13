@@ -56,6 +56,25 @@ export function FloorPlanCanvas({
             <pattern id="floor-grid-dots" width={gridSize} height={gridSize} patternUnits="userSpaceOnUse">
               <circle cx={1} cy={1} r={1} className="fill-[var(--canvas-dot)]" />
             </pattern>
+
+            {/* Wood finish for every table — defined once here, reused by
+                every `TableShape` via `fill="url(#...)"` so the cost is one
+                gradient/pattern regardless of table count (see DESIGN.md,
+                Floor plan editor). Deliberately transparent at its own
+                center (0% stop-opacity 0) so a table's status-coloured fill,
+                where the label text sits, is left exactly as before —
+                the wood only becomes visible toward the rim. */}
+            <radialGradient id="wood-grain-sheen" cx="38%" cy="32%" r="72%">
+              <stop offset="0%" style={{ stopColor: "var(--wood-grain-1)", stopOpacity: 0 }} />
+              <stop offset="45%" style={{ stopColor: "var(--wood-grain-2)", stopOpacity: 0.22 }} />
+              <stop offset="80%" style={{ stopColor: "var(--wood-grain-3)", stopOpacity: 0.5 }} />
+              <stop offset="100%" style={{ stopColor: "var(--wood-rim)", stopOpacity: 0.68 }} />
+            </radialGradient>
+            <pattern id="wood-grain-lines" width={34} height={34} patternUnits="userSpaceOnUse" patternTransform="rotate(6)">
+              <path d="M0 6 Q17 2 34 7" stroke="var(--wood-rim)" strokeWidth={1} fill="none" opacity={0.5} />
+              <path d="M0 17 Q17 13 34 18" stroke="var(--wood-rim)" strokeWidth={0.75} fill="none" opacity={0.35} />
+              <path d="M0 28 Q17 24 34 29" stroke="var(--wood-grain-1)" strokeWidth={0.75} fill="none" opacity={0.4} />
+            </pattern>
           </defs>
           <rect width={CANVAS_WIDTH} height={CANVAS_HEIGHT} rx={24} fill="url(#floor-grid-dots)" />
 

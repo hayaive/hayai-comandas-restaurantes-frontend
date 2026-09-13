@@ -74,6 +74,17 @@
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
 
+  /* --- Floor plan wood finish ------------------------------------------
+     See `tokens.css` for why this is a separate, warmer hue family from
+     `--color-active`/`--color-accent`. Used only by `floor-plan/TableShape.tsx`
+     and its `<defs>` gradient/pattern in `FloorPlanCanvas.tsx`. */
+  --color-wood-grain-1: var(--wood-grain-1);
+  --color-wood-grain-2: var(--wood-grain-2);
+  --color-wood-grain-3: var(--wood-grain-3);
+  --color-wood-rim: var(--wood-rim);
+  --color-wood-seat: var(--wood-seat);
+  --color-wood-seat-rim: var(--wood-seat-rim);
+
   /* --- shadcn/ui role utilities ---------------------------------------
      Turns the role tokens declared in `tokens.css` into real Tailwind
      utilities (`bg-primary`, `text-muted-foreground`, `ring-ring`, …) so a

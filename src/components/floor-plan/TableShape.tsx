@@ -144,38 +144,88 @@ export function TableShape({
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
     >
-      {/* Seats */}
+      {/* Seats — top-down wooden chairs: a seat pad plus a backrest rail
+          facing away from the table, rotated per seat to the outward angle
+          `geometry.ts` computes for its position (exact for a square table's
+          four edges, equivalent for a circular one). Selected keeps the
+          existing brown `fill-active-soft` + neutral outline unchanged;
+          unselected now reads as chair wood instead of an empty ring. */}
       {seatPositions.map((seat, index) => (
-        <circle
-          key={index}
-          cx={seat.x}
-          cy={seat.y}
-          r={SEAT_RADIUS}
-          className={cn(
-            "stroke-border-strong transition-colors duration-150",
-            selected ? "fill-active-soft" : "fill-surface",
-          )}
-          strokeWidth={1.5}
-        />
+        <g key={index} transform={`translate(${seat.x} ${seat.y}) rotate(${seat.angle})`}>
+          <rect
+            x={-SEAT_RADIUS * 0.62}
+            y={-SEAT_RADIUS * 1.9}
+            width={SEAT_RADIUS * 1.24}
+            height={SEAT_RADIUS * 0.8}
+            rx={SEAT_RADIUS * 0.35}
+            className={cn(
+              "transition-colors duration-150",
+              selected ? "fill-active-soft stroke-border-strong" : "fill-wood-seat stroke-wood-seat-rim",
+            )}
+            strokeWidth={1}
+          />
+          <rect
+            x={-SEAT_RADIUS * 0.82}
+            y={-SEAT_RADIUS * 0.82}
+            width={SEAT_RADIUS * 1.64}
+            height={SEAT_RADIUS * 1.64}
+            rx={SEAT_RADIUS * 0.55}
+            className={cn(
+              "transition-colors duration-150",
+              selected ? "fill-active-soft stroke-border-strong" : "fill-wood-seat stroke-wood-seat-rim",
+            )}
+            strokeWidth={1.25}
+          />
+        </g>
       ))}
 
-      {/* Table body */}
+      {/* Table body. Status fill/stroke are untouched — same classes as
+          before, still the primary "what state is this" signal — with a
+          wood finish layered on top: a radial sheen that stays fully
+          transparent at the very center (where the label text sits, so its
+          contrast is exactly what it always audited to) and only becomes
+          visible toward the rim, plus a low-opacity grain-line texture. */}
       {table.shape === "circle" ? (
-        <circle
-          r={half}
-          className={cn(status.svgFillClass, status.svgStrokeClass, "transition-[filter] duration-150")}
-          strokeWidth={selected ? 3 : 2}
-        />
+        <>
+          <circle
+            r={half}
+            className={cn(status.svgFillClass, status.svgStrokeClass, "transition-[filter] duration-150")}
+            strokeWidth={selected ? 3 : 2}
+          />
+          <circle r={half} fill="url(#wood-grain-sheen)" className="pointer-events-none" />
+          <circle r={half} fill="url(#wood-grain-lines)" opacity={0.5} className="pointer-events-none" />
+        </>
       ) : (
-        <rect
-          x={-half}
-          y={-half}
-          width={table.size}
-          height={table.size}
-          rx={12}
-          className={cn(status.svgFillClass, status.svgStrokeClass)}
-          strokeWidth={selected ? 3 : 2}
-        />
+        <>
+          <rect
+            x={-half}
+            y={-half}
+            width={table.size}
+            height={table.size}
+            rx={12}
+            className={cn(status.svgFillClass, status.svgStrokeClass)}
+            strokeWidth={selected ? 3 : 2}
+          />
+          <rect
+            x={-half}
+            y={-half}
+            width={table.size}
+            height={table.size}
+            rx={12}
+            fill="url(#wood-grain-sheen)"
+            className="pointer-events-none"
+          />
+          <rect
+            x={-half}
+            y={-half}
+            width={table.size}
+            height={table.size}
+            rx={12}
+            fill="url(#wood-grain-lines)"
+            opacity={0.5}
+            className="pointer-events-none"
+          />
+        </>
       )}
 
       {/* Selection ring — also shown while dragging (local state), so moving

@@ -196,6 +196,25 @@
   /* --- Canvas grid dot --- */
   --canvas-dot: var(--n-200);
 
+  /* --- Floor plan wood finish -------------------------------------------
+     Added for the "tables/chairs should look like real wood" pass. Deliberately
+     a warmer, more golden honey-oak hue family than `--accent`/`--active`
+     (muted coffee brown, #6f4a2e) so a wood-finished table is never mistaken
+     for a selected one — see TableShape.tsx and DESIGN.md's Floor plan editor
+     section for how the two are kept apart. `--wood-grain-1/2/3` are the
+     radial-gradient stops on a tabletop (light sheen -> mid -> rim shadow),
+     `--wood-rim` is the grain-line/edge ink, `--wood-seat`/`--wood-seat-rim`
+     are the small flat-fill chair wood tone and its outline. None of these
+     are read by any status logic; they are pure material, layered so the
+     status fill/stroke a table already carries keeps doing the "what state is
+     this" job untouched. */
+  --wood-grain-1: #f0d9ae;
+  --wood-grain-2: #d3a86e;
+  --wood-grain-3: #a97a45;
+  --wood-rim: #7c5330;
+  --wood-seat: #c9986a;
+  --wood-seat-rim: #6b4423;
+
   /* --- Modal / sheet scrim ---
      Now a true neutral: the palette it veils is neutral too, so the warm
      espresso scrim the old system needed would tint the whole screen for as
@@ -374,6 +393,17 @@
     --canvas-dot: var(--n-700);
     --overlay: rgb(0 0 0 / 0.72);
     --ambient-opacity: 0.24;
+
+    /* Floor plan wood finish, one step richer/lighter than the light-mode
+       values so it still reads as warm oak against a near-black canvas
+       (`--bg-canvas` is `--n-900`) instead of disappearing into it. Still
+       clearly more golden than dark mode's `--active-bg` (#7d5436). */
+    --wood-grain-1: #c99a63;
+    --wood-grain-2: #a97a45;
+    --wood-grain-3: #7c5330;
+    --wood-rim: #4a3018;
+    --wood-seat: #96703f;
+    --wood-seat-rim: #3a2512;
   }
 }
 
@@ -455,4 +485,13 @@
   --canvas-dot: var(--n-700);
   --overlay: rgb(0 0 0 / 0.72);
   --ambient-opacity: 0.24;
+
+  /* Floor plan wood finish — identical to the `prefers-color-scheme` dark
+     block above; keep the two in sync. */
+  --wood-grain-1: #c99a63;
+  --wood-grain-2: #a97a45;
+  --wood-grain-3: #7c5330;
+  --wood-rim: #4a3018;
+  --wood-seat: #96703f;
+  --wood-seat-rim: #3a2512;
 }

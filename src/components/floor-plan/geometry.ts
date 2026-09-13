@@ -10,29 +10,50 @@ export interface Point {
   y: number;
 }
 
-/** Seat positions, relative to the table's own center (0,0). */
-export function getSeatPositions(shape: TableShape, size: number, seats: number): Point[] {
+export interface SeatPosition extends Point {
+  /**
+   * Degrees to rotate a chair icon — authored pointing "outward" (its
+   * backrest away from the table, at local angle 0) — so this seat's
+   * backrest faces away from the table and its pad faces the table, matching
+   * where it sits around the shape. Exact for square tables (one of the four
+   * edge normals); derived from the seat's own radial position for circular
+   * ones, which is equivalent.
+   */
+  angle: number;
+}
+
+/** Outward-facing rotation (degrees) for a chair whose backrest, undrawn,
+ * points "up" (local -y) by default, given its position's direction from the
+ * table's own center (0,0). */
+function outwardAngleDeg(x: number, y: number): number {
+  return (Math.atan2(x, -y) * 180) / Math.PI;
+}
+
+/** Seat positions (plus outward angle), relative to the table's own center (0,0). */
+export function getSeatPositions(shape: TableShape, size: number, seats: number): SeatPosition[] {
   if (seats <= 0) return [];
   return shape === "circle"
     ? circleSeatPositions(size, seats)
     : squareSeatPositions(size, seats);
 }
 
-function circleSeatPositions(size: number, seats: number): Point[] {
+function circleSeatPositions(size: number, seats: number): SeatPosition[] {
   const radius = size / 2 + SEAT_GAP;
-  const points: Point[] = [];
+  const points: SeatPosition[] = [];
   for (let i = 0; i < seats; i += 1) {
     const angle = -Math.PI / 2 + (i * 2 * Math.PI) / seats;
-    points.push({ x: Math.cos(angle) * radius, y: Math.sin(angle) * radius });
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius;
+    points.push({ x, y, angle: outwardAngleDeg(x, y) });
   }
   return points;
 }
 
-function squareSeatPositions(size: number, seats: number): Point[] {
+function squareSeatPositions(size: number, seats: number): SeatPosition[] {
   const half = size / 2 + SEAT_GAP;
   const side = half * 2;
   const perimeter = side * 4;
-  const points: Point[] = [];
+  const points: SeatPosition[] = [];
 
   for (let i = 0; i < seats; i += 1) {
     // Start at top-middle, walk clockwise.
@@ -43,21 +64,21 @@ function squareSeatPositions(size: number, seats: number): Point[] {
   return points;
 }
 
-function pointOnSquarePerimeter(d: number, half: number, side: number): Point {
+function pointOnSquarePerimeter(d: number, half: number, side: number): SeatPosition {
   if (d < side) {
-    // top edge, left -> right
-    return { x: -half + d, y: -half };
+    // top edge, left -> right; outward normal points up.
+    return { x: -half + d, y: -half, angle: 0 };
   }
   if (d < side * 2) {
-    // right edge, top -> bottom
-    return { x: half, y: -half + (d - side) };
+    // right edge, top -> bottom; outward normal points right.
+    return { x: half, y: -half + (d - side), angle: 90 };
   }
   if (d < side * 3) {
-    // bottom edge, right -> left
-    return { x: half - (d - side * 2), y: half };
+    // bottom edge, right -> left; outward normal points down.
+    return { x: half - (d - side * 2), y: half, angle: 180 };
   }
-  // left edge, bottom -> top
-  return { x: -half, y: half - (d - side * 3) };
+  // left edge, bottom -> top; outward normal points left.
+  return { x: -half, y: half - (d - side * 3), angle: -90 };
 }
 
 export { SEAT_RADIUS };
