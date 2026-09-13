@@ -1,17 +1,14 @@
-type ClassValue = string | number | null | undefined | false | Record<string, boolean>;
-
-/** Tiny classnames joiner — avoids pulling in a dependency for something this small. */
-export function cn(...values: ClassValue[]): string {
-  const out: string[] = [];
-  for (const value of values) {
-    if (!value) continue;
-    if (typeof value === "string" || typeof value === "number") {
-      out.push(String(value));
-    } else {
-      for (const key in value) {
-        if (value[key]) out.push(key);
-      }
-    }
-  }
-  return out.join(" ");
-}
+/**
+ * Compatibility re-export.
+ *
+ * `cn` used to be a hand-rolled joiner living here, and ~40 files import it
+ * from `@/lib/cn`. The real implementation now lives in `@/lib/utils` (the
+ * shadcn/ui convention: `clsx` + `tailwind-merge`), which is a strict superset
+ * of the old behaviour — it accepts everything the old one did, plus arrays and
+ * nested values, and additionally de-conflicts Tailwind utilities so a
+ * consumer's `className` reliably overrides a component's own classes.
+ *
+ * New code should import from `@/lib/utils`; this file exists so the migration
+ * did not have to touch every call site at once.
+ */
+export { cn, type ClassValue } from "./utils";

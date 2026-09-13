@@ -95,6 +95,11 @@
   /* --- Canvas grid dot --- */
   --canvas-dot: var(--n-200);
 
+  /* --- Modal / sheet scrim ---
+     Warm espresso rather than neutral black: a pure-black veil over a cream
+     interface desaturates the whole palette for as long as it is up. */
+  --overlay: rgb(26 16 10 / 0.55);
+
   /* --- Header/rail surface: Sidebar rail body + PageHeader + TasaBar ---
      Client feedback (Sep 2026): the previous solid espresso-brown chrome
      (`#593b27` on every header, the sidebar and the mobile tab bar at once)
@@ -126,6 +131,63 @@
      `--accent` (#a8501f) falls under 4.5:1 on `--footer-bg`; reuse the same
      brightened copper already used for dark surfaces elsewhere in this file. */
   --footer-accent: #dd8a4a;
+
+  /* ---------------------------------------------------------------------
+     shadcn/ui role tokens
+     ---------------------------------------------------------------------
+     The UI primitives in `src/components/ui` are shadcn/ui components built
+     on Radix. shadcn addresses color by ROLE (`primary`, `muted`, `ring`, …)
+     rather than by our brand names, so this block is the adapter: every
+     shadcn role points at a coffee token that already exists above. No new
+     color is invented here.
+
+     Because each role is an alias (`var(--token)`), not a copied value, the
+     roles follow our light/dark swaps automatically — they are declared once,
+     here, and never repeated in the dark blocks below.
+
+     `--primary` is the burnt terracotta: this is the client-mandated "marrón
+     como primary". We deliberately do NOT define shadcn's `--accent` role: in
+     shadcn `accent` means "subtle hover tint", but in this codebase `--accent`
+     is the BRAND hue and the whole app already relies on that meaning. Our
+     ported components write `surface-hover`/`fg` wherever upstream shadcn
+     writes `accent`/`accent-foreground`. See
+     `src/components/ui/primitives/README.md`.
+     --------------------------------------------------------------------- */
+  --background: var(--bg);
+  --foreground: var(--fg);
+
+  --card: var(--surface-raised);
+  --card-foreground: var(--fg);
+  --popover: var(--surface-raised);
+  --popover-foreground: var(--fg);
+
+  --primary: var(--accent);
+  --primary-foreground: var(--fg-on-accent);
+
+  --secondary: var(--surface-hover);
+  --secondary-foreground: var(--fg);
+
+  --muted: var(--surface-sunken);
+  --muted-foreground: var(--fg-muted);
+
+  --destructive: var(--danger);
+  --destructive-foreground: var(--n-0);
+
+  /* `--border` is defined above and already means what shadcn means by it. */
+  --input: var(--border);
+  --ring: var(--accent);
+
+  /* Sidebar roles — pointed at the fixed brand chrome tokens so a shadcn
+     `sidebar`/`sheet` dropped in later inherits the kraft rail and the black
+     footer instead of shadcn's default gray. */
+  --sidebar: var(--nav-bg);
+  --sidebar-foreground: var(--nav-fg);
+  --sidebar-primary: var(--accent);
+  --sidebar-primary-foreground: var(--fg-on-accent);
+  --sidebar-accent: var(--nav-bg-hover);
+  --sidebar-accent-foreground: var(--nav-fg);
+  --sidebar-border: var(--nav-border);
+  --sidebar-ring: var(--accent);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -172,6 +234,7 @@
     --shadow-lg: 0 20px 48px -12px rgb(var(--shadow-color) / 0.6), 0 6px 14px -4px rgb(var(--shadow-color) / 0.4);
 
     --canvas-dot: var(--n-700);
+    --overlay: rgb(8 5 3 / 0.7);
   }
 }
 
@@ -214,4 +277,5 @@
   --shadow-lg: 0 20px 48px -12px rgb(var(--shadow-color) / 0.6), 0 6px 14px -4px rgb(var(--shadow-color) / 0.4);
 
   --canvas-dot: var(--n-700);
+  --overlay: rgb(8 5 3 / 0.7);
 }
