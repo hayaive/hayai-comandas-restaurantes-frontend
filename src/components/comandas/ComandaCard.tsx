@@ -10,8 +10,9 @@ import { cn } from "@/lib/cn";
 import { api, ApiError } from "@/api";
 import type { Comanda, EstadoComandaItem } from "@/api";
 import { COMANDA_ESTADO_META, COMANDA_ITEM_META, COMANDA_ITEM_ORDER } from "@/lib/comandaMeta";
-import { formatTime, formatUsd } from "@/lib/format";
+import { formatTime } from "@/lib/format";
 import { TasaRequeridaError, useComandaStore } from "@/lib/useComandaStore";
+import { DualPrice } from "@/components/shared/DualPrice";
 import { AddItemModal } from "./AddItemModal";
 
 export function ComandaCard({ comanda }: { comanda: Comanda }) {
@@ -95,7 +96,7 @@ export function ComandaCard({ comanda }: { comanda: Comanda }) {
                   <p className="text-[13px] font-medium text-fg">
                     {item.cantidad}× {item.nombreSnap}
                   </p>
-                  <p className="font-mono text-[11px] text-fg-subtle">{formatUsd(item.totalLinea)}</p>
+                  <DualPrice usd={item.totalLinea} className="font-mono text-[11px] text-fg-subtle" />
                 </div>
                 <Select
                   aria-label={`Estado de ${item.nombreSnap}`}
@@ -127,7 +128,7 @@ export function ComandaCard({ comanda }: { comanda: Comanda }) {
 
         <div className={cn("flex items-center justify-between border-t border-border pt-3")}>
           <span className="text-[13px] font-medium text-fg-muted">Total</span>
-          <span className="font-mono text-[16px] font-semibold text-fg">{formatUsd(comanda.total)}</span>
+          <DualPrice usd={comanda.total} className="font-mono text-[16px] font-semibold text-fg" />
         </div>
 
         {tasaPrompt && (

@@ -73,12 +73,35 @@ export interface CobrarComandaInput {
   pagos: PagoInput[];
 }
 
-export interface TasaCambio {
+export type DivisaTasa = "USD" | "EUR";
+
+/**
+ * Una tasa registrada para una divisa puntual. Shape real de
+ * `GET /tasa/vigente` (campos `usd`/`eur`) y de la respuesta de
+ * `POST /tasa` — verificado contra el backend real el 2026-09-13.
+ */
+export interface TasaDivisa {
   id: string;
+  restauranteId: string;
   fecha: string;
-  /** Bs por USD, decimal-as-string. */
+  divisa: DivisaTasa;
+  /** Bs por unidad de divisa, decimal-as-string. */
   valor: string;
   fuente: FuenteTasa;
+  registradaPorId: string | null;
+  creadaEn: string;
+}
+
+/**
+ * `GET /tasa/vigente` responde 200 SIEMPRE, nunca 404/400: `usd`/`eur` vienen
+ * `null` cuando el restaurante todavía no registró ninguna tasa para esa
+ * divisa. Nunca asumas que hay valor — la UI debe manejar ambos `null` con
+ * gracia (ver `DualPrice` y `TasaBar`).
+ */
+export interface TasaVigente {
+  fecha: string;
+  usd: TasaDivisa | null;
+  eur: TasaDivisa | null;
 }
 
 export type FormaMesa = "redonda" | "cuadrada" | "rectangular" | "barra";
@@ -420,9 +443,12 @@ export interface ApiClient {
   listComandasCobradas(fecha: string): Promise<Comanda[] | null>;
 
   // --- Tasa de cambio ---
-  /** `null` si el restaurante todavía no registró ninguna. */
-  getTasaVigente(): Promise<TasaCambio | null>;
-  registrarTasa(valor: number, fuente: FuenteTasa): Promise<TasaCambio>;
+  /** Responde 200 siempre; `usd`/`eur` son `null` si nunca se registró ninguna. */
+  getTasaVigente(): Promise<TasaVigente>;
+  /** `divisa` por defecto es USD del lado del backend si se omite. */
+  registrarTasa(valor: number, fuente: FuenteTasa, divisa?: DivisaTasa): Promise<TasaDivisa>;
+  /** Fuerza un fetch inmediato desde la fuente externa (dolarapi.com) y devuelve la tasa vigente actualizada. */
+  actualizarTasa(): Promise<TasaVigente>;
 
   // --- Reservaciones ---
   listReservaciones(): Promise<Reservacion[]>;

@@ -26,7 +26,9 @@ import type {
   ReporteDia,
   Reservacion,
   Salon,
-  TasaCambio,
+  DivisaTasa,
+  TasaDivisa,
+  TasaVigente,
   UpdateMesaInput,
   UpdatePlantillaInput,
   UpdatePlantillaMesaInput,
@@ -421,18 +423,13 @@ export const httpApi: ApiClient = {
   },
 
   // --- Tasa de cambio ---
-  getTasaVigente: async () => {
-    try {
-      return await request<TasaCambio>("/tasa/vigente");
-    } catch (error) {
-      // 400 "No hay ninguna tasa de cambio registrada todavía" es un estado
-      // normal del primer día, no un fallo.
-      if (error instanceof ApiError && (error.status === 400 || error.status === 404)) return null;
-      throw error;
-    }
-  },
-  registrarTasa: (valor, fuente: FuenteTasa) =>
-    request<TasaCambio>("/tasa", { method: "POST", ...json({ valor, fuente }) }),
+  // `GET /tasa/vigente` responde 200 siempre — `usd`/`eur` vienen `null` si el
+  // restaurante todavía no registró ninguna, así que no hace falta el try/catch
+  // que sí necesitaban otros endpoints con 400/404 como "estado normal".
+  getTasaVigente: () => request<TasaVigente>("/tasa/vigente"),
+  registrarTasa: (valor, fuente: FuenteTasa, divisa?: DivisaTasa) =>
+    request<TasaDivisa>("/tasa", { method: "POST", ...json({ valor, fuente, divisa }) }),
+  actualizarTasa: () => request<TasaVigente>("/tasa/actualizar", { method: "POST" }),
 
   // --- Reservaciones ---
   listReservaciones: async () =>

@@ -7,9 +7,9 @@ import { IconButton } from "@/components/ui/IconButton";
 import { Switch } from "@/components/ui/Switch";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useProductStore } from "@/lib/useProductStore";
-import { formatUsd } from "@/lib/format";
 import { ProductFormModal } from "@/components/productos/ProductFormModal";
 import { ProductThumbnail } from "@/components/productos/ProductThumbnail";
+import { DualPrice } from "@/components/shared/DualPrice";
 import type { Producto } from "@/api";
 
 export function ProductosPage() {
@@ -108,7 +108,9 @@ export function ProductosPage() {
                     <td className="px-4 py-3">
                       <Badge tone="neutral">{producto.categoriaNombre}</Badge>
                     </td>
-                    <td className="px-4 py-3 font-mono text-fg-muted">{formatUsd(producto.precio)}</td>
+                    <td className="px-4 py-3 font-mono text-fg-muted">
+                      <DualPrice usd={producto.precio} />
+                    </td>
                     <td className="px-4 py-3">
                       <Switch
                         checked={producto.disponible}

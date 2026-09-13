@@ -2,6 +2,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import {
   Armchair,
   CalendarCheck,
+  Camera,
   CurrencyDollar,
   ForkKnife,
   Package,
@@ -21,6 +22,7 @@ const navItems = [
   { to: "/comandas", label: "Comandas", icon: Receipt },
   { to: "/reservaciones", label: "Reservaciones", icon: CalendarCheck },
   { to: "/checkin", label: "Check-in", icon: QrCode },
+  { to: "/escanear", label: "Escanear", icon: Camera },
   { to: "/productos", label: "Productos", icon: Package },
   { to: "/ventas", label: "Ventas", icon: CurrencyDollar },
 ];

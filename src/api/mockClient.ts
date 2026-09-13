@@ -23,7 +23,8 @@ import type {
   ProductoVendido,
   Reservacion,
   Salon,
-  TasaCambio,
+  DivisaTasa,
+  TasaDivisa,
   UpdateMesaInput,
   UpdatePlantillaInput,
   UpdatePlantillaMesaInput,
@@ -145,14 +146,24 @@ function nextMockId(prefix: string): string {
 /**
  * Tasa del día. El backend real la exige para cobrar (congela `tasaValor` y
  * `totalBs` en la comanda), así que el mock arranca con una registrada para
- * que el modo demo pueda cerrar cuentas sin configurar nada.
+ * que el modo demo pueda cerrar cuentas sin configurar nada. Shape real de
+ * `GET /tasa/vigente`: una entrada por divisa, cualquiera puede ser `null`.
  */
-let tasaVigente: TasaCambio | null = {
-  id: "tasa-demo",
-  fecha: new Date().toISOString().slice(0, 10),
-  valor: "40.00",
-  fuente: "manual",
-};
+function tasaDemo(divisa: DivisaTasa, valor: string): TasaDivisa {
+  return {
+    id: `tasa-${divisa.toLowerCase()}-demo`,
+    restauranteId: "restaurante-demo",
+    fecha: new Date().toISOString().slice(0, 10),
+    divisa,
+    valor,
+    fuente: "manual",
+    registradaPorId: null,
+    creadaEn: new Date().toISOString(),
+  };
+}
+
+let tasaUsd: TasaDivisa | null = tasaDemo("USD", "40.0000");
+let tasaEur: TasaDivisa | null = tasaDemo("EUR", "43.5000");
 
 // ---------------------------------------------------------------------------
 // Seed: menú
@@ -804,7 +815,7 @@ export const mockApi: ApiClient = {
   async cobrarComanda(comandaId: string, input: CobrarComandaInput) {
     const idx = comandas.findIndex((c) => c.id === comandaId);
     if (idx === -1) throw new ApiError("La comanda no existe", 404);
-    const tasa = tasaVigente;
+    const tasa = tasaUsd;
     if (!tasa) {
       // Misma precondición que el backend real: cobrar congela la tasa del día,
       // así que sin tasa registrada no se puede cerrar una comanda.
@@ -854,20 +865,54 @@ export const mockApi: ApiClient = {
 
   // --- Tasa de cambio ---------------------------------------------------
   async getTasaVigente() {
-    return delay(tasaVigente);
+    // Real: 200 siempre, nunca null en el objeto raíz.
+    return delay({
+      fecha: new Date().toISOString().slice(0, 10),
+      usd: tasaUsd,
+      eur: tasaEur,
+    });
   },
 
-  async registrarTasa(valor: number, fuente: FuenteTasa) {
+  async registrarTasa(valor: number, fuente: FuenteTasa, divisa: DivisaTasa = "USD") {
     if (!Number.isFinite(valor) || valor <= 0) {
       throw new ApiError("La tasa debe ser un número mayor a cero", 422);
     }
-    tasaVigente = {
-      id: uid("tasa"),
+    const registrada: TasaDivisa = {
+      id: uid(`tasa-${divisa.toLowerCase()}`),
+      restauranteId: "restaurante-demo",
       fecha: new Date().toISOString().slice(0, 10),
-      valor: valor.toFixed(2),
+      divisa,
+      valor: valor.toFixed(4),
       fuente,
+      registradaPorId: null,
+      creadaEn: new Date().toISOString(),
     };
-    return delay(tasaVigente);
+    if (divisa === "USD") tasaUsd = registrada;
+    else tasaEur = registrada;
+    return delay(registrada);
+  },
+
+  async actualizarTasa() {
+    // Simula el fetch forzado a dolarapi.com: refresca ambas divisas con un
+    // pequeño movimiento aleatorio para que se sienta "en vivo" en el demo.
+    const now = new Date().toISOString();
+    const fecha = now.slice(0, 10);
+    const nextValor = (base: string) => (Number(base) + (Math.random() - 0.5)).toFixed(4);
+    tasaUsd = {
+      ...(tasaUsd ?? tasaDemo("USD", "40.0000")),
+      valor: nextValor(tasaUsd?.valor ?? "40.0000"),
+      fuente: "bcv",
+      fecha,
+      creadaEn: now,
+    };
+    tasaEur = {
+      ...(tasaEur ?? tasaDemo("EUR", "43.5000")),
+      valor: nextValor(tasaEur?.valor ?? "43.5000"),
+      fuente: "bcv",
+      fecha,
+      creadaEn: now,
+    };
+    return delay({ fecha, usd: tasaUsd, eur: tasaEur });
   },
 
   async anularComanda(comandaId: string, motivo: string) {

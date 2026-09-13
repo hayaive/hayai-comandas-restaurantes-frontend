@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle, Minus, Plus, Receipt, Trash, Warning } from "@phosphor-icons/react";
+import {
+  CheckCircle,
+  MagnifyingGlass,
+  Minus,
+  Plus,
+  Receipt,
+  Trash,
+  Warning,
+} from "@phosphor-icons/react";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -11,7 +19,7 @@ import { useActiveTemplate, useFloorPlanStore } from "@/lib/useFloorPlanStore";
 import { useActiveProducts, useProductStore } from "@/lib/useProductStore";
 import { useComandaStore } from "@/lib/useComandaStore";
 import { STATUS_META } from "@/components/floor-plan/statusMeta";
-import { formatUsd } from "@/lib/format";
+import { DualPrice } from "@/components/shared/DualPrice";
 import { cn } from "@/lib/cn";
 import type { RestaurantTable } from "@/lib/types";
 import type { Producto } from "@/api";
@@ -38,7 +46,6 @@ export function MeseroPage() {
   const floorStatus = useFloorPlanStore((s) => s.status);
   const floorError = useFloorPlanStore((s) => s.error);
   const productos = useActiveProducts();
-  const categorias = useProductStore((s) => s.categorias);
   const productStatus = useProductStore((s) => s.status);
   const loadProductos = useProductStore((s) => s.load);
   const loadComandas = useComandaStore((s) => s.load);
@@ -48,6 +55,7 @@ export function MeseroPage() {
   const [clienteNombre, setClienteNombre] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [productQuery, setProductQuery] = useState("");
 
   useEffect(() => {
     if (productStatus === "idle") void loadProductos();
@@ -69,16 +77,18 @@ export function MeseroPage() {
 
   const disponibles = useMemo(() => productos.filter((p) => p.disponible), [productos]);
 
-  const byCategory = useMemo(
-    () =>
-      categorias
-        .map((categoria) => ({
-          categoria,
-          productos: disponibles.filter((p) => p.categoriaId === categoria.id),
-        }))
-        .filter((group) => group.productos.length > 0),
-    [categorias, disponibles],
-  );
+  /**
+   * Buscador, no lista completa: no debe verse ningún producto hasta que el
+   * usuario empiece a escribir. Filtro simple por nombre, client-side —
+   * `disponibles` ya está en memoria vía `useActiveProducts()`.
+   */
+  const filteredProductos = useMemo(() => {
+    const q = productQuery.trim().toLowerCase();
+    if (!q) return [];
+    return disponibles
+      .filter((p) => p.nombre.toLowerCase().includes(q))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre));
+  }, [disponibles, productQuery]);
 
   const selectedTable = selectedTableId
     ? (activeTemplate.tables.find((t) => t.id === selectedTableId) ?? null)
@@ -92,6 +102,7 @@ export function MeseroPage() {
   function selectTable(table: RestaurantTable) {
     setSelectedTableId(table.id);
     setFeedback(null);
+    setProductQuery("");
   }
 
   function addToCart(producto: Producto) {
@@ -234,51 +245,60 @@ export function MeseroPage() {
                 <span className="text-[13px] font-semibold text-fg">2. Agrega productos</span>
                 {selectedTable && <Badge tone="accent">Mesa {selectedTable.label}</Badge>}
               </CardHeader>
-              <CardBody>
+              <CardBody className="flex flex-col gap-3">
                 {!selectedTable && (
                   <p className="py-6 text-center text-[13px] text-fg-muted">
                     Elige una mesa para empezar a agregar productos.
                   </p>
                 )}
-                {selectedTable && productStatus === "loading" && productos.length === 0 && (
-                  <p className="py-6 text-center text-[13px] text-fg-muted">Cargando catálogo…</p>
-                )}
-                {selectedTable && productStatus === "ready" && byCategory.length === 0 && (
-                  <p className="py-6 text-center text-[13px] text-fg-muted">No hay productos disponibles.</p>
-                )}
-                {selectedTable && byCategory.length > 0 && (
-                  <div className="flex max-h-[420px] flex-col gap-4 overflow-y-auto">
-                    {byCategory.map(({ categoria, productos: items }) => (
-                      <div key={categoria.id}>
-                        <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-fg-subtle">
-                          {categoria.nombre}
-                        </h3>
-                        <ul className="flex flex-col gap-1">
-                          {items.map((producto) => (
-                            <li key={producto.id}>
-                              <button
-                                type="button"
-                                onClick={() => addToCart(producto)}
-                                className="flex w-full items-center gap-3 rounded-[var(--radius-sm)] border border-border bg-surface-raised px-3 py-2 text-left transition-colors duration-150 hover:bg-surface-hover"
-                              >
-                                <ProductThumbnail imagenUrl={producto.imagenUrl} alt={producto.nombre} />
-                                <span className="flex flex-1 flex-col">
-                                  <span className="text-[13px] font-medium text-fg">{producto.nombre}</span>
-                                  <span className="font-mono text-[12px] text-fg-muted">
-                                    {formatUsd(producto.precio)}
-                                  </span>
-                                </span>
-                                <Badge tone="accent" className="shrink-0">
-                                  <Plus size={12} weight="bold" />
-                                  Agregar
-                                </Badge>
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ))}
-                  </div>
+                {selectedTable && (
+                  <>
+                    <Input
+                      label="Buscar producto"
+                      placeholder="Ej. Tequeños"
+                      value={productQuery}
+                      onChange={(e) => setProductQuery(e.target.value)}
+                    />
+                    {productStatus === "loading" && productos.length === 0 && (
+                      <p className="py-6 text-center text-[13px] text-fg-muted">Cargando catálogo…</p>
+                    )}
+                    {productStatus === "ready" && productQuery.trim() === "" && (
+                      <p className="flex flex-col items-center gap-2 py-8 text-center text-[13px] text-fg-subtle">
+                        <MagnifyingGlass size={22} />
+                        Escribe para buscar un producto.
+                      </p>
+                    )}
+                    {productStatus === "ready" &&
+                      productQuery.trim() !== "" &&
+                      filteredProductos.length === 0 && (
+                        <p className="py-8 text-center text-[13px] text-fg-muted">
+                          No se encontraron productos con ese nombre.
+                        </p>
+                      )}
+                    {filteredProductos.length > 0 && (
+                      <ul className="flex max-h-[360px] flex-col gap-1 overflow-y-auto">
+                        {filteredProductos.map((producto) => (
+                          <li key={producto.id}>
+                            <button
+                              type="button"
+                              onClick={() => addToCart(producto)}
+                              className="flex w-full items-center gap-3 rounded-[var(--radius-sm)] border border-border bg-surface-raised px-3 py-2 text-left transition-colors duration-150 hover:bg-surface-hover"
+                            >
+                              <ProductThumbnail imagenUrl={producto.imagenUrl} alt={producto.nombre} />
+                              <span className="flex flex-1 flex-col">
+                                <span className="text-[13px] font-medium text-fg">{producto.nombre}</span>
+                                <DualPrice usd={producto.precio} className="font-mono text-[12px] text-fg-muted" />
+                              </span>
+                              <Badge tone="accent" className="shrink-0">
+                                <Plus size={12} weight="bold" />
+                                Agregar
+                              </Badge>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </>
                 )}
               </CardBody>
             </Card>
@@ -304,9 +324,10 @@ export function MeseroPage() {
                         <ProductThumbnail imagenUrl={line.imagenUrl} alt={line.nombre} />
                         <div className="flex-1">
                           <p className="text-[13px] font-medium text-fg">{line.nombre}</p>
-                          <p className="font-mono text-[11px] text-fg-subtle">
-                            {formatUsd(Number(line.precio) * line.cantidad)}
-                          </p>
+                          <DualPrice
+                            usd={Number(line.precio) * line.cantidad}
+                            className="font-mono text-[11px] text-fg-subtle"
+                          />
                         </div>
                         <div className="flex items-center gap-1">
                           <IconButton
@@ -337,7 +358,7 @@ export function MeseroPage() {
 
                 <div className="flex items-center justify-between border-t border-border pt-3">
                   <span className="text-[13px] font-medium text-fg-muted">Total</span>
-                  <span className="font-mono text-[16px] font-semibold text-fg">{formatUsd(cartTotal)}</span>
+                  <DualPrice usd={cartTotal} className="font-mono text-[16px] font-semibold text-fg" />
                 </div>
 
                 {showClienteInput && (

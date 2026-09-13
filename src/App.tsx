@@ -8,6 +8,7 @@ import { VentasPage } from "@/pages/VentasPage";
 import { ReservacionesPage } from "@/pages/ReservacionesPage";
 import { ProductosPage } from "@/pages/ProductosPage";
 import { CheckInPage } from "@/pages/CheckInPage";
+import { EscanearPage } from "@/pages/EscanearPage";
 import { SelfSeatPage } from "@/pages/SelfSeatPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
@@ -29,6 +30,7 @@ export function App() {
           <Route path="/reservaciones" element={<ReservacionesPage />} />
           <Route path="/productos" element={<ProductosPage />} />
           <Route path="/checkin" element={<CheckInPage />} />
+          <Route path="/escanear" element={<EscanearPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Route>
