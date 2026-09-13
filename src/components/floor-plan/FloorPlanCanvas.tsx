@@ -35,15 +35,23 @@ export function FloorPlanCanvas({
   }, []);
 
   return (
-    <div className="relative flex-1 overflow-auto bg-bg-canvas p-6">
+    <div className="relative flex-1 overflow-auto bg-bg-canvas p-3 sm:p-6">
       <div
         className="mx-auto rounded-[var(--radius-lg)] border border-border bg-surface shadow-[var(--shadow-token-sm)]"
-        style={{ maxWidth: CANVAS_WIDTH + 48, aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}` }}
+        style={{
+          width: "100%",
+          maxWidth: CANVAS_WIDTH + 48,
+          // Below this width the plan would shrink to an unusable, illegible
+          // size on a phone — floor it here and let the wrapper's
+          // `overflow-auto` handle panning instead (see touch-action below).
+          minWidth: 600,
+          aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`,
+        }}
       >
         <svg
           ref={svgRef}
           viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`}
-          className="h-full w-full touch-none"
+          className="h-full w-full touch-pan-x touch-pan-y"
           onPointerDown={() => onSelectTable(null)}
         >
           <defs>

@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Armchair, CheckCircle, Info, Warning } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { PageHeader } from "@/components/layout/PageHeader";
 import {
   useEditingTemplate,
   useFloorPlanBootstrap,
@@ -11,6 +12,7 @@ import {
 import { BottomToolbar } from "@/components/floor-plan/BottomToolbar";
 import { FloorPlanCanvas } from "@/components/floor-plan/FloorPlanCanvas";
 import { TableInspectorPanel } from "@/components/floor-plan/TableInspectorPanel";
+import { MobileTableSheet } from "@/components/floor-plan/MobileTableSheet";
 import { TemplateSwitcher } from "@/components/floor-plan/TemplateSwitcher";
 import { STATUS_META, STATUS_ORDER } from "@/components/floor-plan/statusMeta";
 
@@ -99,9 +101,10 @@ export function FloorPlanPage() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-3">
-        <div className="flex items-center gap-4">
-          <h1 className="text-[16px] font-semibold text-fg">Mesas</h1>
+      <PageHeader
+        title="Mesas"
+        className="px-3 py-2.5 sm:px-5 sm:py-3"
+        left={
           <TemplateSwitcher
             templates={templates}
             activeTemplateId={editingTemplateId}
@@ -109,30 +112,31 @@ export function FloorPlanPage() {
             onCreate={(name) => void addTemplate(name)}
             onDelete={(id) => void removeTemplate(id)}
           />
-        </div>
+        }
+        actions={
+          <>
+            {isEditingActive ? (
+              <span className="flex items-center gap-1.5 text-[12px] text-nav-fg-muted">
+                <CheckCircle size={14} weight="fill" className="text-status-free" />
+                En uso ahora
+              </span>
+            ) : (
+              <Button variant="secondary" size="sm" onClick={() => void activateTemplate(editingTemplateId)}>
+                Usar esta distribución
+              </Button>
+            )}
 
-        <div className="flex items-center gap-3">
-          {isEditingActive ? (
-            <span className="flex items-center gap-1.5 text-[12px] text-fg-subtle">
-              <CheckCircle size={14} weight="fill" className="text-status-free" />
-              En uso ahora
-            </span>
-          ) : (
-            <Button variant="secondary" size="sm" onClick={() => void activateTemplate(editingTemplateId)}>
-              Usar esta distribución
-            </Button>
-          )}
-
-          <ul className="flex items-center gap-3 font-mono text-[12px] text-fg-muted">
-            {STATUS_ORDER.map((tableStatus) => (
-              <li key={tableStatus} className="flex items-center gap-1.5">
-                <span className={`h-2 w-2 rounded-full ${STATUS_META[tableStatus].dotClass}`} />
-                {statusCounts[tableStatus]} {STATUS_META[tableStatus].label.toLowerCase()}
-              </li>
-            ))}
-          </ul>
-        </div>
-      </header>
+            <ul className="flex items-center gap-2 font-mono text-[11px] text-nav-fg-muted sm:gap-3 sm:text-[12px]">
+              {STATUS_ORDER.map((tableStatus) => (
+                <li key={tableStatus} className="flex items-center gap-1.5">
+                  <span className={`h-2 w-2 rounded-full ${STATUS_META[tableStatus].dotClass}`} />
+                  {statusCounts[tableStatus]} {STATUS_META[tableStatus].label.toLowerCase()}
+                </li>
+              ))}
+            </ul>
+          </>
+        }
+      />
 
       {error && (
         <div className="flex items-start gap-2 border-b border-danger/30 bg-danger-soft px-5 py-2.5 text-[13px] text-danger">
@@ -185,6 +189,20 @@ export function FloorPlanPage() {
           }}
         />
       </div>
+
+      <MobileTableSheet
+        table={selectedTable}
+        onClose={() => selectTable(null)}
+        onRename={(label) => selectedTable && renameTable(selectedTable.id, label)}
+        onSetSeats={(seats) => selectedTable && setSeats(selectedTable.id, seats)}
+        onSetShape={(shape) => selectedTable && setShape(selectedTable.id, shape)}
+        onSetStatus={(tableStatus, occupantName) =>
+          selectedTable && setStatus(selectedTable.id, tableStatus, occupantName)
+        }
+        onDelete={() => {
+          if (selectedTable) void removeTable(selectedTable.id);
+        }}
+      />
     </div>
   );
 }
