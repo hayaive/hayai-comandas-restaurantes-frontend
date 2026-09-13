@@ -8,7 +8,9 @@ import { MobileMoreSheet } from "./MobileMoreSheet";
 /**
  * Barra de navegación inferior, exclusiva de mobile (`md:hidden`) — sustituye
  * al `Sidebar` angosto de 76px, que en un teléfono se comía espacio
- * horizontal crítico y no es cómodo de alcanzar con el pulgar.
+ * horizontal crítico y no es cómodo de alcanzar con el pulgar. Es el
+ * "footer" que ve el usuario en mobile, así que usa la superficie negra
+ * `--footer-bg` (mismo tratamiento que el pie del Sidebar en desktop).
  *
  * Máximo 5 opciones visibles, patrón FAB-en-tab-bar:
  *   Mesas · Comandas · [Agregar Orden] · Reservaciones · Más
@@ -52,7 +54,7 @@ export function MobileBottomNav() {
     <>
       <nav
         aria-label="Navegación principal"
-        className="grid shrink-0 grid-cols-5 border-t border-nav-border bg-nav-bg pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-1.5 md:hidden"
+        className="grid shrink-0 grid-cols-5 border-t border-footer-border bg-footer-bg pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-1.5 md:hidden"
       >
         <NavTab item={mesasItem} />
         <NavTab item={comandasItem} />
@@ -65,7 +67,7 @@ export function MobileBottomNav() {
             <>
               <span
                 className={cn(
-                  "-mt-7 flex h-14 w-14 items-center justify-center rounded-full text-fg-on-accent shadow-[var(--shadow-token-lg)] ring-4 ring-nav-bg transition-transform duration-150 active:scale-95",
+                  "-mt-7 flex h-14 w-14 items-center justify-center rounded-full text-fg-on-accent shadow-[var(--shadow-token-lg)] ring-4 ring-footer-bg transition-transform duration-150 active:scale-95",
                   isActive ? "bg-accent-strong" : "bg-accent",
                 )}
               >
@@ -74,7 +76,7 @@ export function MobileBottomNav() {
               <span
                 className={cn(
                   "text-[10.5px] font-medium",
-                  isActive ? "text-nav-fg" : "text-nav-fg-muted",
+                  isActive ? "text-footer-fg" : "text-footer-fg-muted",
                 )}
               >
                 {FAB_LABEL}
@@ -92,7 +94,7 @@ export function MobileBottomNav() {
           aria-expanded={moreOpen}
           className={cn(
             "flex flex-col items-center justify-center gap-0.5 px-1 py-1 text-[10.5px] font-medium transition-colors duration-150",
-            isMoreActive ? "text-accent" : "text-nav-fg-muted hover:text-nav-fg",
+            isMoreActive ? "text-footer-accent" : "text-footer-fg-muted hover:text-footer-fg",
           )}
         >
           <DotsThreeCircle size={20} weight={isMoreActive ? "fill" : "duotone"} />
@@ -113,7 +115,7 @@ function NavTab({ item }: { item: (typeof navItems)[number] }) {
       className={({ isActive }) =>
         cn(
           "flex flex-col items-center justify-center gap-0.5 px-1 py-1 text-[10.5px] font-medium transition-colors duration-150",
-          isActive ? "text-accent" : "text-nav-fg-muted hover:text-nav-fg",
+          isActive ? "text-footer-accent" : "text-footer-fg-muted hover:text-footer-fg",
         )
       }
     >

@@ -95,17 +95,37 @@
   /* --- Canvas grid dot --- */
   --canvas-dot: var(--n-200);
 
-  /* --- Navigation surface: sidebar + page headers ---
-     Fixed brand color per client request — this is brand identity, not
-     part of the neutral scale, so it does NOT change with light/dark mode
-     (a manual/system theme toggle only affects content surfaces below it). */
-  --nav-bg: #593b27;
-  --nav-bg-hover: #6c4a34;
-  --nav-bg-active: #46301f;
-  --nav-fg: #ffffff;
-  --nav-fg-muted: rgb(255 255 255 / 0.72);
-  --nav-fg-subtle: rgb(255 255 255 / 0.56);
-  --nav-border: rgb(255 255 255 / 0.14);
+  /* --- Header/rail surface: Sidebar rail body + PageHeader + TasaBar ---
+     Client feedback (Sep 2026): the previous solid espresso-brown chrome
+     (`#593b27` on every header, the sidebar and the mobile tab bar at once)
+     read as "too much brown". Brown now lives as the brand ACCENT
+     (`--accent`, the logo, the black footer's active-state color) instead
+     of as the dominant chrome surface — this rail uses a light warm kraft
+     tone from the neutral scale so it reads as one calm, coffee-tinted
+     backdrop rather than a heavy block. Fixed per client request (brand
+     chrome), so it does NOT change with light/dark content mode. */
+  --nav-bg: var(--n-150);
+  --nav-bg-hover: var(--n-200);
+  --nav-bg-active: var(--n-300);
+  --nav-fg: var(--n-900);
+  --nav-fg-muted: var(--n-600);
+  --nav-fg-subtle: var(--n-500);
+  --nav-border: var(--n-200);
+
+  /* --- Footer surface: Sidebar's bottom utility strip + MobileBottomNav ---
+     Client-requested: "el footer debe ser negro". A warm near-black (not a
+     flat #000) so it still belongs to the coffee neutral family instead of
+     reading like an unrelated dark-mode patch. Fixed like the rail above —
+     does not change with light/dark content mode. */
+  --footer-bg: var(--n-900);
+  --footer-bg-hover: var(--n-850);
+  --footer-fg: var(--n-25);
+  --footer-fg-muted: rgb(253 250 245 / 0.68);
+  --footer-border: rgb(253 250 245 / 0.12);
+  /* Brighter copper for text/icons on the black footer — the light-mode
+     `--accent` (#a8501f) falls under 4.5:1 on `--footer-bg`; reuse the same
+     brightened copper already used for dark surfaces elsewhere in this file. */
+  --footer-accent: #dd8a4a;
 }
 
 @media (prefers-color-scheme: dark) {

@@ -14,7 +14,7 @@ export interface PageHeaderProps {
 }
 
 /**
- * Shared page header — fixed brand-brown surface (`--nav-bg`) with white
+ * Shared page header — light kraft rail surface (`--nav-bg`) with dark
  * text/icons, matching the Sidebar. Centralized here so every screen's
  * header stays visually consistent and only needs to change in one place.
  */

@@ -11,7 +11,7 @@ import type { TasaDivisa } from "@/api";
  * Franja fija con la tasa BCV (USD) y Euro vigentes, visible desde cualquier
  * pantalla de staff — el mesero la necesita todo el tiempo, no sólo al
  * cobrar. Patrón tomado de karelys-pedidos (banda inferior + panel de
- * detalle), adaptado a la paleta café de esta app.
+ * detalle), sobre la misma superficie clara de rail/header (`--nav-bg`).
  */
 export function TasaBar() {
   const vigente = useTasaStore((s) => s.vigente);
@@ -32,7 +32,7 @@ export function TasaBar() {
         <button
           type="button"
           onClick={() => setDetailOpen(true)}
-          className="flex shrink-0 items-center gap-3 rounded-[var(--radius-sm)] px-1.5 py-0.5 text-left transition-colors duration-150 hover:bg-white/10"
+          className="flex shrink-0 items-center gap-3 rounded-[var(--radius-sm)] px-1.5 py-0.5 text-left transition-colors duration-150 hover:bg-nav-bg-hover"
         >
           <span className="flex items-center gap-1.5 whitespace-nowrap font-mono text-[11px]">
             <span className="font-semibold text-nav-fg">BCV</span>

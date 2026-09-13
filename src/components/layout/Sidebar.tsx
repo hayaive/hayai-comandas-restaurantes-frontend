@@ -21,39 +21,45 @@ export function Sidebar() {
     // `MobileBottomNav` (barra inferior). De `md` a `lg` sigue siendo la
     // columna angosta de solo íconos; a partir de `lg`, la columna con
     // etiquetas — sin cambios respecto al comportamiento previo.
-    <aside className="hidden w-[76px] flex-col items-center gap-1 border-r border-nav-border bg-nav-bg py-4 md:flex lg:w-[220px] lg:items-stretch lg:px-3">
-      <div className="mb-4 flex items-center gap-2 px-2 lg:px-1">
-        <BrandMark onDark />
-        <span className="hidden text-[14px] font-semibold tracking-tight text-nav-fg lg:inline">
-          Hayai Comandas
-        </span>
+    //
+    // Dos superficies distintas por diseño: el cuerpo del rail (logo + nav)
+    // usa el kraft claro `--nav-bg`, y el pie (tema + logout) es el negro
+    // `--footer-bg` pedido por el cliente — no un solo bloque marrón sólido.
+    <aside className="hidden w-[76px] flex-col border-r border-nav-border bg-nav-bg md:flex lg:w-[220px]">
+      <div className="flex flex-1 flex-col items-center gap-1 px-2 pt-4 lg:items-stretch lg:px-3">
+        <div className="mb-4 flex items-center gap-2 px-0 lg:px-1">
+          <BrandMark size={26} />
+          <span className="hidden text-[13px] font-semibold uppercase tracking-wide text-nav-fg lg:inline">
+            Coffee &amp; Cake
+          </span>
+        </div>
+
+        <nav className="flex w-full flex-col gap-1">
+          {navItems.map(({ to, label, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              className={({ isActive }) =>
+                cn(
+                  "flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-2.5 text-[13px] font-medium transition-colors duration-150 lg:justify-start",
+                  "flex-col justify-center lg:flex-row",
+                  isActive
+                    ? "bg-accent-soft text-accent"
+                    : "text-nav-fg-muted hover:bg-nav-bg-hover hover:text-nav-fg",
+                )
+              }
+            >
+              <Icon size={20} weight="duotone" />
+              <span className="text-[10.5px] lg:text-[13px]">{label}</span>
+            </NavLink>
+          ))}
+        </nav>
       </div>
 
-      <nav className="flex w-full flex-col gap-1">
-        {navItems.map(({ to, label, icon: Icon }) => (
-          <NavLink
-            key={to}
-            to={to}
-            className={({ isActive }) =>
-              cn(
-                "flex items-center gap-3 rounded-[var(--radius-sm)] px-3 py-2.5 text-[13px] font-medium transition-colors duration-150 lg:justify-start",
-                "flex-col justify-center lg:flex-row",
-                isActive
-                  ? "bg-accent-soft text-accent"
-                  : "text-nav-fg-muted hover:bg-nav-bg-hover hover:text-nav-fg",
-              )
-            }
-          >
-            <Icon size={20} weight="duotone" />
-            <span className="text-[10.5px] lg:text-[13px]">{label}</span>
-          </NavLink>
-        ))}
-      </nav>
-
-      <div className="mt-auto flex w-full items-center justify-center gap-2 px-2 pt-3 lg:justify-start lg:px-1">
-        <ThemeToggle variant="nav" />
+      <div className="flex w-full items-center justify-center gap-2 border-t border-footer-border bg-footer-bg px-2 py-3 lg:justify-start lg:px-3">
+        <ThemeToggle variant="footer" />
         <IconButton
-          variant="nav"
+          variant="footer"
           icon={<SignOut size={17} weight="bold" />}
           label="Cerrar sesión"
           onClick={handleLogout}

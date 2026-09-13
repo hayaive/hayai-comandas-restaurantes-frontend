@@ -67,6 +67,13 @@
   --color-nav-fg-subtle: var(--nav-fg-subtle);
   --color-nav-border: var(--nav-border);
 
+  --color-footer-bg: var(--footer-bg);
+  --color-footer-bg-hover: var(--footer-bg-hover);
+  --color-footer-fg: var(--footer-fg);
+  --color-footer-fg-muted: var(--footer-fg-muted);
+  --color-footer-border: var(--footer-border);
+  --color-footer-accent: var(--footer-accent);
+
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);
