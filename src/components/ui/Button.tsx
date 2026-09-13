@@ -2,7 +2,7 @@ import { forwardRef } from "react";
 import type { ButtonHTMLAttributes } from "react";
 import { cn } from "@/lib/cn";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger";
+type Variant = "primary" | "secondary" | "ghost" | "danger" | "nav";
 type Size = "sm" | "md";
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -21,6 +21,8 @@ const variants: Record<Variant, string> = {
     "bg-surface-raised text-fg border border-border hover:bg-surface-hover",
   ghost: "bg-transparent text-fg-muted hover:bg-surface-hover hover:text-fg",
   danger: "bg-danger text-white hover:brightness-110",
+  /** Ghost-style action for placement directly on the fixed brand-brown nav surface (PageHeader). */
+  nav: "bg-transparent text-nav-fg-muted hover:bg-white/10 hover:text-nav-fg",
 };
 
 const sizes: Record<Size, string> = {

@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { ArrowClockwise, Receipt } from "@phosphor-icons/react";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { useComandaStore } from "@/lib/useComandaStore";
 import { useSyncComandasWithFloorPlan } from "@/lib/useSyncComandasWithFloorPlan";
 import { ComandaCard } from "@/components/comandas/ComandaCard";
@@ -24,18 +25,16 @@ export function ComandasPage() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <header className="flex items-center justify-between border-b border-border px-6 py-4">
-        <div>
-          <h1 className="text-[16px] font-semibold text-fg">Comandas</h1>
-          <p className="text-[12px] text-fg-muted">
-            {sorted.length} {sorted.length === 1 ? "mesa activa" : "mesas activas"}
-          </p>
-        </div>
-        <Button variant="ghost" size="sm" onClick={() => void load()} disabled={status === "loading"}>
-          <ArrowClockwise size={14} className={status === "loading" ? "animate-spin" : undefined} />
-          Actualizar
-        </Button>
-      </header>
+      <PageHeader
+        title="Comandas"
+        subtitle={`${sorted.length} ${sorted.length === 1 ? "mesa activa" : "mesas activas"}`}
+        actions={
+          <Button variant="nav" size="sm" onClick={() => void load()} disabled={status === "loading"}>
+            <ArrowClockwise size={14} className={status === "loading" ? "animate-spin" : undefined} />
+            Actualizar
+          </Button>
+        }
+      />
 
       <div className="flex-1 overflow-y-auto px-6 py-5">
         {status === "loading" && comandas.length === 0 && (

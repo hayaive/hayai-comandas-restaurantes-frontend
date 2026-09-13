@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { IconButton } from "@/components/ui/IconButton";
 import { Input } from "@/components/ui/Input";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { ProductThumbnail } from "@/components/productos/ProductThumbnail";
 import { useActiveTemplate, useFloorPlanStore } from "@/lib/useFloorPlanStore";
 import { useActiveProducts, useProductStore } from "@/lib/useProductStore";
@@ -173,10 +174,10 @@ export function MeseroPage() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <header className="border-b border-border px-6 py-4">
-        <h1 className="text-[16px] font-semibold text-fg">Mesero</h1>
-        <p className="text-[12px] text-fg-muted">Toma el pedido y envíalo directo a la comanda de la mesa</p>
-      </header>
+      <PageHeader
+        title="Mesero"
+        subtitle="Toma el pedido y envíalo directo a la comanda de la mesa"
+      />
 
       <div className="flex-1 overflow-y-auto px-6 py-5">
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">

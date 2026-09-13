@@ -59,6 +59,14 @@
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
 
+  --color-nav-bg: var(--nav-bg);
+  --color-nav-bg-hover: var(--nav-bg-hover);
+  --color-nav-bg-active: var(--nav-bg-active);
+  --color-nav-fg: var(--nav-fg);
+  --color-nav-fg-muted: var(--nav-fg-muted);
+  --color-nav-fg-subtle: var(--nav-fg-subtle);
+  --color-nav-border: var(--nav-border);
+
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);

@@ -94,6 +94,18 @@
 
   /* --- Canvas grid dot --- */
   --canvas-dot: var(--n-200);
+
+  /* --- Navigation surface: sidebar + page headers ---
+     Fixed brand color per client request — this is brand identity, not
+     part of the neutral scale, so it does NOT change with light/dark mode
+     (a manual/system theme toggle only affects content surfaces below it). */
+  --nav-bg: #593b27;
+  --nav-bg-hover: #6c4a34;
+  --nav-bg-active: #46301f;
+  --nav-fg: #ffffff;
+  --nav-fg-muted: rgb(255 255 255 / 0.72);
+  --nav-fg-subtle: rgb(255 255 255 / 0.56);
+  --nav-border: rgb(255 255 255 / 0.14);
 }
 
 @media (prefers-color-scheme: dark) {

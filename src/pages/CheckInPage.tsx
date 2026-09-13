@@ -4,6 +4,7 @@ import { Card, CardBody } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { useReservationStore } from "@/lib/useReservationStore";
 import { formatDateTime } from "@/lib/format";
 import { ApiError } from "@/api";
@@ -41,10 +42,7 @@ export function CheckInPage() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <header className="border-b border-border px-6 py-4">
-        <h1 className="text-[16px] font-semibold text-fg">Check-in</h1>
-        <p className="text-[12px] text-fg-muted">Ingresa el código de la reserva para sentar al cliente</p>
-      </header>
+      <PageHeader title="Check-in" subtitle="Ingresa el código de la reserva para sentar al cliente" />
 
       <div className="flex flex-1 items-center justify-center overflow-y-auto px-6 py-8">
         <Card className="w-full max-w-md">

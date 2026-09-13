@@ -2,7 +2,7 @@ import { forwardRef } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { cn } from "@/lib/cn";
 
-type Variant = "default" | "accent" | "danger";
+type Variant = "default" | "accent" | "danger" | "nav";
 type Size = "sm" | "md";
 
 export interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -38,6 +38,10 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
         variant === "accent" && "border-accent bg-accent text-fg-on-accent hover:bg-accent-strong",
         variant === "danger" &&
           "border-danger/40 bg-danger-soft text-danger hover:bg-danger hover:text-white",
+        variant === "nav" &&
+          (active
+            ? "border-transparent bg-accent-soft text-accent"
+            : "border-transparent bg-transparent text-nav-fg-muted hover:bg-white/10 hover:text-nav-fg"),
         className,
       )}
       {...props}

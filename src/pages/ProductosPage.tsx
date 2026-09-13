@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { IconButton } from "@/components/ui/IconButton";
 import { Switch } from "@/components/ui/Switch";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { useProductStore } from "@/lib/useProductStore";
 import { formatUsd } from "@/lib/format";
 import { ProductFormModal } from "@/components/productos/ProductFormModal";
@@ -42,15 +43,15 @@ export function ProductosPage() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <header className="flex items-center justify-between border-b border-border px-6 py-4">
-        <div>
-          <h1 className="text-[16px] font-semibold text-fg">Productos</h1>
-          <p className="text-[12px] text-fg-muted">Catálogo del menú</p>
-        </div>
-        <Button variant="primary" size="sm" onClick={openCreate}>
-          <Plus size={14} /> Nuevo producto
-        </Button>
-      </header>
+      <PageHeader
+        title="Productos"
+        subtitle="Catálogo del menú"
+        actions={
+          <Button variant="primary" size="sm" onClick={openCreate}>
+            <Plus size={14} /> Nuevo producto
+          </Button>
+        }
+      />
 
       <div className="flex-1 overflow-y-auto px-6 py-5">
         {status === "loading" && productos.length === 0 && (

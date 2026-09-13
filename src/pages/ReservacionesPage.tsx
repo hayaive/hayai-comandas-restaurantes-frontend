@@ -4,6 +4,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { IconButton } from "@/components/ui/IconButton";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { useReservationStore, useTodaysReservations } from "@/lib/useReservationStore";
 import { RESERVATION_ESTADO_META } from "@/lib/reservationMeta";
 import { formatTime } from "@/lib/format";
@@ -30,15 +31,15 @@ export function ReservacionesPage() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <header className="flex items-center justify-between border-b border-border px-6 py-4">
-        <div>
-          <h1 className="text-[16px] font-semibold text-fg">Reservaciones</h1>
-          <p className="text-[12px] text-fg-muted">Reservas de hoy</p>
-        </div>
-        <Button variant="primary" size="sm" onClick={() => setFormOpen(true)}>
-          <Plus size={14} /> Nueva reserva
-        </Button>
-      </header>
+      <PageHeader
+        title="Reservaciones"
+        subtitle="Reservas de hoy"
+        actions={
+          <Button variant="primary" size="sm" onClick={() => setFormOpen(true)}>
+            <Plus size={14} /> Nueva reserva
+          </Button>
+        }
+      />
 
       <div className="flex-1 overflow-y-auto px-6 py-5">
         {status === "loading" && reservations.length === 0 && (

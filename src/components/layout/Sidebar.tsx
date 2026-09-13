@@ -35,10 +35,10 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="flex w-[76px] flex-col items-center gap-1 border-r border-border bg-surface py-4 lg:w-[220px] lg:items-stretch lg:px-3">
+    <aside className="flex w-[76px] flex-col items-center gap-1 border-r border-nav-border bg-nav-bg py-4 lg:w-[220px] lg:items-stretch lg:px-3">
       <div className="mb-4 flex items-center gap-2 px-2 lg:px-1">
-        <BrandMark />
-        <span className="hidden text-[14px] font-semibold tracking-tight text-fg lg:inline">
+        <BrandMark onDark />
+        <span className="hidden text-[14px] font-semibold tracking-tight text-nav-fg lg:inline">
           Hayai Comandas
         </span>
       </div>
@@ -54,7 +54,7 @@ export function Sidebar() {
                 "flex-col justify-center lg:flex-row",
                 isActive
                   ? "bg-accent-soft text-accent"
-                  : "text-fg-muted hover:bg-surface-hover hover:text-fg",
+                  : "text-nav-fg-muted hover:bg-nav-bg-hover hover:text-nav-fg",
               )
             }
           >
@@ -65,8 +65,9 @@ export function Sidebar() {
       </nav>
 
       <div className="mt-auto flex w-full items-center justify-center gap-2 px-2 pt-3 lg:justify-start lg:px-1">
-        <ThemeToggle />
+        <ThemeToggle variant="nav" />
         <IconButton
+          variant="nav"
           icon={<SignOut size={17} weight="bold" />}
           label="Cerrar sesión"
           onClick={handleLogout}

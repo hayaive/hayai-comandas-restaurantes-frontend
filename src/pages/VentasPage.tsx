@@ -4,6 +4,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { ComandaHistorialRow } from "@/components/ventas/ComandaHistorialRow";
 import { useComandaStore } from "@/lib/useComandaStore";
 import { todayIso, useSalesReport } from "@/lib/useSalesReport";
@@ -40,21 +41,21 @@ export function VentasPage() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <header className="flex items-center justify-between border-b border-border px-6 py-4">
-        <div>
-          <h1 className="text-[16px] font-semibold text-fg">Ventas</h1>
-          <p className="text-[12px] text-fg-muted">Resumen del día operativo actual</p>
-        </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => void handleRefresh()}
-          disabled={status === "loading"}
-        >
-          <ArrowClockwise size={14} className={status === "loading" ? "animate-spin" : undefined} />
-          Actualizar
-        </Button>
-      </header>
+      <PageHeader
+        title="Ventas"
+        subtitle="Resumen del día operativo actual"
+        actions={
+          <Button
+            variant="nav"
+            size="sm"
+            onClick={() => void handleRefresh()}
+            disabled={status === "loading"}
+          >
+            <ArrowClockwise size={14} className={status === "loading" ? "animate-spin" : undefined} />
+            Actualizar
+          </Button>
+        }
+      />
 
       <div className="flex-1 overflow-y-auto px-6 py-5">
         {status === "loading" && !totales && (
