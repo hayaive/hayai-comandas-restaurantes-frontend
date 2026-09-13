@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
 import { FloorPlanPage } from "@/pages/FloorPlanPage";
+import { MeseroPage } from "@/pages/MeseroPage";
 import { ComandasPage } from "@/pages/ComandasPage";
 import { VentasPage } from "@/pages/VentasPage";
 import { ReservacionesPage } from "@/pages/ReservacionesPage";
@@ -22,6 +23,7 @@ export function App() {
         <Route element={<AppShell />}>
           <Route index element={<Navigate to="/mesas" replace />} />
           <Route path="/mesas" element={<FloorPlanPage />} />
+          <Route path="/mesero" element={<MeseroPage />} />
           <Route path="/comandas" element={<ComandasPage />} />
           <Route path="/ventas" element={<VentasPage />} />
           <Route path="/reservaciones" element={<ReservacionesPage />} />

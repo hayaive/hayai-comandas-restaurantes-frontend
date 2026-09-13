@@ -3,6 +3,7 @@ import {
   Armchair,
   CalendarCheck,
   CurrencyDollar,
+  ForkKnife,
   Package,
   QrCode,
   Receipt,
@@ -16,6 +17,7 @@ import { useAuthStore } from "@/lib/useAuthStore";
 
 const navItems = [
   { to: "/mesas", label: "Mesas", icon: Armchair },
+  { to: "/mesero", label: "Mesero", icon: ForkKnife },
   { to: "/comandas", label: "Comandas", icon: Receipt },
   { to: "/reservaciones", label: "Reservaciones", icon: CalendarCheck },
   { to: "/checkin", label: "Check-in", icon: QrCode },
