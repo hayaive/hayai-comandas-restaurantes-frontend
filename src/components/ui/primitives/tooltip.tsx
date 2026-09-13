@@ -16,8 +16,18 @@ function TooltipProvider({
   );
 }
 
+/**
+ * Self-providing, like current shadcn: a `Tooltip` carries its own
+ * `Tooltip.Provider` so no app-level setup is required and `IconButton` can be
+ * dropped anywhere. Nesting providers is legal in Radix — an outer
+ * `TooltipProvider` still governs shared open/close delay for its subtree.
+ */
 function Tooltip(props: React.ComponentProps<typeof TooltipPrimitive.Root>) {
-  return <TooltipPrimitive.Root data-slot="tooltip" {...props} />;
+  return (
+    <TooltipProvider>
+      <TooltipPrimitive.Root data-slot="tooltip" {...props} />
+    </TooltipProvider>
+  );
 }
 
 const TooltipTrigger = TooltipPrimitive.Trigger;

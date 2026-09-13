@@ -15,43 +15,48 @@ import { cn } from "@/lib/utils";
  * - shadows use the warm espresso-tinted `--shadow-token-*` scale rather than
  *   Tailwind's neutral black `shadow-xs`.
  */
-export const buttonVariants = cva(
-  [
-    "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-sm)] text-sm font-medium",
-    "transition-[background-color,border-color,color,box-shadow,transform] duration-150 ease-out",
-    "outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/45",
-    "disabled:pointer-events-none disabled:opacity-45",
-    "active:scale-[0.985]",
-    "[&_svg]:pointer-events-none [&_svg]:shrink-0",
-    "aria-invalid:border-destructive aria-invalid:ring-destructive/25",
-  ],
-  {
-    variants: {
-      variant: {
-        default:
-          "bg-primary text-primary-foreground shadow-[var(--shadow-token-sm)] hover:bg-accent-strong",
-        destructive:
-          "bg-destructive text-destructive-foreground shadow-[var(--shadow-token-sm)] hover:brightness-110 focus-visible:ring-destructive/35",
-        outline:
-          "border border-input bg-surface-raised text-fg shadow-[var(--shadow-token-sm)] hover:bg-surface-hover hover:border-border-strong",
-        secondary:
-          "bg-secondary text-secondary-foreground hover:bg-border",
-        ghost: "text-fg-muted hover:bg-surface-hover hover:text-fg",
-        link: "text-primary underline-offset-4 hover:underline",
-      },
-      size: {
-        default: "h-9 px-4 py-2 has-[>svg]:px-3",
-        sm: "h-8 gap-1.5 px-3 text-[13px] has-[>svg]:px-2.5",
-        lg: "h-10 px-6 has-[>svg]:px-4",
-        icon: "size-9",
-      },
+/**
+ * The shared button base. Exported (a small deviation from upstream shadcn,
+ * which inlines it) so `ui/Button.tsx` and `ui/IconButton.tsx` can express
+ * this project's own variant vocabulary — `primary`/`secondary`/`nav`/
+ * `footer` — on exactly the same geometry, focus ring, and transition timing
+ * instead of drifting into a second, near-identical base string.
+ */
+export const buttonBase = [
+  "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-sm)] text-sm font-medium",
+  "transition-[background-color,border-color,color,box-shadow,transform] duration-150 ease-out",
+  "outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/45",
+  "disabled:pointer-events-none disabled:opacity-45",
+  "active:scale-[0.985]",
+  "[&_svg]:pointer-events-none [&_svg]:shrink-0",
+  "aria-invalid:border-destructive aria-invalid:ring-destructive/25",
+];
+
+export const buttonVariants = cva(buttonBase, {
+  variants: {
+    variant: {
+      default:
+        "bg-primary text-primary-foreground shadow-[var(--shadow-token-sm)] hover:bg-accent-strong",
+      destructive:
+        "bg-destructive text-destructive-foreground shadow-[var(--shadow-token-sm)] hover:brightness-110 focus-visible:ring-destructive/35",
+      outline:
+        "border border-input bg-surface-raised text-fg shadow-[var(--shadow-token-sm)] hover:bg-surface-hover hover:border-border-strong",
+      secondary: "bg-secondary text-secondary-foreground hover:bg-border",
+      ghost: "text-fg-muted hover:bg-surface-hover hover:text-fg",
+      link: "text-primary underline-offset-4 hover:underline",
     },
-    defaultVariants: {
-      variant: "default",
-      size: "default",
+    size: {
+      default: "h-9 px-4 py-2 has-[>svg]:px-3",
+      sm: "h-8 gap-1.5 px-3 text-[13px] has-[>svg]:px-2.5",
+      lg: "h-10 px-6 has-[>svg]:px-4",
+      icon: "size-9",
     },
   },
-);
+  defaultVariants: {
+    variant: "default",
+    size: "default",
+  },
+});
 
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,

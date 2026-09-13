@@ -1,51 +1,58 @@
-import { forwardRef, useId } from "react";
-import type { InputHTMLAttributes } from "react";
-import { cn } from "@/lib/cn";
+import * as React from "react";
 
-export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
+import { cn } from "@/lib/utils";
+import { Input as InputPrimitive } from "./primitives/input";
+import { Label } from "./primitives/label";
+
+export interface InputProps
+  extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   hint?: string;
   error?: string;
+  /** Class for the wrapping field, when the field itself needs to be sized. */
+  fieldClassName?: string;
 }
 
-export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
-  { label, hint, error, className, id, ...props },
-  ref,
-) {
-  const generatedId = useId();
-  const inputId = id ?? generatedId;
+/**
+ * A labelled text field: shadcn's `Input` and `Label` wired into one
+ * accessible unit (`htmlFor`, `aria-invalid`, `aria-describedby`) so no screen
+ * has to reassemble that plumbing.
+ *
+ * `className` still lands on the `<input>`, as it did before this file moved
+ * to shadcn, so existing call sites keep working; `fieldClassName` is the new
+ * escape hatch for sizing the wrapper.
+ */
+export const Input = React.forwardRef<HTMLInputElement, InputProps>(
+  function Input(
+    { label, hint, error, className, fieldClassName, id, ...props },
+    ref,
+  ) {
+    const generatedId = React.useId();
+    const inputId = id ?? generatedId;
+    const errorId = `${inputId}-error`;
+    const hintId = `${inputId}-hint`;
 
-  return (
-    <div className="flex flex-col gap-1.5">
-      {label && (
-        <label htmlFor={inputId} className="text-[13px] font-medium text-fg-muted">
-          {label}
-        </label>
-      )}
-      <input
-        ref={ref}
-        id={inputId}
-        aria-invalid={Boolean(error)}
-        aria-describedby={error ? `${inputId}-error` : hint ? `${inputId}-hint` : undefined}
-        className={cn(
-          "h-9 rounded-[var(--radius-sm)] border bg-surface px-3 text-sm text-fg outline-none",
-          "placeholder:text-fg-subtle transition-colors duration-150",
-          error
-            ? "border-danger focus:border-danger"
-            : "border-border focus:border-accent",
-          className,
-        )}
-        {...props}
-      />
-      {error ? (
-        <p id={`${inputId}-error`} className="text-[12px] text-danger">
-          {error}
-        </p>
-      ) : hint ? (
-        <p id={`${inputId}-hint`} className="text-[12px] text-fg-subtle">
-          {hint}
-        </p>
-      ) : null}
-    </div>
-  );
-});
+    return (
+      <div className={cn("flex flex-col gap-1.5", fieldClassName)}>
+        {label && <Label htmlFor={inputId}>{label}</Label>}
+        <InputPrimitive
+          ref={ref}
+          id={inputId}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? errorId : hint ? hintId : undefined}
+          className={className}
+          {...props}
+        />
+        {error ? (
+          <p id={errorId} className="text-[12px] font-medium text-danger">
+            {error}
+          </p>
+        ) : hint ? (
+          <p id={hintId} className="text-[12px] text-fg-subtle">
+            {hint}
+          </p>
+        ) : null}
+      </div>
+    );
+  },
+);

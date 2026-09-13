@@ -1,29 +1,42 @@
-import { cn } from "@/lib/cn";
+import { Switch as SwitchPrimitive } from "./primitives/switch";
 
 export interface SwitchProps {
   checked: boolean;
+  /** Fired on every toggle. Kept as a no-argument callback to match the
+   *  existing call sites, which all flip a store boolean. */
   onChange: () => void;
+  /** Accessible name. */
   label: string;
+  disabled?: boolean;
+  id?: string;
+  className?: string;
 }
 
-export function Switch({ checked, onChange, label }: SwitchProps) {
+/**
+ * Thin adapter over the shadcn/Radix switch so the two existing call sites
+ * keep their `{ checked, onChange, label }` API.
+ *
+ * What Radix brings that the hand-rolled version did not: Space/Enter
+ * activation, a real `role="switch"` with managed `aria-checked`, a hidden
+ * form-participating input, and `data-state` driving the colour and the thumb
+ * so no inline `style={{ transform }}` is recomputed on every render.
+ */
+export function Switch({
+  checked,
+  onChange,
+  label,
+  disabled,
+  id,
+  className,
+}: SwitchProps) {
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
+    <SwitchPrimitive
+      id={id}
+      checked={checked}
+      onCheckedChange={onChange}
+      disabled={disabled}
       aria-label={label}
-      title={label}
-      onClick={onChange}
-      className={cn(
-        "inline-flex h-5 w-9 shrink-0 items-center rounded-[var(--radius-pill)] border p-0.5 transition-colors duration-150",
-        checked ? "border-accent bg-accent" : "border-border-strong bg-surface-hover",
-      )}
-    >
-      <span
-        className="h-3.5 w-3.5 rounded-full bg-surface shadow-[var(--shadow-token-sm)] transition-transform duration-150"
-        style={{ transform: checked ? "translateX(16px)" : "translateX(0)" }}
-      />
-    </button>
+      className={className}
+    />
   );
 }

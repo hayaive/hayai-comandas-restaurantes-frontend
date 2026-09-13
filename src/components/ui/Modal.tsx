@@ -1,16 +1,22 @@
-import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
-import { createPortal } from "react-dom";
 import { X } from "@phosphor-icons/react";
-import { cn } from "@/lib/cn";
+
+import { cn } from "@/lib/utils";
 import { IconButton } from "./IconButton";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "./primitives/dialog";
 
 /** `lg` existe para el contenido que necesita ancho real, como el plano del salón. */
 type ModalSize = "md" | "lg";
 
 const SIZES: Record<ModalSize, string> = {
-  md: "max-w-md",
-  lg: "max-w-3xl",
+  md: "sm:max-w-md",
+  lg: "sm:max-w-3xl",
 };
 
 export interface ModalProps {
@@ -23,6 +29,21 @@ export interface ModalProps {
   footer?: ReactNode;
 }
 
+/**
+ * The app's modal — a header/scrolling-body/footer shell over the shadcn
+ * Dialog, keeping the `{ open, onClose, title, … }` API every screen already
+ * passes.
+ *
+ * Moving to Radix retires a whole class of bug rather than just restyling one.
+ * The hand-rolled version ran a `useEffect` that queried the panel for
+ * focusables and called `.focus()`; because `onClose` arrived as a fresh inline
+ * closure on every render, that effect had to be defended with a ref or every
+ * keystroke in a modal input stole focus back to the close button. Radix owns
+ * focus, the focus trap, focus restore, `aria-modal`, the Escape handler,
+ * outside-press dismissal and the body scroll lock, so none of that bookkeeping
+ * lives here any more — and the panel now animates in and out instead of
+ * appearing and vanishing between two frames.
+ */
 export function Modal({
   open,
   onClose,
@@ -32,97 +53,48 @@ export function Modal({
   children,
   footer,
 }: ModalProps) {
-  const panelRef = useRef<HTMLDivElement>(null);
-  // `onClose` llega como una función inline distinta en cada render de la
-  // pantalla que usa el modal (ej. `close` en ReservationFormModal, que
-  // envuelve `reset()+onClose()` sin useCallback). Si el efecto de abajo
-  // dependiera de `onClose` directamente, cada tecla escrita en un input del
-  // modal re-dispararía el efecto y volvería a enfocar el primer elemento
-  // enfocable del panel — que en el DOM es el botón "X" del header, antes
-  // que cualquier input del contenido — cortando la escritura. Guardarlo en
-  // un ref rompe esa dependencia sin perder el `onClose` vigente.
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-
-  useEffect(() => {
-    if (!open) return;
-
-    const previouslyFocused = document.activeElement as HTMLElement | null;
-    const panel = panelRef.current;
-    const focusable = panel?.querySelector<HTMLElement>(
-      'input, button, [href], select, textarea, [tabindex]:not([tabindex="-1"])',
-    );
-    focusable?.focus();
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onCloseRef.current();
-        return;
-      }
-      if (event.key === "Tab" && panel) {
-        const focusables = panel.querySelectorAll<HTMLElement>(
-          'input, button, [href], select, textarea, [tabindex]:not([tabindex="-1"])',
-        );
-        if (focusables.length === 0) return;
-        const first = focusables[0];
-        const last = focusables[focusables.length - 1];
-        if (event.shiftKey && document.activeElement === first) {
-          event.preventDefault();
-          last.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault();
-          first.focus();
-        }
-      }
-    }
-
-    document.addEventListener("keydown", handleKeyDown);
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = originalOverflow;
-      previouslyFocused?.focus();
-    };
-  }, [open]);
-
-  if (!open) return null;
-
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div
-        className="absolute inset-0 bg-black/45 backdrop-blur-[2px]"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="modal-title"
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+    >
+      <DialogContent
+        showCloseButton={false}
+        // Radix auto-wires `aria-describedby` to its `DialogDescription`, and
+        // warns in dev when a dialog renders without one. Modals that have no
+        // subtitle opt out explicitly so the console stays clean and no
+        // dangling id is left pointing at an element that never renders.
+        {...(description ? {} : { "aria-describedby": undefined })}
         className={cn(
-          "relative flex max-h-[90dvh] w-full flex-col rounded-[var(--radius-lg)] border border-border bg-surface-raised shadow-[var(--shadow-token-lg)]",
+          "flex max-h-[90dvh] w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-0",
           SIZES[size],
         )}
       >
-        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-5 py-4">
-          <div>
-            <h2 id="modal-title" className="text-[15px] font-semibold text-fg">
-              {title}
-            </h2>
-            {description && <p className="mt-0.5 text-[13px] text-fg-muted">{description}</p>}
+        <DialogHeader className="flex shrink-0 flex-row items-start justify-between gap-4 border-b border-border px-5 py-4">
+          <div className="min-w-0 space-y-0.5">
+            <DialogTitle>{title}</DialogTitle>
+            {description && <DialogDescription>{description}</DialogDescription>}
           </div>
-          <IconButton icon={<X size={16} />} label="Cerrar" size="sm" onClick={onClose} />
-        </div>
+          <IconButton
+            icon={<X size={16} weight="bold" />}
+            label="Cerrar"
+            variant="nav"
+            size="sm"
+            className="-mr-1.5 -mt-1 shrink-0 text-fg-subtle hover:bg-surface-hover hover:text-fg"
+            onClick={onClose}
+          />
+        </DialogHeader>
+
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
+
         {footer && (
-          <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border px-5 py-3">
+          <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border bg-surface-sunken/60 px-5 py-3">
             {footer}
           </div>
         )}
-      </div>
-    </div>,
-    document.body,
+      </DialogContent>
+    </Dialog>
   );
 }
