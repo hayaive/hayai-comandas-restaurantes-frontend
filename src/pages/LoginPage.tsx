@@ -52,9 +52,14 @@ export function LoginPage() {
 
   return (
     <div className="flex min-h-dvh w-full flex-col items-center justify-center bg-bg px-4 py-8 text-fg">
-      <div className="mb-8 flex items-center gap-2">
-        <BrandMark />
-        <span className="text-[14px] font-semibold tracking-tight text-fg">Hayai Comandas</span>
+      <div className="mb-8 flex flex-col items-center gap-2">
+        <div className="flex items-center gap-2.5">
+          <BrandMark size={40} />
+          <span className="text-[20px] font-semibold uppercase tracking-wide text-fg">
+            Coffee &amp; Cake
+          </span>
+        </div>
+        <p className="text-[12px] text-fg-muted">para amantes del café</p>
       </div>
 
       <Card className="w-full max-w-sm">

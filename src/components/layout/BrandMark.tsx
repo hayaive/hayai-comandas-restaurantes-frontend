@@ -2,24 +2,40 @@ import { cn } from "@/lib/cn";
 
 export interface BrandMarkProps {
   className?: string;
-  /** Render for placement on the fixed brand-brown nav surface (Sidebar). */
+  /** Pixel size of the circular mark (width and height). Defaults to 28. */
+  size?: number;
+  /** Set when placed on a dark surface (e.g. the black footer) — swaps the
+   * edge ring for one visible against dark backgrounds. Current call sites
+   * (Sidebar rail, LoginPage, SelfSeatPage) all sit on light surfaces, but
+   * the prop stays available for a future dark placement. */
   onDark?: boolean;
 }
 
-export function BrandMark({ className, onDark = false }: BrandMarkProps) {
+/**
+ * Real brand seal (`/logo.jpg`) — a circular badge photographed on a solid
+ * square background. The image itself is already circular art, so instead
+ * of processing the file we crop it in CSS: an `overflow-hidden` circular
+ * container clips away the square's corners, leaving just the round seal
+ * regardless of what surface it sits on. A hairline ring gives it a defined
+ * edge since the source photo has no transparency of its own.
+ */
+export function BrandMark({ className, size = 28, onDark = false }: BrandMarkProps) {
   return (
-    <svg
-      viewBox="0 0 32 32"
-      fill="none"
-      className={cn("h-6 w-6", className)}
-      aria-hidden="true"
+    <span
+      className={cn(
+        "inline-block shrink-0 overflow-hidden rounded-full ring-1",
+        onDark ? "ring-white/20" : "ring-black/10",
+        className,
+      )}
+      style={{ width: size, height: size }}
     >
-      <rect width="32" height="32" rx="7" className={onDark ? "fill-nav-fg" : "fill-fg"} />
-      <circle cx="16" cy="16" r="8.5" stroke={onDark ? "var(--nav-bg)" : "var(--bg)"} strokeWidth="2.4" />
-      <circle cx="16" cy="5.4" r="1.7" className="fill-accent" />
-      <circle cx="16" cy="26.6" r="1.7" className="fill-accent" />
-      <circle cx="5.4" cy="16" r="1.7" className="fill-accent" />
-      <circle cx="26.6" cy="16" r="1.7" className="fill-accent" />
-    </svg>
+      <img
+        src="/logo.jpg"
+        alt="Coffee & Cake — para amantes del café"
+        width={size}
+        height={size}
+        className="h-full w-full object-cover"
+      />
+    </span>
   );
 }

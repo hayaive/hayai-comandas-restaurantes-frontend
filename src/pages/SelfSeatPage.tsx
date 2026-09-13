@@ -68,9 +68,14 @@ export function SelfSeatPage() {
   return (
     <div className="flex min-h-dvh w-full flex-col items-center bg-bg px-4 py-8 text-fg">
       <div className="mb-8 flex w-full max-w-lg items-center justify-between">
-        <div className="flex items-center gap-2">
-          <BrandMark />
-          <span className="text-[14px] font-semibold tracking-tight text-fg">Hayai Comandas</span>
+        <div className="flex items-center gap-2.5">
+          <BrandMark size={32} />
+          <div>
+            <span className="block text-[14px] font-semibold uppercase tracking-wide text-fg">
+              Coffee &amp; Cake
+            </span>
+            <span className="block text-[11px] text-fg-muted">para amantes del café</span>
+          </div>
         </div>
         <ThemeToggle />
       </div>
