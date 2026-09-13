@@ -5,16 +5,29 @@ import type {
   Comanda,
   ComandaItem,
   CreateComandaInput,
+  CreatePlantillaInput,
+  CreatePlantillaMesaInput,
   CreateProductoInput,
   CreateReservacionInput,
   EstadoComandaItem,
+  EstadoMesa,
+  FormaMesa,
+  Mesa,
+  MesaEstado,
   OrdenReporteProducto,
+  Plantilla,
+  PlantillaMesa,
   Producto,
   ProductoVendido,
   Reservacion,
+  Salon,
+  UpdateMesaInput,
+  UpdatePlantillaInput,
+  UpdatePlantillaMesaInput,
   UpdateProductoInput,
 } from "./types";
 import { ApiError } from "./types";
+import { seedTemplates } from "@/lib/mockData";
 
 /**
  * In-memory mock backend.
@@ -51,6 +64,79 @@ function shortCode(): string {
   let out = "";
   for (let i = 0; i < 4; i += 1) out += chars[Math.floor(Math.random() * chars.length)];
   return `R-${out}`;
+}
+
+// ---------------------------------------------------------------------------
+// Seed: plano (salón + plantillas + mesas)
+//
+// Se deriva del layout de demo de `src/lib/mockData.ts` para no mantener dos
+// juegos de coordenadas, pero ya con la forma REAL del backend: la identidad
+// de la mesa (`Mesa`) separada de su sitio en el plano (`PlantillaMesa`), y el
+// estado libre/ocupada/reservada NO almacenado sino derivado de las comandas y
+// reservaciones vivas — igual que hace la vista `v_mesa_estado` en producción.
+// ---------------------------------------------------------------------------
+
+const SALON_ID = "sal-principal";
+const PLAN_WIDTH = 1200;
+const PLAN_HEIGHT = 700;
+
+const salones: Salon[] = [{ id: SALON_ID, nombre: "Salón principal", orden: 0, activo: true }];
+
+let plantillas: Plantilla[] = seedTemplates.map((tpl, index) => ({
+  id: tpl.id,
+  salonId: SALON_ID,
+  nombre: tpl.name,
+  descripcion: null,
+  anchoPlano: String(PLAN_WIDTH),
+  altoPlano: String(PLAN_HEIGHT),
+  activa: index === 0,
+}));
+
+let mesas: Mesa[] = seedTemplates.flatMap((tpl) =>
+  tpl.tables.map((table) => ({
+    id: table.id,
+    salonId: SALON_ID,
+    etiqueta: table.label,
+    capacidadDefault: table.seats,
+    formaDefault: (table.shape === "circle" ? "redonda" : "cuadrada") as FormaMesa,
+    activa: true,
+  })),
+);
+
+let plantillaMesas: PlantillaMesa[] = seedTemplates.flatMap((tpl) =>
+  tpl.tables.map((table) => ({
+    plantillaId: tpl.id,
+    mesaId: table.id,
+    // El editor trabaja en centros; el backend guarda la esquina superior izquierda.
+    posX: String(table.x - table.size / 2),
+    posY: String(table.y - table.size / 2),
+    ancho: String(table.size),
+    alto: String(table.size),
+    rotacion: 0,
+    forma: (table.shape === "circle" ? "redonda" : "cuadrada") as FormaMesa,
+    capacidad: table.seats,
+    bloqueada: false,
+  })),
+);
+
+function mesaById(id: string): Mesa {
+  const found = mesas.find((m) => m.id === id);
+  if (!found) throw new ApiError("Mesa no encontrada", 404);
+  return found;
+}
+
+function plantillaById(id: string): Plantilla {
+  const found = plantillas.find((p) => p.id === id);
+  if (!found) throw new ApiError("La plantilla no existe", 404);
+  return found;
+}
+
+function withMesa(row: PlantillaMesa): PlantillaMesa {
+  return { ...row, mesa: mesas.find((m) => m.id === row.mesaId) };
+}
+
+function nextMockId(prefix: string): string {
+  return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -266,7 +352,252 @@ let reservaciones: Reservacion[] = [
   },
 ];
 
+/** Misma regla que la vista `v_mesa_estado` del backend, en memoria. */
+function estadoDeMesa(mesaId: string, bloqueada: boolean): EstadoMesa {
+  if (bloqueada) return "bloqueada";
+  const ocupada = comandas.some(
+    (c) => c.mesaId === mesaId && (c.estado === "abierta" || c.estado === "por_cobrar"),
+  );
+  if (ocupada) return "ocupada";
+  const reservada = reservaciones.some(
+    (r) =>
+      r.mesaId === mesaId &&
+      (r.estado === "pendiente" || r.estado === "confirmada" || r.estado === "sentada"),
+  );
+  return reservada ? "reservada" : "libre";
+}
+
+function clienteDeMesa(mesaId: string): string | null {
+  const comanda = comandas.find(
+    (c) => c.mesaId === mesaId && (c.estado === "abierta" || c.estado === "por_cobrar"),
+  );
+  if (comanda?.clienteNombre) return comanda.clienteNombre;
+  const reserva = reservaciones.find(
+    (r) =>
+      r.mesaId === mesaId &&
+      (r.estado === "pendiente" || r.estado === "confirmada" || r.estado === "sentada"),
+  );
+  return reserva?.clienteNombre ?? null;
+}
+
 export const mockApi: ApiClient = {
+  // --- Plano: salones, plantillas y mesas -------------------------------
+  async listSalones() {
+    return delay(salones.filter((s) => s.activo));
+  },
+
+  async listPlantillas(salonId: string) {
+    return delay(plantillas.filter((p) => p.salonId === salonId));
+  },
+
+  async getPlantilla(plantillaId: string) {
+    const plantilla = plantillaById(plantillaId);
+    return delay({
+      ...plantilla,
+      mesas: plantillaMesas.filter((pm) => pm.plantillaId === plantillaId).map(withMesa),
+    });
+  },
+
+  async createPlantilla(salonId: string, input: CreatePlantillaInput) {
+    const nombre = input.nombre.trim();
+    if (!nombre) throw new ApiError("El nombre de la plantilla es obligatorio", 422);
+    const plantilla: Plantilla = {
+      id: nextMockId("tpl"),
+      salonId,
+      nombre,
+      descripcion: null,
+      anchoPlano: String(input.anchoPlano ?? PLAN_WIDTH),
+      altoPlano: String(input.altoPlano ?? PLAN_HEIGHT),
+      activa: false,
+    };
+    plantillas = [...plantillas, plantilla];
+    return delay(plantilla);
+  },
+
+  async updatePlantilla(plantillaId: string, input: UpdatePlantillaInput) {
+    const current = plantillaById(plantillaId);
+    const next: Plantilla = {
+      ...current,
+      ...(input.nombre !== undefined ? { nombre: input.nombre.trim() } : {}),
+      ...(input.descripcion !== undefined ? { descripcion: input.descripcion } : {}),
+      ...(input.anchoPlano !== undefined ? { anchoPlano: String(input.anchoPlano) } : {}),
+      ...(input.altoPlano !== undefined ? { altoPlano: String(input.altoPlano) } : {}),
+    };
+    plantillas = plantillas.map((p) => (p.id === plantillaId ? next : p));
+    return delay(next);
+  },
+
+  async deletePlantilla(plantillaId: string) {
+    const plantilla = plantillaById(plantillaId);
+    if (plantilla.activa) {
+      throw new ApiError("No se puede eliminar la plantilla activa del salón", 409);
+    }
+    plantillas = plantillas.filter((p) => p.id !== plantillaId);
+    plantillaMesas = plantillaMesas.filter((pm) => pm.plantillaId !== plantillaId);
+    return delay(undefined);
+  },
+
+  async activarPlantilla(plantillaId: string) {
+    const plantilla = plantillaById(plantillaId);
+    plantillas = plantillas.map((p) =>
+      p.salonId === plantilla.salonId ? { ...p, activa: p.id === plantillaId } : p,
+    );
+    const mesasEnPlano = new Set(
+      plantillaMesas.filter((pm) => pm.plantillaId === plantillaId).map((pm) => pm.mesaId),
+    );
+    const reservacionesHuerfanas = reservaciones.filter(
+      (r) =>
+        r.mesaId !== null &&
+        !mesasEnPlano.has(r.mesaId) &&
+        (r.estado === "pendiente" || r.estado === "confirmada"),
+    );
+    return delay({
+      plantilla: { ...plantilla, activa: true },
+      reservacionesHuerfanas,
+    });
+  },
+
+  async createPlantillaMesa(plantillaId: string, input: CreatePlantillaMesaInput) {
+    plantillaById(plantillaId);
+    let mesaId = input.mesaId;
+    if (!mesaId) {
+      const etiqueta = (input.etiqueta ?? "").trim();
+      if (!etiqueta) throw new ApiError("La etiqueta de la mesa es obligatoria", 422);
+      if (mesas.some((m) => m.etiqueta.toLowerCase() === etiqueta.toLowerCase())) {
+        throw new ApiError("Ya existe una mesa con ese número", 409);
+      }
+      const mesa: Mesa = {
+        id: nextMockId("mesa"),
+        salonId: SALON_ID,
+        etiqueta,
+        capacidadDefault: input.capacidad ?? 4,
+        formaDefault: input.forma ?? "cuadrada",
+        activa: true,
+      };
+      mesas = [...mesas, mesa];
+      mesaId = mesa.id;
+    } else {
+      mesaById(mesaId);
+    }
+    if (plantillaMesas.some((pm) => pm.plantillaId === plantillaId && pm.mesaId === mesaId)) {
+      throw new ApiError("Esa mesa ya está en el plano", 409);
+    }
+    const ancho = input.ancho ?? 78;
+    const row: PlantillaMesa = {
+      plantillaId,
+      mesaId,
+      posX: String(input.posX),
+      posY: String(input.posY),
+      ancho: String(ancho),
+      alto: String(input.alto ?? ancho),
+      rotacion: input.rotacion ?? 0,
+      forma: input.forma ?? "cuadrada",
+      capacidad: input.capacidad ?? 4,
+      bloqueada: input.bloqueada ?? false,
+    };
+    plantillaMesas = [...plantillaMesas, row];
+    return delay(withMesa(row));
+  },
+
+  async updatePlantillaMesa(
+    plantillaId: string,
+    mesaId: string,
+    input: UpdatePlantillaMesaInput,
+  ) {
+    const idx = plantillaMesas.findIndex(
+      (pm) => pm.plantillaId === plantillaId && pm.mesaId === mesaId,
+    );
+    if (idx === -1) throw new ApiError("Esa mesa no está en el plano", 404);
+    if (input.capacidad !== undefined && (input.capacidad < 1 || input.capacidad > 50)) {
+      throw new ApiError("La capacidad debe estar entre 1 y 50", 422);
+    }
+    const next: PlantillaMesa = {
+      ...plantillaMesas[idx],
+      ...(input.posX !== undefined ? { posX: String(input.posX) } : {}),
+      ...(input.posY !== undefined ? { posY: String(input.posY) } : {}),
+      ...(input.ancho !== undefined ? { ancho: String(input.ancho) } : {}),
+      ...(input.alto !== undefined ? { alto: String(input.alto) } : {}),
+      ...(input.rotacion !== undefined ? { rotacion: input.rotacion } : {}),
+      ...(input.forma !== undefined ? { forma: input.forma } : {}),
+      ...(input.capacidad !== undefined ? { capacidad: input.capacidad } : {}),
+      ...(input.bloqueada !== undefined ? { bloqueada: input.bloqueada } : {}),
+    };
+    plantillaMesas = [...plantillaMesas.slice(0, idx), next, ...plantillaMesas.slice(idx + 1)];
+    // El backend real NO embebe la mesa en el PATCH; se replica para que el
+    // frontend no llegue a depender de algo que en producción no viene.
+    return delay(next);
+  },
+
+  async deletePlantillaMesa(plantillaId: string, mesaId: string) {
+    const exists = plantillaMesas.some(
+      (pm) => pm.plantillaId === plantillaId && pm.mesaId === mesaId,
+    );
+    if (!exists) throw new ApiError("Esa mesa no está en el plano", 404);
+    // Quita la mesa del plano; la identidad (`mesa`) sobrevive, igual que en el backend.
+    plantillaMesas = plantillaMesas.filter(
+      (pm) => !(pm.plantillaId === plantillaId && pm.mesaId === mesaId),
+    );
+    return delay(undefined);
+  },
+
+  async updateMesa(mesaId: string, input: UpdateMesaInput) {
+    const current = mesaById(mesaId);
+    if (input.etiqueta !== undefined) {
+      const etiqueta = input.etiqueta.trim();
+      if (!etiqueta) throw new ApiError("La etiqueta de la mesa es obligatoria", 422);
+      const taken = mesas.some(
+        (m) => m.id !== mesaId && m.etiqueta.toLowerCase() === etiqueta.toLowerCase(),
+      );
+      if (taken) throw new ApiError("Ya existe una mesa con ese número", 409);
+    }
+    const next: Mesa = {
+      ...current,
+      ...(input.etiqueta !== undefined ? { etiqueta: input.etiqueta.trim() } : {}),
+      ...(input.capacidadDefault !== undefined
+        ? { capacidadDefault: input.capacidadDefault }
+        : {}),
+      ...(input.formaDefault !== undefined ? { formaDefault: input.formaDefault } : {}),
+      ...(input.activa !== undefined ? { activa: input.activa } : {}),
+    };
+    mesas = mesas.map((m) => (m.id === mesaId ? next : m));
+    return delay(next);
+  },
+
+  async getPlano(salonId: string, plantillaId?: string) {
+    const relevantes = plantillas.filter(
+      (p) => p.salonId === salonId && (!plantillaId || p.id === plantillaId),
+    );
+    const rows: MesaEstado[] = [];
+    for (const plantilla of relevantes) {
+      for (const pm of plantillaMesas.filter((x) => x.plantillaId === plantilla.id)) {
+        const mesa = mesas.find((m) => m.id === pm.mesaId);
+        if (!mesa) continue;
+        const estado = estadoDeMesa(mesa.id, pm.bloqueada);
+        const comanda = comandas.find(
+          (c) => c.mesaId === mesa.id && (c.estado === "abierta" || c.estado === "por_cobrar"),
+        );
+        const reserva = reservaciones.find(
+          (r) =>
+            r.mesaId === mesa.id &&
+            (r.estado === "pendiente" || r.estado === "confirmada" || r.estado === "sentada"),
+        );
+        rows.push({
+          salonId,
+          plantillaId: plantilla.id,
+          plantillaActiva: plantilla.activa,
+          mesaId: mesa.id,
+          etiqueta: mesa.etiqueta,
+          estado,
+          bloqueada: pm.bloqueada,
+          comandaId: comanda?.id ?? null,
+          reservacionId: reserva?.id ?? null,
+          reservacionCliente: clienteDeMesa(mesa.id),
+        });
+      }
+    }
+    return delay(rows);
+  },
+
   // --- Menú -----------------------------------------------------------
   async listCategorias() {
     return delay(categorias.filter((c) => c.activa));

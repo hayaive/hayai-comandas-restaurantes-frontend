@@ -1,14 +1,18 @@
 import type { FloorPlanTemplate } from "./types";
 
 /**
- * In-memory seed data for the floor plan editor.
+ * Layout de demostración del editor de plano.
  *
- * All names below (templates, table labels, occupants) are
- * synthetic demonstration data — there is no backend yet, and
- * this file is exactly what a real API integration should
- * replace. Canvas coordinates are in a fixed 1200x760 unit
- * space (see `CANVAS_WIDTH` / `CANVAS_HEIGHT` in the canvas
- * component), independent of the pixel size it renders at.
+ * Ya NO lo consume `useFloorPlanStore` (que ahora carga salones, plantillas y
+ * mesas reales del backend): es la semilla de `src/api/mockClient.ts`, que lo
+ * convierte a la forma real del backend —`Mesa` (identidad) + `PlantillaMesa`
+ * (sitio en el plano)— para que el modo mock cuente la misma historia sin
+ * pedir servidor. El campo `status` de aquí sólo se usa para elegir qué mesas
+ * arrancan ocupadas/reservadas en la demo: en el mock, igual que en
+ * producción, el estado se DERIVA de las comandas y reservas vivas.
+ *
+ * Coordenadas en el espacio lógico 1200x700 del canvas (`CANVAS_WIDTH` /
+ * `CANVAS_HEIGHT`), medidas al CENTRO de cada mesa.
  */
 
 export const salonPrincipal: FloorPlanTemplate = {

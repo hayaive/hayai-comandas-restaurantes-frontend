@@ -7,14 +7,11 @@
  * Prisma `Decimal` this way — never do currency arithmetic on these as
  * `number` without parsing first).
  *
- * Simplification disclosed: the backend models `Mesa` (stable identity),
- * `Salon` and `Plantilla`/`PlantillaMesa` (layout) as separate entities. The
- * floor plan editor already shipped in this app (`useFloorPlanStore`) flattens
- * that into a single `RestaurantTable` per active template, and this frontend
- * has no multi-salon UI yet. Every place below that needs a "table" uses that
- * store's `RestaurantTable.id` as the `mesaId` — swapping to the real
- * multi-salon model later touches this file and the mock/http clients, not
- * the screens.
+ * The backend models `Mesa` (stable identity), `Salon` and
+ * `Plantilla`/`PlantillaMesa` (layout) as separate entities. The floor plan
+ * editor flattens that into a single `RestaurantTable` per template for
+ * rendering, but `useFloorPlanStore` now loads and writes the real entities:
+ * every `mesaId` this app sends to the backend is a real `mesa.id` UUID.
  */
 
 export type EstadoReservacion =
@@ -32,6 +29,139 @@ export type EstadoComanda = "abierta" | "por_cobrar" | "cobrada" | "anulada";
 export type EstadoComandaItem = "pendiente" | "en_preparacion" | "servido" | "cancelado";
 
 export type DestinoPreparacion = "cocina" | "barra" | "ninguno";
+
+export type FormaMesa = "redonda" | "cuadrada" | "rectangular" | "barra";
+
+/**
+ * Derived server-side by the `v_mesa_estado` view — never a column, and never
+ * something the client decides on its own.
+ */
+export type EstadoMesa = "libre" | "ocupada" | "reservada" | "bloqueada";
+
+export interface Salon {
+  id: string;
+  nombre: string;
+  orden: number;
+  activo: boolean;
+}
+
+/** A table's stable identity. Survives any redesign of the floor plan. */
+export interface Mesa {
+  id: string;
+  salonId: string;
+  /** "5", "T-2". Unique across the whole restaurant among the non-deleted. */
+  etiqueta: string;
+  capacidadDefault: number;
+  formaDefault: FormaMesa;
+  activa: boolean;
+}
+
+/** A distribution of a salon. Exactly one is `activa` per salon. */
+export interface Plantilla {
+  id: string;
+  salonId: string;
+  nombre: string;
+  descripcion?: string | null;
+  /** Logical canvas of the editor. Decimal-as-string per contract. */
+  anchoPlano: string;
+  altoPlano: string;
+  activa: boolean;
+}
+
+/**
+ * A table's placement inside one distribution. `posX`/`posY` are the TOP-LEFT
+ * corner in plan units — the canvas works in centers, so the store converts.
+ */
+export interface PlantillaMesa {
+  plantillaId: string;
+  mesaId: string;
+  posX: string;
+  posY: string;
+  ancho: string;
+  alto: string;
+  rotacion: number;
+  forma: FormaMesa;
+  /** Seats in THIS distribution — not the mesa's `capacidadDefault`. */
+  capacidad: number;
+  bloqueada: boolean;
+  /**
+   * Identity, embedded by the backend on `GET /plantillas/:id` and on
+   * `POST /plantillas/:id/mesas`. Absent on `PATCH …/mesas/:mesaId`.
+   */
+  mesa?: Mesa;
+}
+
+export interface PlantillaDetalle extends Plantilla {
+  mesas: PlantillaMesa[];
+}
+
+/** One row of `v_mesa_estado`, normalized to camelCase by the client. */
+export interface MesaEstado {
+  salonId: string;
+  plantillaId: string;
+  plantillaActiva: boolean;
+  mesaId: string;
+  etiqueta: string;
+  estado: EstadoMesa;
+  bloqueada: boolean;
+  comandaId: string | null;
+  reservacionId: string | null;
+  reservacionCliente: string | null;
+}
+
+export interface CreatePlantillaInput {
+  nombre: string;
+  anchoPlano?: number;
+  altoPlano?: number;
+}
+
+export interface UpdatePlantillaInput {
+  nombre?: string;
+  descripcion?: string;
+  anchoPlano?: number;
+  altoPlano?: number;
+}
+
+export interface CreatePlantillaMesaInput {
+  /** Omit to have the backend create the `mesa` too (adding a brand new table). */
+  mesaId?: string;
+  etiqueta?: string;
+  posX: number;
+  posY: number;
+  ancho?: number;
+  alto?: number;
+  rotacion?: number;
+  forma?: FormaMesa;
+  capacidad?: number;
+  bloqueada?: boolean;
+}
+
+export interface UpdatePlantillaMesaInput {
+  posX?: number;
+  posY?: number;
+  ancho?: number;
+  alto?: number;
+  rotacion?: number;
+  forma?: FormaMesa;
+  capacidad?: number;
+  bloqueada?: boolean;
+}
+
+export interface UpdateMesaInput {
+  etiqueta?: string;
+  capacidadDefault?: number;
+  formaDefault?: FormaMesa;
+  activa?: boolean;
+}
+
+export interface ActivarPlantillaResult {
+  plantilla: Plantilla;
+  /**
+   * Reservations whose table is not in the newly activated distribution.
+   * Informational: activating is not blocked, the host decides what to do.
+   */
+  reservacionesHuerfanas: Reservacion[];
+}
 
 export interface Categoria {
   id: string;
@@ -135,6 +265,12 @@ export type UpdateProductoInput = Partial<
 >;
 
 export interface CreateReservacionInput {
+  /**
+   * Obligatorio para el backend (`salonId must be a UUID` si falta). Lo
+   * rellena `useReservationStore` desde el salón cargado en el plano, así que
+   * las pantallas no tienen que conocerlo.
+   */
+  salonId?: string;
   mesaId?: string;
   mesaEtiqueta?: string;
   clienteNombre: string;
@@ -171,6 +307,28 @@ export class ApiError extends Error {
 }
 
 export interface ApiClient {
+  // --- Plano: salones, plantillas y mesas ---
+  listSalones(): Promise<Salon[]>;
+  listPlantillas(salonId: string): Promise<Plantilla[]>;
+  getPlantilla(plantillaId: string): Promise<PlantillaDetalle>;
+  createPlantilla(salonId: string, input: CreatePlantillaInput): Promise<Plantilla>;
+  updatePlantilla(plantillaId: string, input: UpdatePlantillaInput): Promise<Plantilla>;
+  deletePlantilla(plantillaId: string): Promise<void>;
+  activarPlantilla(plantillaId: string): Promise<ActivarPlantillaResult>;
+  createPlantillaMesa(
+    plantillaId: string,
+    input: CreatePlantillaMesaInput,
+  ): Promise<PlantillaMesa>;
+  updatePlantillaMesa(
+    plantillaId: string,
+    mesaId: string,
+    input: UpdatePlantillaMesaInput,
+  ): Promise<PlantillaMesa>;
+  deletePlantillaMesa(plantillaId: string, mesaId: string): Promise<void>;
+  updateMesa(mesaId: string, input: UpdateMesaInput): Promise<Mesa>;
+  /** Operational state of every table, computed server-side by `v_mesa_estado`. */
+  getPlano(salonId: string, plantillaId?: string): Promise<MesaEstado[]>;
+
   // --- Menú ---
   listCategorias(): Promise<Categoria[]>;
   createCategoria(nombre: string): Promise<Categoria>;
