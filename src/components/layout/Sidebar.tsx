@@ -1,31 +1,11 @@
 import { NavLink, useNavigate } from "react-router-dom";
-import {
-  Armchair,
-  CalendarCheck,
-  Camera,
-  CurrencyDollar,
-  ForkKnife,
-  Package,
-  QrCode,
-  Receipt,
-  SignOut,
-} from "@phosphor-icons/react";
+import { SignOut } from "@phosphor-icons/react";
 import { cn } from "@/lib/cn";
 import { BrandMark } from "./BrandMark";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { IconButton } from "@/components/ui/IconButton";
 import { useAuthStore } from "@/lib/useAuthStore";
-
-const navItems = [
-  { to: "/mesas", label: "Mesas", icon: Armchair },
-  { to: "/mesero", label: "Mesero", icon: ForkKnife },
-  { to: "/comandas", label: "Comandas", icon: Receipt },
-  { to: "/reservaciones", label: "Reservaciones", icon: CalendarCheck },
-  { to: "/checkin", label: "Check-in", icon: QrCode },
-  { to: "/escanear", label: "Escanear", icon: Camera },
-  { to: "/productos", label: "Productos", icon: Package },
-  { to: "/ventas", label: "Ventas", icon: CurrencyDollar },
-];
+import { navItems } from "./navItems";
 
 export function Sidebar() {
   const navigate = useNavigate();
@@ -37,7 +17,11 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="flex w-[76px] flex-col items-center gap-1 border-r border-nav-border bg-nav-bg py-4 lg:w-[220px] lg:items-stretch lg:px-3">
+    // Oculto por debajo de `md`: en ese rango la navegación vive en
+    // `MobileBottomNav` (barra inferior). De `md` a `lg` sigue siendo la
+    // columna angosta de solo íconos; a partir de `lg`, la columna con
+    // etiquetas — sin cambios respecto al comportamiento previo.
+    <aside className="hidden w-[76px] flex-col items-center gap-1 border-r border-nav-border bg-nav-bg py-4 md:flex lg:w-[220px] lg:items-stretch lg:px-3">
       <div className="mb-4 flex items-center gap-2 px-2 lg:px-1">
         <BrandMark onDark />
         <span className="hidden text-[14px] font-semibold tracking-tight text-nav-fg lg:inline">
