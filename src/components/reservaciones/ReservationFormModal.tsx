@@ -1,11 +1,14 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
+import { ArrowLeft, Users } from "@phosphor-icons/react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { Select } from "@/components/ui/Select";
+import { Badge } from "@/components/ui/Badge";
 import { useActiveTemplate } from "@/lib/useFloorPlanStore";
 import { useReservationStore } from "@/lib/useReservationStore";
 import { ApiError } from "@/api";
+import type { RestaurantTable } from "@/lib/types";
+import { TablePickerStep } from "./TablePickerStep";
 
 export interface ReservationFormModalProps {
   open: boolean;
@@ -19,32 +22,58 @@ function defaultDateTimeLocal(hoursFromNow: number): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+type Step = "mesa" | "datos";
+
+/**
+ * Alta de reserva en dos pasos: primero la mesa sobre la vista aérea del
+ * salón, después los datos del cliente.
+ *
+ * Elegir la mesa primero es lo que hace el anfitrión en la realidad, y así el
+ * formulario ya sabe si la reserva nace con mesa asignada o si queda para que
+ * el cliente la elija desde su enlace público.
+ */
 export function ReservationFormModal({ open, onClose }: ReservationFormModalProps) {
   const activeTemplate = useActiveTemplate();
   const create = useReservationStore((s) => s.create);
 
+  const [step, setStep] = useState<Step>("mesa");
+  const [mesa, setMesa] = useState<RestaurantTable | null>(null);
   const [clienteNombre, setClienteNombre] = useState("");
   const [clienteTelefono, setClienteTelefono] = useState("");
   const [personas, setPersonas] = useState(2);
   const [iniciaEn, setIniciaEn] = useState(() => defaultDateTimeLocal(1));
-  const [mesaId, setMesaId] = useState("");
   const [notas, setNotas] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const availableTables = useMemo(
-    () => activeTemplate.tables.filter((t) => t.status === "free"),
-    [activeTemplate.tables],
-  );
-
   function reset() {
+    setStep("mesa");
+    setMesa(null);
     setClienteNombre("");
     setClienteTelefono("");
     setPersonas(2);
     setIniciaEn(defaultDateTimeLocal(1));
-    setMesaId("");
     setNotas("");
     setError(null);
+  }
+
+  function close() {
+    reset();
+    onClose();
+  }
+
+  function pickTable(table: RestaurantTable) {
+    setMesa(table);
+    // Las sillas de la mesa son el mejor primer valor para el número de personas.
+    setPersonas(table.seats);
+    setError(null);
+    setStep("datos");
+  }
+
+  function skipTable() {
+    setMesa(null);
+    setError(null);
+    setStep("datos");
   }
 
   async function handleSubmit() {
@@ -59,7 +88,6 @@ export function ReservationFormModal({ open, onClose }: ReservationFormModalProp
     setSubmitting(true);
     setError(null);
     try {
-      const mesa = availableTables.find((t) => t.id === mesaId);
       await create({
         clienteNombre: clienteNombre.trim(),
         clienteTelefono: clienteTelefono.trim() || undefined,
@@ -69,8 +97,7 @@ export function ReservationFormModal({ open, onClose }: ReservationFormModalProp
         mesaEtiqueta: mesa?.label,
         notas: notas.trim() || undefined,
       });
-      reset();
-      onClose();
+      close();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No se pudo crear la reserva");
     } finally {
@@ -78,77 +105,101 @@ export function ReservationFormModal({ open, onClose }: ReservationFormModalProp
     }
   }
 
+  const enMesa = step === "mesa";
+
   return (
     <Modal
       open={open}
-      onClose={() => {
-        reset();
-        onClose();
-      }}
+      onClose={close}
+      size={enMesa ? "lg" : "md"}
       title="Nueva reserva"
-      description="La mesa se marcará como reservada de inmediato en el plano."
+      description={
+        enMesa
+          ? "Paso 1 de 2 · Elige la mesa en el plano del salón"
+          : "Paso 2 de 2 · Datos de la reserva"
+      }
       footer={
-        <>
-          <Button variant="secondary" size="sm" onClick={onClose} disabled={submitting}>
-            Cancelar
-          </Button>
-          <Button variant="primary" size="sm" onClick={() => void handleSubmit()} disabled={submitting}>
-            {submitting ? "Creando…" : "Crear reserva"}
-          </Button>
-        </>
+        enMesa ? (
+          <>
+            <Button variant="secondary" size="sm" onClick={close}>
+              Cancelar
+            </Button>
+            <Button variant="primary" size="sm" onClick={skipTable}>
+              Dejar que el cliente elija la mesa
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button variant="ghost" size="sm" onClick={() => setStep("mesa")} disabled={submitting}>
+              <ArrowLeft size={14} /> Cambiar mesa
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => void handleSubmit()}
+              disabled={submitting}
+            >
+              {submitting ? "Creando…" : "Crear reserva"}
+            </Button>
+          </>
+        )
       }
     >
-      <div className="flex flex-col gap-3">
-        <Input
-          label="Nombre del cliente"
-          value={clienteNombre}
-          onChange={(e) => setClienteNombre(e.target.value)}
-          placeholder="Ej. Familia Restrepo"
-          maxLength={80}
-          autoFocus
-        />
-        <Input
-          label="Teléfono (opcional)"
-          value={clienteTelefono}
-          onChange={(e) => setClienteTelefono(e.target.value)}
-          placeholder="0414-1234567"
-        />
-        <div className="grid grid-cols-2 gap-3">
+      {enMesa ? (
+        <TablePickerStep template={activeTemplate} onPick={pickTable} />
+      ) : (
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-border bg-surface px-3 py-2.5">
+            {mesa ? (
+              <>
+                <span className="flex items-center gap-2 text-[13px] text-fg-muted">
+                  <Users size={15} /> Mesa asignada
+                </span>
+                <Badge tone="free">
+                  {mesa.label} · {mesa.seats} sillas
+                </Badge>
+              </>
+            ) : (
+              <>
+                <span className="text-[13px] text-fg-muted">Sin mesa asignada</span>
+                <Badge tone="reserved">La elige el cliente</Badge>
+              </>
+            )}
+          </div>
+
           <Input
-            label="Personas"
-            type="number"
-            min={1}
-            max={200}
-            value={personas}
-            onChange={(e) => setPersonas(Number(e.target.value))}
+            label="Nombre"
+            value={clienteNombre}
+            onChange={(e) => setClienteNombre(e.target.value)}
+            maxLength={80}
+            autoFocus
           />
           <Input
-            label="Fecha y hora"
-            type="datetime-local"
-            value={iniciaEn}
-            onChange={(e) => setIniciaEn(e.target.value)}
+            label="Teléfono"
+            value={clienteTelefono}
+            onChange={(e) => setClienteTelefono(e.target.value)}
           />
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Personas"
+              type="number"
+              min={1}
+              max={200}
+              value={personas}
+              onChange={(e) => setPersonas(Number(e.target.value))}
+            />
+            <Input
+              label="Fecha y hora de llegada"
+              type="datetime-local"
+              value={iniciaEn}
+              onChange={(e) => setIniciaEn(e.target.value)}
+            />
+          </div>
+          <Input label="Nota" value={notas} onChange={(e) => setNotas(e.target.value)} />
+
+          {error && <p className="text-[12px] text-danger">{error}</p>}
         </div>
-        <Select
-          label={`Mesa (${activeTemplate.name})`}
-          value={mesaId}
-          onChange={(e) => setMesaId(e.target.value)}
-        >
-          <option value="">Sin asignar — el cliente elige por enlace</option>
-          {availableTables.map((table) => (
-            <option key={table.id} value={table.id}>
-              {table.label} · {table.seats} sillas
-            </option>
-          ))}
-        </Select>
-        <Input
-          label="Notas (opcional)"
-          value={notas}
-          onChange={(e) => setNotas(e.target.value)}
-          placeholder="Ej. Pidió mesa en la terraza"
-        />
-        {error && <p className="text-[12px] text-danger">{error}</p>}
-      </div>
+      )}
     </Modal>
   );
 }
