@@ -33,6 +33,16 @@ export function Modal({
   footer,
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  // `onClose` llega como una función inline distinta en cada render de la
+  // pantalla que usa el modal (ej. `close` en ReservationFormModal, que
+  // envuelve `reset()+onClose()` sin useCallback). Si el efecto de abajo
+  // dependiera de `onClose` directamente, cada tecla escrita en un input del
+  // modal re-dispararía el efecto y volvería a enfocar el primer elemento
+  // enfocable del panel — que en el DOM es el botón "X" del header, antes
+  // que cualquier input del contenido — cortando la escritura. Guardarlo en
+  // un ref rompe esa dependencia sin perder el `onClose` vigente.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
@@ -46,7 +56,7 @@ export function Modal({
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key === "Tab" && panel) {
@@ -75,7 +85,7 @@ export function Modal({
       document.body.style.overflow = originalOverflow;
       previouslyFocused?.focus();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
