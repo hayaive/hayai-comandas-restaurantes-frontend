@@ -34,6 +34,8 @@ const TABLE_ORDER: Record<RestaurantTable["status"], number> = { free: 0, occupi
 
 export function MeseroPage() {
   const activeTemplate = useActiveTemplate();
+  const floorStatus = useFloorPlanStore((s) => s.status);
+  const floorError = useFloorPlanStore((s) => s.error);
   const productos = useActiveProducts();
   const categorias = useProductStore((s) => s.categorias);
   const productStatus = useProductStore((s) => s.status);
@@ -186,7 +188,13 @@ export function MeseroPage() {
               </CardHeader>
               <CardBody>
                 {sortedTables.length === 0 ? (
-                  <p className="py-6 text-center text-[13px] text-fg-muted">No hay mesas en esta plantilla.</p>
+                  <p className="py-6 text-center text-[13px] text-fg-muted">
+                    {floorStatus === "loading" || floorStatus === "idle"
+                      ? "Cargando el plano…"
+                      : floorStatus === "error"
+                        ? (floorError ?? "No se pudo cargar el plano del salón.")
+                        : "No hay mesas en esta plantilla."}
+                  </p>
                 ) : (
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
                     {sortedTables.map((table) => {

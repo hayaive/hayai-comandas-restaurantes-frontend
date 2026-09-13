@@ -26,6 +26,21 @@ function messageOf(error: unknown): string {
   return "Ocurrió un error inesperado";
 }
 
+/**
+ * El backend real manda `mesaId` pero no `mesaEtiqueta` (mismo caso que
+ * `categoriaNombre` en `/productos`). Como el plano ya tiene todas las mesas
+ * con su etiqueta real, el join se hace aquí en vez de dejar `undefined`
+ * llegando a las tarjetas de Reservaciones y al enlace público.
+ */
+function conMesaEtiqueta(reservacion: Reservacion): Reservacion {
+  if (!reservacion.mesaId || reservacion.mesaEtiqueta) return reservacion;
+  const table = useFloorPlanStore
+    .getState()
+    .templates.flatMap((tpl) => tpl.tables)
+    .find((t) => t.id === reservacion.mesaId);
+  return table ? { ...reservacion, mesaEtiqueta: table.label } : reservacion;
+}
+
 export const useReservationStore = create<ReservationState>((set, get) => ({
   reservaciones: [],
   status: "idle",
@@ -34,7 +49,7 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
   load: async () => {
     set({ status: "loading", error: null });
     try {
-      const reservaciones = await api.listReservaciones();
+      const reservaciones = (await api.listReservaciones()).map(conMesaEtiqueta);
       set({ reservaciones, status: "ready" });
     } catch (error) {
       set({ status: "error", error: messageOf(error) });
@@ -42,22 +57,27 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
   },
 
   create: async (input) => {
-    const reservacion = await api.createReservacion(input);
+    // `salonId` es obligatorio en el backend y ninguna pantalla lo conoce: lo
+    // aporta el plano, que ya sabe en qué salón está trabajando el restaurante.
+    const salonId = input.salonId ?? useFloorPlanStore.getState().salonId ?? undefined;
+    const reservacion = conMesaEtiqueta(await api.createReservacion({ ...input, salonId }));
     set({ reservaciones: [...get().reservaciones, reservacion] });
     if (reservacion.mesaId) {
+      // Optimista: el estado real lo recalcula el backend en `v_mesa_estado`.
       useFloorPlanStore.getState().setStatus(reservacion.mesaId, "reserved", reservacion.clienteNombre);
+      void useFloorPlanStore.getState().refreshPlano();
     }
     return reservacion;
   },
 
   confirm: async (id) => {
-    const updated = await api.confirmarReservacion(id);
+    const updated = conMesaEtiqueta(await api.confirmarReservacion(id));
     set({ reservaciones: get().reservaciones.map((r) => (r.id === id ? updated : r)) });
   },
 
   cancel: async (id, motivo) => {
     const target = get().reservaciones.find((r) => r.id === id);
-    const updated = await api.cancelarReservacion(id, motivo);
+    const updated = conMesaEtiqueta(await api.cancelarReservacion(id, motivo));
     set({ reservaciones: get().reservaciones.map((r) => (r.id === id ? updated : r)) });
     if (target?.mesaId) {
       const table = useFloorPlanStore
@@ -67,12 +87,14 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
       if (table?.status === "reserved") {
         useFloorPlanStore.getState().setStatus(target.mesaId, "free");
       }
+      void useFloorPlanStore.getState().refreshPlano();
     }
   },
 
   checkInByCode: async (codigo) => {
-    const reservacion = await api.buscarReservacionPorCodigo(codigo);
-    if (!reservacion) throw new ApiError("No se encontró una reserva con ese código", 404);
+    const encontrada = await api.buscarReservacionPorCodigo(codigo);
+    if (!encontrada) throw new ApiError("No se encontró una reserva con ese código", 404);
+    const reservacion = conMesaEtiqueta(encontrada);
     if (reservacion.estado === "sentada") {
       throw new ApiError("Esta reserva ya fue registrada como sentada", 409);
     }
@@ -83,17 +105,22 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
     if (!mesaId) {
       throw new ApiError("Esta reserva todavía no tiene mesa asignada; pide al cliente que elija una desde su enlace", 422);
     }
-    const { reservacion: sentada, comanda } = await api.sentarReservacion(reservacion.id);
+    const { reservacion: sentadaCruda, comanda } = await api.sentarReservacion(reservacion.id);
+    const sentada = conMesaEtiqueta(sentadaCruda);
     set({ reservaciones: get().reservaciones.map((r) => (r.id === sentada.id ? sentada : r)) });
     useFloorPlanStore.getState().setStatus(mesaId, "occupied", sentada.clienteNombre);
     useComandaStore.getState().registerComanda(comanda);
+    void useFloorPlanStore.getState().refreshPlano();
     return sentada;
   },
 
   assignTable: async (codigoPublico, mesaId, mesaEtiqueta) => {
-    const updated = await api.asignarMesaReservacion(codigoPublico, mesaId, mesaEtiqueta);
+    const updated = conMesaEtiqueta(
+      await api.asignarMesaReservacion(codigoPublico, mesaId, mesaEtiqueta),
+    );
     set({ reservaciones: get().reservaciones.map((r) => (r.id === updated.id ? updated : r)) });
     useFloorPlanStore.getState().setStatus(mesaId, "reserved", updated.clienteNombre);
+    void useFloorPlanStore.getState().refreshPlano();
     return updated;
   },
 }));

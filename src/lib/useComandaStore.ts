@@ -4,15 +4,15 @@ import type { Comanda, EstadoComandaItem } from "@/api";
 import { useFloorPlanStore } from "./useFloorPlanStore";
 
 /**
- * Comandas activas, one per occupied table.
+ * Comandas activas, una por mesa ocupada.
  *
- * This store does not own table occupancy — `useFloorPlanStore` (the floor
- * plan editor's store, untouched here) is still the single source of truth
- * for which tables are free/reserved/occupied. `useSyncComandasWithFloorPlan`
- * below is the seam: it watches the active template's occupied tables and
- * opens/closes a comanda to match, so the comandas panel updates live when a
- * host changes a table's status from the floor plan editor, and `cobrarYLiberar`
- * frees the table back when a bill is paid.
+ * La ocupación de una mesa NO se decide aquí ni en el editor de plano: la
+ * calcula el backend (vista `v_mesa_estado`, expuesta en `GET /plano`), y una
+ * mesa está ocupada exactamente cuando tiene una comanda viva. Por eso cada
+ * acción de este store que cambia esa condición —abrir, anular o cobrar—
+ * hace dos cosas: actualiza el plano de forma optimista para que la UI
+ * responda al instante, y después pide `refreshPlano()` para reconciliar con
+ * lo que el servidor realmente tiene.
  */
 
 interface ComandaState {
@@ -62,6 +62,8 @@ export const useComandaStore = create<ComandaState>((set, get) => ({
     try {
       const comanda = await api.createComanda({ mesaId, mesaEtiqueta, clienteNombre });
       set({ comandas: [...get().comandas, comanda] });
+      // La mesa acaba de pasar a "ocupada" server-side: reconcilia el plano.
+      void useFloorPlanStore.getState().refreshPlano();
     } catch (error) {
       set({ error: messageOf(error) });
     } finally {
@@ -80,6 +82,7 @@ export const useComandaStore = create<ComandaState>((set, get) => ({
     set({ comandas: get().comandas.filter((c) => c.id !== comanda.id) });
     try {
       await api.anularComanda(comanda.id, "Mesa liberada manualmente desde el editor de plano");
+      void useFloorPlanStore.getState().refreshPlano();
     } catch (error) {
       set({ error: messageOf(error) });
     }
@@ -135,7 +138,9 @@ export const useComandaStore = create<ComandaState>((set, get) => ({
     if (!comanda) return;
     await api.cobrarComanda(comandaId);
     set({ comandas: get().comandas.filter((c) => c.id !== comandaId) });
+    // Optimista primero (la UI no debe esperar al round-trip), reconciliación después.
     useFloorPlanStore.getState().setStatus(comanda.mesaId, "free");
+    void useFloorPlanStore.getState().refreshPlano();
   },
 }));
 
