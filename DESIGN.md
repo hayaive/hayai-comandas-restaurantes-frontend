@@ -28,9 +28,11 @@ table state and never borrow the brand hue so the two can never be confused.
   spot with optional grid-snap, and switches or creates plan templates
   without leaving the canvas.
 - **FIRST VIEWPORT.** Top bar (page title, template pill-tabs, live status
-  counts) + left tool rail (add circle/add square, grid-snap switch, status
-  legend) + full-bleed SVG canvas + right docked inspector (empty-state
-  until a table is selected).
+  counts) + full-bleed SVG canvas with a docked bottom toolbar (add
+  circle/add square, grid-snap switch) + right docked inspector (empty-state
+  until a table is selected). The status legend that used to live in a left
+  tool rail was dropped: it duplicated the top bar's live counts, and no
+  screen should show the same fact twice.
 - **FORM.** Chosen directly as sole art director for this delegated build.
   This session had no image-generation tool and no live interactive
   decision surface, so the skill's dice-roll / decision-page apparatus
@@ -95,6 +97,12 @@ token utility classes), all keyboard-reachable, all have hover/focus/active/
 disabled states where applicable. These are the pieces D.A.N.I should reach
 for first on Comandas/Ventas/Reservaciones before inventing new ones.
 
+`Switch`'s knob is a normal flex child inside a padded track (`p-0.5`), not
+an absolutely-positioned span with hand-computed `translateX` pixels — the
+knob's max travel is exactly `track content-box width − knob width`
+(30px − 14px = 16px), so containment holds by construction in both states
+and both themes, regardless of border width.
+
 ## Floor plan editor (`src/components/floor-plan/`)
 
 - `geometry.ts` — canvas dimensions (1200x700 units) and seat-position math
@@ -113,8 +121,13 @@ for first on Comandas/Ventas/Reservaciones before inventing new ones.
   the shape, status tint + selection ring kept visually distinct.
 - `FloorPlanCanvas.tsx` — SVG canvas, dot-grid background, screen-to-canvas
   coordinate transform via `getScreenCTM()`.
-- `Toolbar.tsx`, `TableInspectorPanel.tsx`, `TemplateSwitcher.tsx`,
-  `StatusLegend.tsx` — the surrounding chrome.
+- `BottomToolbar.tsx` — docked bar under the canvas (add circle/add square,
+  grid-snap switch), grouped horizontally with a vertical divider; wraps to
+  two rows on narrow/tablet widths instead of crowding.
+- `TableInspectorPanel.tsx`, `TemplateSwitcher.tsx` — the remaining
+  surrounding chrome. The former left tool rail (`Toolbar.tsx`) and its
+  `StatusLegend.tsx` were removed in favor of the bottom toolbar and the top
+  bar's existing live counts.
 
 ## State (`src/lib/useFloorPlanStore.ts`)
 

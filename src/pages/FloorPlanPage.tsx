@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useActiveTemplate, useFloorPlanStore, useSelectedTable } from "@/lib/useFloorPlanStore";
-import { Toolbar } from "@/components/floor-plan/Toolbar";
+import { BottomToolbar } from "@/components/floor-plan/BottomToolbar";
 import { FloorPlanCanvas } from "@/components/floor-plan/FloorPlanCanvas";
 import { TableInspectorPanel } from "@/components/floor-plan/TableInspectorPanel";
 import { TemplateSwitcher } from "@/components/floor-plan/TemplateSwitcher";
@@ -60,16 +60,18 @@ export function FloorPlanPage() {
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        <Toolbar snapToGrid={snapToGrid} onToggleSnap={toggleSnapToGrid} onAddTable={addTable} />
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <FloorPlanCanvas
+            tables={activeTemplate.tables}
+            selectedTableId={selectedTableId}
+            snapToGrid={snapToGrid}
+            gridSize={gridSize}
+            onSelectTable={selectTable}
+            onMoveTable={moveTable}
+          />
 
-        <FloorPlanCanvas
-          tables={activeTemplate.tables}
-          selectedTableId={selectedTableId}
-          snapToGrid={snapToGrid}
-          gridSize={gridSize}
-          onSelectTable={selectTable}
-          onMoveTable={moveTable}
-        />
+          <BottomToolbar snapToGrid={snapToGrid} onToggleSnap={toggleSnapToGrid} onAddTable={addTable} />
+        </div>
 
         <TableInspectorPanel
           table={selectedTable}
