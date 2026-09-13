@@ -1,6 +1,7 @@
 import { Outlet } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { TasaBar } from "./TasaBar";
+import { MobileBottomNav } from "./MobileBottomNav";
 import { useFloorPlanBootstrap } from "@/lib/useFloorPlanStore";
 
 export function AppShell() {
@@ -17,11 +18,17 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
-      {/* Franja de tasas: visible desde cualquier pantalla de staff sin tapar
-          el contenido con scroll propio (no es `position: fixed`), y no
-          interfiere con el ajuste mobile del Sidebar porque vive fuera de su
-          fila. */}
+      {/* Franja de tasas y barra de navegación mobile: ambas viven en el
+          flujo normal del `flex-col` (ninguna es `position: fixed`), así que
+          apilan sin solaparse y el AppShell les reserva espacio automática-
+          mente — `main` sigue acotado por `h-dvh` + `overflow-hidden` arriba,
+          por lo que ninguna pantalla con scroll propio queda tapada. La tasa
+          va primero (información de consulta), la navegación al final
+          (acción, debe quedar más cerca del pulgar). En `md`+ la navegación
+          vuelve a vivir en `Sidebar` y `MobileBottomNav` no renderiza nada
+          visible (`md:hidden`). */}
       <TasaBar />
+      <MobileBottomNav />
     </div>
   );
 }
