@@ -186,7 +186,7 @@ interface FloorPlanState {
   rawByKey: Record<string, PlantillaMesa>;
 
   selectedTableId: string | null;
-  snapToGrid: boolean;
+  /** Sólo controla el espaciado del patrón de puntos del canvas — el ajuste a grilla se quitó. */
   gridSize: number;
 
   status: FloorPlanStatus;
@@ -219,7 +219,6 @@ interface FloorPlanState {
 
   // Selección y UX del canvas
   selectTable: (tableId: string | null) => void;
-  toggleSnapToGrid: () => void;
 }
 
 function mapEditingTables(
@@ -251,7 +250,6 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
   editingTemplateId: "",
   rawByKey: {},
   selectedTableId: null,
-  snapToGrid: true,
   gridSize: 20,
   status: "idle",
   error: null,
@@ -634,8 +632,6 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
     })),
 
   selectTable: (tableId) => set({ selectedTableId: tableId }),
-
-  toggleSnapToGrid: () => set((state) => ({ snapToGrid: !state.snapToGrid })),
 }));
 
 type SetState = (partial: Partial<FloorPlanState> | ((state: FloorPlanState) => Partial<FloorPlanState>)) => void;

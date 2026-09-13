@@ -65,7 +65,3 @@ export { SEAT_RADIUS };
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
-
-export function snap(value: number, gridSize: number): number {
-  return Math.round(value / gridSize) * gridSize;
-}

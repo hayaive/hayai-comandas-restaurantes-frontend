@@ -2,20 +2,29 @@ import { useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import type { RestaurantTable } from "@/lib/types";
 import { cn } from "@/lib/cn";
-import { CANVAS_HEIGHT, CANVAS_WIDTH, SEAT_RADIUS, clamp, getSeatPositions, snap, type Point } from "./geometry";
+import { CANVAS_HEIGHT, CANVAS_WIDTH, SEAT_RADIUS, clamp, getSeatPositions, type Point } from "./geometry";
 import { STATUS_META } from "./statusMeta";
 
 interface TableShapeProps {
   table: RestaurantTable;
   selected: boolean;
-  snapToGrid: boolean;
-  gridSize: number;
   toCanvasPoint: (clientX: number, clientY: number) => Point;
   onSelect: (tableId: string) => void;
   onMove: (tableId: string, x: number, y: number) => void;
 }
 
 const KEYBOARD_STEP = 8;
+
+/**
+ * Client-space pixels of pointer travel before a press becomes a drag rather
+ * than a tap. Below this, `onSelect` fires on release (opens the inspector /
+ * mobile sheet); at or above it, the gesture moves the table and never
+ * selects. Without this split, `onSelect` used to fire on `pointerdown`
+ * itself, so on mobile — where selecting opens a full-screen sheet — every
+ * attempt to drag a table instead popped the sheet open before the finger
+ * had moved at all.
+ */
+const DRAG_THRESHOLD = 6;
 
 function truncate(value: string, max: number): string {
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
@@ -24,13 +33,13 @@ function truncate(value: string, max: number): string {
 export function TableShape({
   table,
   selected,
-  snapToGrid,
-  gridSize,
   toCanvasPoint,
   onSelect,
   onMove,
 }: TableShapeProps) {
   const dragOffset = useRef<Point | null>(null);
+  /** Client-space coords where this pointer gesture started; null when none is in progress. */
+  const pointerStart = useRef<Point | null>(null);
   const [isDragging, setDragging] = useState(false);
   const [isFocused, setFocused] = useState(false);
   const status = STATUS_META[table.status];
@@ -45,31 +54,47 @@ export function TableShape({
 
   function handlePointerDown(event: ReactPointerEvent<SVGGElement>) {
     event.stopPropagation();
-    onSelect(table.id);
-    const point = toCanvasPoint(event.clientX, event.clientY);
-    dragOffset.current = { x: point.x - table.x, y: point.y - table.y };
-    setDragging(true);
+    // Selection is decided on release, not here — see DRAG_THRESHOLD above.
+    pointerStart.current = { x: event.clientX, y: event.clientY };
     event.currentTarget.setPointerCapture(event.pointerId);
   }
 
   function handlePointerMove(event: ReactPointerEvent<SVGGElement>) {
+    if (!pointerStart.current) return;
+
+    if (!isDragging) {
+      const dx = event.clientX - pointerStart.current.x;
+      const dy = event.clientY - pointerStart.current.y;
+      if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+      // Just crossed the threshold: anchor the offset to the CURRENT pointer
+      // position (not the original press point) so the table does not jump
+      // to catch up the moment the drag "activates".
+      setDragging(true);
+      const point = toCanvasPoint(event.clientX, event.clientY);
+      dragOffset.current = { x: point.x - table.x, y: point.y - table.y };
+    }
+
     if (!dragOffset.current) return;
     const point = toCanvasPoint(event.clientX, event.clientY);
-    let nextX = point.x - dragOffset.current.x;
-    let nextY = point.y - dragOffset.current.y;
-    if (snapToGrid) {
-      nextX = snap(nextX, gridSize);
-      nextY = snap(nextY, gridSize);
-    }
-    moveTo(nextX, nextY);
+    moveTo(point.x - dragOffset.current.x, point.y - dragOffset.current.y);
   }
 
   function endDrag(event: ReactPointerEvent<SVGGElement>) {
-    if (!dragOffset.current) return;
+    if (!pointerStart.current) return;
+    const wasDragging = isDragging;
+    const wasCancelled = event.type === "pointercancel";
+    pointerStart.current = null;
     dragOffset.current = null;
     setDragging(false);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    // A tap selects (opens the inspector / mobile sheet); a completed drag
+    // does not — repositioning a table is a complete action on its own, and
+    // selecting right after would reopen the sheet the user just dragged to
+    // get away from.
+    if (!wasDragging && !wasCancelled) {
+      onSelect(table.id);
     }
   }
 
@@ -153,15 +178,17 @@ export function TableShape({
         />
       )}
 
-      {/* Selection ring */}
-      {(selected || isFocused) && (
+      {/* Selection ring — also shown while dragging (local state), so moving
+          an unselected table still gives a clear "this is the one I'm
+          holding" cue even before `onSelect` fires on release. */}
+      {(selected || isFocused || isDragging) && (
         <>
           {table.shape === "circle" ? (
             <circle
               r={half + 7}
               className="fill-none stroke-active"
               strokeWidth={2.5}
-              strokeDasharray={isFocused && !selected ? "4 4" : undefined}
+              strokeDasharray={isFocused && !selected && !isDragging ? "4 4" : undefined}
             />
           ) : (
             <rect
@@ -172,7 +199,7 @@ export function TableShape({
               rx={16}
               className="fill-none stroke-active"
               strokeWidth={2.5}
-              strokeDasharray={isFocused && !selected ? "4 4" : undefined}
+              strokeDasharray={isFocused && !selected && !isDragging ? "4 4" : undefined}
             />
           )}
         </>

@@ -24,6 +24,13 @@ used both for primary actions and for everything that is currently selected.
 >    to a gray one — "el background gradiente … cambiarlo por gris y blanco".
 >    `--accent`/`--primary` now point at the same brown as the active/selected
 >    override, so the product has exactly one brand hue, not two.
+> 3. The floor plan's grid-snap toggle was removed ("quita lo de ajustar
+>    grilla") and a real mobile bug was fixed alongside it: dragging a table
+>    used to open the mobile inspector sheet the instant a finger pressed
+>    down, because `onSelect` fired on `pointerdown` rather than on release —
+>    see *Floor plan editor* below for the tap/drag threshold that replaced
+>    it. A visual pass to make tables and chairs read as real wood is tracked
+>    separately (design work, not yet reflected in the *Colour* section).
 >
 > Decisions that were reversed are recorded below with their reasoning rather
 > than deleted, so nobody re-litigates them by accident.
@@ -44,8 +51,9 @@ used both for primary actions and for everything that is currently selected.
   Geist for UI and Geist Mono for every numeral; a 12 / 16 / 24px radius scale;
   a slow ambient gray-into-white gradient field behind the shell.
 - **STORY.** A host scans the floor, taps a table to relabel or resize it in a
-  docked inspector (never a modal for routine edits), drags it with optional
-  grid-snap, and switches or creates plan templates without leaving the canvas.
+  docked inspector (never a modal for routine edits), drags it to a new spot
+  (free positioning — the grid-snap toggle was removed per follow-up request),
+  and switches or creates plan templates without leaving the canvas.
   A waiter picks a table, searches products, and sends an order in three
   numbered steps. A cashier reads the day's figures off three stat tiles.
 - **FIRST VIEWPORT.** Sticky translucent top bar (title + actions) directly
@@ -98,7 +106,6 @@ treatment ever looks like it has drifted:
 | Template pill | `floor-plan/TemplateSwitcher.tsx` |
 | Table shape toggle | `floor-plan/TableInspectorForm.tsx` |
 | Selected-table ring on the SVG canvas | `floor-plan/TableShape.tsx` |
-| Grid-snap mode | `floor-plan/BottomToolbar.tsx` |
 | Category filter chip | `pages/ProductosPage.tsx` |
 | Clave/PIN segmented control | `pages/LoginPage.tsx` |
 | Selected table (waiter) | `pages/MeseroPage.tsx` |
@@ -370,17 +377,33 @@ explicit surface pair, not as a revival of those aliases.
 
 ## Floor plan editor (`src/components/floor-plan/`)
 
-Unchanged in behaviour; restyled only. The notes that still matter:
+Restyled from the original clone, plus two follow-up fixes to table dragging.
+The notes that still matter:
 
 - `statusMeta.ts` is the single source of truth mapping a `TableStatus` to its
   label and its **two separate class sets**: `svgFillClass`/`svgStrokeClass`
   for canvas shapes and `dotClass`/`bgSoftClass`/`borderClass`/`textClass` for
   ordinary HTML. Do not cross the two — Tailwind's `fill-*`/`stroke-*` only
   affect SVG and silently do nothing on a `<div>`.
+- **Grid-snap was removed** (follow-up request, "quita lo de ajustar
+  grilla") — `BottomToolbar` no longer has the switch, `useFloorPlanStore` no
+  longer has `snapToGrid`/`toggleSnapToGrid`, and `geometry.ts`'s `snap()`
+  helper is gone. Tables now always move to exactly where they're dragged.
+  `gridSize` survives on the store — it only sizes the dot-grid background
+  pattern now, unrelated to movement.
 - `TableShape.tsx` — pointer-capture drag (no window listeners),
-  keyboard-reachable (arrows nudge, Enter/Space selects), optional grid-snap.
-  Its selection ring is now `stroke-active` (brown) and its selected seats
-  `fill-active-soft`.
+  keyboard-reachable (arrows nudge, Enter/Space selects). Its selection ring
+  is `stroke-active` (brown) and its selected seats `fill-active-soft`.
+  **Tap vs. drag is now decided on release, not on press**: `onSelect` used to
+  fire on `pointerdown`, so on mobile — where selecting opens a full-screen
+  `MobileTableSheet` — starting a drag opened the sheet before the finger had
+  moved, eating the gesture (follow-up bug report: "cuando quiero arrastrar
+  automáticamente se abre el modal"). A `DRAG_THRESHOLD` (6px of client-space
+  pointer travel) now gates it: below the threshold the gesture is a tap and
+  selects on release; at or above it, the table moves and `onSelect` never
+  fires for that gesture. The selection ring shows during a drag via local
+  `isDragging` state regardless of global selection, so there is still visual
+  feedback while repositioning an unselected table.
 - `FloorPlanCanvas.tsx` floors the plan at `minWidth: 600` inside an
   `overflow-auto` wrapper: below that the plan would shrink to an unusable size
   on a phone, so it pans instead of scaling. This is the one intentional

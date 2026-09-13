@@ -22,7 +22,6 @@ export function FloorPlanPage() {
   const templates = useFloorPlanStore((state) => state.templates);
   const editingTemplateId = useFloorPlanStore((state) => state.editingTemplateId);
   const activeTemplateId = useFloorPlanStore((state) => state.activeTemplateId);
-  const snapToGrid = useFloorPlanStore((state) => state.snapToGrid);
   const gridSize = useFloorPlanStore((state) => state.gridSize);
   const selectedTableId = useFloorPlanStore((state) => state.selectedTableId);
   const status = useFloorPlanStore((state) => state.status);
@@ -44,7 +43,6 @@ export function FloorPlanPage() {
   const setShape = useFloorPlanStore((state) => state.setShape);
   const setStatus = useFloorPlanStore((state) => state.setStatus);
   const selectTable = useFloorPlanStore((state) => state.selectTable);
-  const toggleSnapToGrid = useFloorPlanStore((state) => state.toggleSnapToGrid);
 
   const editingTemplate = useEditingTemplate();
   const selectedTable = useSelectedTable();
@@ -155,17 +153,12 @@ export function FloorPlanPage() {
           <FloorPlanCanvas
             tables={editingTemplate.tables}
             selectedTableId={selectedTableId}
-            snapToGrid={snapToGrid}
             gridSize={gridSize}
             onSelectTable={selectTable}
             onMoveTable={moveTable}
           />
 
-          <BottomToolbar
-            snapToGrid={snapToGrid}
-            onToggleSnap={toggleSnapToGrid}
-            onAddTable={(shape) => void addTable(shape)}
-          />
+          <BottomToolbar onAddTable={(shape) => void addTable(shape)} />
         </div>
 
         <TableInspectorPanel

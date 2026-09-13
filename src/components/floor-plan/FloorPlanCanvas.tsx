@@ -6,7 +6,6 @@ import { TableShape } from "./TableShape";
 interface FloorPlanCanvasProps {
   tables: RestaurantTable[];
   selectedTableId: string | null;
-  snapToGrid: boolean;
   gridSize: number;
   onSelectTable: (tableId: string | null) => void;
   onMoveTable: (tableId: string, x: number, y: number) => void;
@@ -15,7 +14,6 @@ interface FloorPlanCanvasProps {
 export function FloorPlanCanvas({
   tables,
   selectedTableId,
-  snapToGrid,
   gridSize,
   onSelectTable,
   onMoveTable,
@@ -66,8 +64,6 @@ export function FloorPlanCanvas({
               key={table.id}
               table={table}
               selected={table.id === selectedTableId}
-              snapToGrid={snapToGrid}
-              gridSize={gridSize}
               toCanvasPoint={toCanvasPoint}
               onSelect={onSelectTable}
               onMove={onMoveTable}

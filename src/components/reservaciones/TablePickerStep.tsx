@@ -79,7 +79,6 @@ export function TablePickerStep({ template, onPick }: TablePickerStepProps) {
         <FloorPlanCanvas
           tables={template.tables}
           selectedTableId={null}
-          snapToGrid={false}
           gridSize={gridSize}
           onSelectTable={handleSelect}
           onMoveTable={() => {}}
