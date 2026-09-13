@@ -34,7 +34,7 @@ import { buttonBase } from "./primitives/button";
 const buttonVariants = cva(buttonBase, {
   variants: {
     variant: {
-      /** The main action on the screen: the indigo brand fill. */
+      /** The main action on the screen: the brand fill (brown — see tokens.css). */
       primary:
         "bg-primary text-primary-foreground shadow-[var(--shadow-token-sm)] hover:bg-accent-strong",
       /** The default, quiet action — an outlined chip on the surface. */

@@ -4,17 +4,29 @@
 
 Direction: **soft neutral console**. An operational dashboard for a restaurant
 floor, built to be scanned at a glance under service pressure. A chromatically
-silent neutral canvas, very large radii, gradient banners that tell you which
-part of the product you are in, and exactly one warm colour — brown — which
-means, everywhere and only, *this is the thing that is currently selected*.
+silent neutral canvas, very large radii, and exactly one warm colour — brown —
+used both for primary actions and for everything that is currently selected.
 
-> **This document was rewritten in Sep 2026.** The previous system ("specialty
-> coffee house": cream / kraft / espresso neutrals, burnt-terracotta accent,
-> 6/10/16px radii, Inter, Phosphor icons, a kraft sidebar rail and a solid
-> black footer) was replaced wholesale at the product owner's request, who
-> asked for a full visual clone of the `custom-globe-component` reference
-> dashboard. Decisions that were reversed are recorded below with their
-> reasoning rather than deleted, so nobody re-litigates them by accident.
+> **This document was rewritten in Sep 2026, then updated twice more the same
+> month.** The previous system ("specialty coffee house": cream / kraft /
+> espresso neutrals, burnt-terracotta accent, 6/10/16px radii, Inter, Phosphor
+> icons, a kraft sidebar rail and a solid black footer) was replaced wholesale
+> at the product owner's request, who asked for a full visual clone of the
+> `custom-globe-component` reference dashboard. Two follow-up requests then
+> walked back specific pieces of that clone:
+> 1. The five per-page gradient hero banners (Comandas/Mesero/Productos/
+>    Reservaciones/Ventas) were removed — "quita los banners de cada menu".
+>    `PageHero.tsx` is gone; each page opens straight into its content below
+>    the top bar.
+> 2. The reference's `violet → indigo → blue` brand family was retired
+>    entirely — "no debe haber botones morados, cambiarlos por el marrón
+>    actual" — and the ambient background wash went from a violet/blue blend
+>    to a gray one — "el background gradiente … cambiarlo por gris y blanco".
+>    `--accent`/`--primary` now point at the same brown as the active/selected
+>    override, so the product has exactly one brand hue, not two.
+>
+> Decisions that were reversed are recorded below with their reasoning rather
+> than deleted, so nobody re-litigates them by accident.
 
 ## Direction contract
 
@@ -23,27 +35,32 @@ means, everywhere and only, *this is the thing that is currently selected*.
   The surrounding product reads as one soft, quiet, large-radius system so that
   the three table-state colours and the one brown selection colour are the only
   things on screen competing for attention.
-- **OWN-WORLD.** Pure neutral gray surfaces (zero saturation); one brand family
-  — violet → indigo → blue — used for primary actions and for the five gradient
-  hero banners; **brown `#6f4a2e` with white text for every active/selected
-  state**; three semantic table colours (emerald free / amber reserved / rose
-  occupied) that borrow neither the brand nor the brown; Geist for UI and Geist
-  Mono for every numeral; a 12 / 16 / 24px radius scale; a slow ambient
-  gradient field behind the shell.
+- **OWN-WORLD.** Pure neutral gray surfaces (zero saturation); **one brand
+  colour — brown `#6f4a2e` — used for both primary actions and every
+  active/selected state**, white text on both; a brown-toned gradient reserved
+  for two "brand moment" surfaces (the mobile FAB, the `IconTile` gradient
+  tone); three semantic table colours (emerald free / amber reserved / rose
+  occupied) that borrow neither the brand nor the active-state usage of brown;
+  Geist for UI and Geist Mono for every numeral; a 12 / 16 / 24px radius scale;
+  a slow ambient gray-into-white gradient field behind the shell.
 - **STORY.** A host scans the floor, taps a table to relabel or resize it in a
   docked inspector (never a modal for routine edits), drags it with optional
   grid-snap, and switches or creates plan templates without leaving the canvas.
   A waiter picks a table, searches products, and sends an order in three
   numbered steps. A cashier reads the day's figures off three stat tiles.
-- **FIRST VIEWPORT.** Sticky translucent top bar (title + actions) over a
-  scrolling body that opens with a gradient hero carrying the screen's live
-  figures, then stacked titled sections on an 8-unit rhythm.
+- **FIRST VIEWPORT.** Sticky translucent top bar (title + actions) directly
+  over stacked titled sections on an 8-unit rhythm. Each page used to open
+  with a gradient hero banner carrying its live figures; those were removed
+  (see the history note above) — the top bar's own title/subtitle and the
+  first section now carry that job.
 - **FORM.** Reference-driven. The visual language was extracted by reading
   `custom-globe-component/components/creative.tsx` in full — its sidebar
   anatomy, radius frequency (72 × `rounded-2xl`, 40 × `rounded-xl`, 23 ×
-  `rounded-3xl`), card treatment, gradient banners, motion props and type scale
-  — and re-expressed on this project's Vite + Tailwind v4 stack. No Next.js
-  anything was carried over.
+  `rounded-3xl`), card treatment, motion props and type scale — and
+  re-expressed on this project's Vite + Tailwind v4 stack. No Next.js
+  anything was carried over. The reference's gradient hero banners were
+  ported at first, then removed per follow-up request; its violet/indigo/blue
+  brand hue was ported and then replaced with brown per a second follow-up.
 - **FINISH.** Reviewed by hand. `typecheck`, `lint` and `build` all pass. A
   60-pair contrast audit was run numerically against the real token values in
   both themes and **caught six genuine failures**, all fixed (see *Colour*).
@@ -95,23 +112,29 @@ Two deliberate exemptions, both defensible:
   "this table is occupied" as occupied, not as selected; overriding the fill
   would make the three states indistinguishable at a glance, which is the one
   thing the status palette exists to prevent.
-- **The mobile FAB** ("Agregar Orden") keeps the brand gradient. It is an
-  action, not a state.
+- **The mobile FAB** ("Agregar Orden") and the `IconTile` gradient tone keep a
+  brand *gradient* rather than the flat active fill — it is an action/brand
+  moment, not a state — but as of the brown pass below that gradient is brown
+  too, not the reference's violet.
 
 ## Colour
 
-Strategy: **restrained**. Neutrals carry the interface, one brand family is
-reserved for primary actions and heroes, one brown is reserved for selection,
-three semantic colours are reserved for table state. Tokens live in
-`src/styles/tokens.css` and are mapped to Tailwind utilities via `@theme inline`
-in `src/styles/global.css`. Never hardcode a hex in a component.
+Strategy: **restrained**. Neutrals carry the interface, one brown brand colour
+is reserved for primary actions, brand-gradient moments, AND every
+active/selected state (see the history note at the top of this document for
+why that used to be two hues and now is not), three semantic colours are
+reserved for table state. Tokens live in `src/styles/tokens.css` and are
+mapped to Tailwind utilities via `@theme inline` in `src/styles/global.css`.
+Never hardcode a hex in a component.
 
 | Role | Token | Light | Dark |
 |---|---|---|---|
 | **Active / selected** | `--active-bg` | `#6f4a2e` | `#7d5436` |
 | Active foreground | `--active-fg` | `#ffffff` | `#ffffff` |
-| Brand (fill) | `--primary` | `#4f46e5` | `#4f46e5` |
-| Brand (text) | `--accent` | `#4f46e5` | `#818cf8` |
+| Brand (fill) | `--primary` | `#6f4a2e` | `#7d5436` |
+| Brand (text) | `--accent` | `#6f4a2e` | `#d8b394` |
+| Brand gradient | `--grad-brand-from/via/to` | `#8a5a35` / `#6f4a2e` / `#46301e` | same |
+| Ambient wash | `--ambient-from/via/to` | gray (`--n-400/200/500`) | gray (`--n-600/800/500`) |
 | Free | `--status-free` | `#059669` | `#10b981` |
 | Reserved | `--status-reserved` | `#d97706` | `#f59e0b` |
 | Occupied | `--status-occupied` | `#e11d48` | `#f43f5e` |
@@ -120,46 +143,85 @@ in `src/styles/global.css`. Never hardcode a hex in a component.
 | Surface | `--surface` | `#ffffff` | `#141414` |
 | Background | `--bg` | `#fafafa` | `#0a0a0a` |
 
+`--primary`/`--accent` are literally the same value as `--active-bg`/
+`--active-soft-fg` (light/dark respectively) — see the split note just below
+for why dark mode still keeps them as separate token families even though the
+colour is shared today.
+
 The neutrals are deliberately **untinted**. The old scale was warm; mixing a
-warm gray with a cool violet/indigo brand is the classic "two grays fighting"
-failure, so the neutrals sit at zero saturation and let the brand and the brown
-be the only hues on screen.
+warm gray with a cool brand hue is the classic "two grays fighting" failure,
+so the neutrals sit at zero saturation and let the (now brown) brand be the
+only hue on screen — plus the gray ambient wash, which is neutral by design
+and therefore does not compete with anything.
 
 ### Tokens that are split in dark mode, and why
 
-One value cannot always do two jobs. A contrast audit forced three splits:
+One value cannot always do two jobs. A contrast audit forced three splits —
+still true after the brand colour changed from indigo to brown, just with new
+numbers:
 
 - **`--accent` vs `--primary`.** `--accent` is read as *text* on a near-black
-  surface, so in dark mode it must be light (`#818cf8`, 6.18:1). `--primary` is
-  a *fill* carrying white text, so it must stay dark (`#4f46e5`, 6.29:1). They
-  were one value until the audit measured white-on-`#6366f1` at **4.47:1**,
-  just under the floor.
+  or dark-brown surface, so in dark mode it must be light — it now reuses
+  `--active-soft-fg` (`#d8b394`), already measured legible on the dark brown
+  soft background it was built for. `--primary` is a *fill* carrying white
+  text, so it must stay dark — it reuses `--active-bg` (`#7d5436`, **6.58:1**
+  with white text, the same measurement the active-state row above already
+  relies on). Before the brand colour changed, this was `#818cf8` (6.18:1)
+  vs `#4f46e5` (6.29:1); one indigo value had failed at 4.47:1 white-on-fill,
+  which is why the split existed in the first place and why it was kept.
 - **`--danger` vs `--destructive`.** Same shape: text hue vs fill hue.
   `#dc2626` measured **4.41:1** as text on its own soft background.
 - **`--destructive-strong`** exists because the destructive button's hover used
   to be `brightness-110`; brightening a red fill *lowers* its contrast with the
   white label it carries. The hover is now an explicit darker token.
 
+One fix made alongside the colour swap: `::selection` was reading
+`background-color: var(--accent)`, which is correct in light mode (accent and
+primary are the same value) but wrong in dark mode once `--accent` became the
+light TEXT shade — white selected text on a light tan background reads as
+light-on-light. It now reads `var(--primary)`, the dark FILL shade, matching
+what the file already says `--primary` is for.
+
 ### Contrast audit
 
-60 text/background pairs checked numerically in both themes; all clear their
-floor. Notable results:
+60 text/background pairs checked numerically in both themes as part of the
+original clone; all cleared their floor. Notable results at the time (light
+mode numbers below are unaffected by the later brown swap since `--primary`
+was already equal to `--active-bg`'s light value in spirit — only the hex
+changed):
 
 | Pair | Light | Dark |
 |---|---|---|
-| White on active brown | **7.79:1** | **6.58:1** |
-| White on primary | 6.29:1 | 6.29:1 |
+| White on active brown / primary (now the same token pair) | **7.79:1** | **6.58:1** |
 | Secondary text (`--fg-muted`) on sunken surface | 7.17:1 | 8.22:1 |
 | Hint/placeholder (`--fg-subtle`) on sunken surface | 4.89:1 | 5.34:1 |
-| White on every hero gradient stop | ≥ 6.70:1 | same |
-| White **at 80% opacity** on every hero stop | ≥ 4.89:1 | same |
 
-Two fixes worth remembering:
+Re-checked after the brown swap (Sep 2026, follow-up):
 
-- The hero gradients originally used Tailwind's `-600` stops, exactly like the
-  reference. At the 80% opacity the hero description and stat labels use, those
-  measured **3.82–4.04:1**. The whole set moved one step deeper to `-700/-800`.
-  They read richer for it. **Do not lighten them without re-running the check.**
+- **White icon on the brown brand gradient** (`--grad-brand-*`, mobile FAB /
+  `IconTile` gradient tone): the lightest stop, `#8a5a35`, is the worst case at
+  **5.84:1**; the other two stops measure higher (7.79:1 and 12.3:1). All clear
+  the 4.5:1 floor. No text is rendered over this gradient any more (the hero
+  banners that used to put description/stat text at 80% opacity over it were
+  removed — see the history note at the top of this document), so the old
+  80%-opacity check that drove the previous `-600` → `-700/-800` gradient move
+  no longer applies; it is recorded here only so nobody re-derives it.
+- **`::selection` white-on-fill in dark mode**, now `var(--primary)`
+  (`#7d5436`): **6.58:1**, same measurement as the active-brown row above.
+  Before this fix it read `var(--accent)` (`#818cf8` under the old indigo
+  brand), which measured **2.98:1** — already failing, and not part of the
+  original 60-pair audit. Fixed as a byproduct of the brown swap, not
+  something separately requested.
+
+Two fixes worth remembering from the original clone:
+
+- The hero banners' gradient originally used Tailwind's `-600` stops, exactly
+  like the reference, and at the 80% opacity their description/stat labels
+  used, those measured **3.82–4.04:1**; the set moved one step deeper to
+  `-700/-800` to fix it. The banners themselves are gone now (see the history
+  note above), but the principle — a gradient that will carry text needs to be
+  re-checked at whatever opacity that text uses — still applies to any future
+  gradient-plus-text surface.
 - `--fg-subtle` was `#909090`, which measured **2.93:1** on the sunken surface —
   and that token draws input placeholders and field hints, exactly the text a
   user squints at. Both secondary steps moved down the scale and stay visibly
@@ -186,7 +248,7 @@ Scale, taken from the reference:
 
 | Use | Class |
 |---|---|
-| Hero title | `text-2xl sm:text-3xl font-semibold` |
+| Large display (brand mark, e.g. Login's "Coffee & Cake") | `text-2xl sm:text-3xl font-semibold` |
 | Section heading | `text-xl sm:text-2xl font-semibold` |
 | Page title (top bar) | `text-lg font-semibold` |
 | Card title | `text-base font-medium` |
@@ -209,7 +271,7 @@ entirely from four token values:
 |---|---|---|---|
 | `--radius-sm` | 12px | `rounded-xl` | badges, chips, inner elements |
 | `--radius-md` | 16px | `rounded-2xl` | buttons, inputs, nav items, icon tiles |
-| `--radius-lg` | 24px | `rounded-3xl` | cards, panels, modals, heroes |
+| `--radius-lg` | 24px | `rounded-3xl` | cards, panels, modals |
 | `--radius-pill` | 999px | `rounded-full` | switch tracks only |
 
 **Nothing in `src/` writes a literal Tailwind radius class.** That is what makes
@@ -276,13 +338,13 @@ screens import. Reach for these before inventing anything:
 
 | Component | What it is |
 |---|---|
-| `PageHero` | The gradient banner that opens a screen. Five `tone`s; optional `stats` or a rotating disc ornament. |
+| ~~`PageHero`~~ | **Removed** (follow-up request, "quita los banners de cada menu"). Used to be the gradient banner that opened Comandas/Mesero/Productos/Reservaciones/Ventas. If a screen ever needs its live figures surfaced again, that is a new component, not a revival of this one, since the removal was a deliberate simplification, not an oversight. |
 | `Section` / `StaggerGrid` / `PageBody` | Page rhythm. `Section` is a titled block; `StaggerGrid` cascades its children in; `PageBody` is the scrolling body with the shared gutters and 8-unit stack. |
 | `Card` + `CardHeader/Title/Description/Body/Footer` | 24px surface. `interactive` adds the hover outline. |
 | `MotionCard` | `Card` that lifts and presses. `interactive` = pointer affordance; `lift` = motion only. Split on purpose: a card that merely *contains* buttons should press but must not promise a click it does not handle. |
 | `StatTile` | Icon plate + label + large tabular figure. |
-| `IconTile` | The rounded square an icon sits in. Tones include `gradient` (brand moments) and `active` (brown). |
-| `Button` / `IconButton` / `Badge` | `variant="active"` / `tone="active"` / the `active` prop are the brown states. |
+| `IconTile` | The rounded square an icon sits in. Tones include `gradient` (brand moments, brown-toned) and `active` (brown flat fill). |
+| `Button` / `IconButton` / `Badge` | `variant="active"` / `tone="active"` / the `active` prop are the brown states; `variant="primary"` / default tone are now brown too (see *Colour*). |
 | `Input` / `Select` / `Switch` / `Modal` / `EmptyState` / `ThemeToggle` | As before, re-geometried. |
 
 `Button`'s `nav` and `footer` variants (and `IconButton`'s) survive as

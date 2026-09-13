@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
  * Canonical shadcn/ui button.
  *
  * Two deviations from upstream, both deliberate:
- * - hover darkens with the real `--accent-strong` indigo instead of
+ * - hover darkens with the real `--accent-strong` brown instead of
  *   `bg-primary/90`. The `/90` form is `color-mix(…, transparent)`, so on a
  *   light background it makes the button *lighter* on hover, which reads as
  *   the button losing weight under the cursor.

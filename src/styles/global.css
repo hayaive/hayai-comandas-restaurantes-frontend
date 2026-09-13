@@ -80,7 +80,7 @@
      shadcn component pasted in from upstream renders in this palette with no
      class rewriting — except shadcn's `accent` role, which we intentionally
      do not alias because `--accent`/`bg-accent` already means the brand
-     indigo here. Substitute `surface-hover`/`fg` for it.
+     brown here. Substitute `surface-hover`/`fg` for it.
      ------------------------------------------------------------------- */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -151,8 +151,12 @@
     text-wrap: balance;
   }
 
+  /* `--primary`, not `--accent`: this is a FILL carrying `--fg-on-accent`
+     (white) text, and in dark mode `--accent` is deliberately the light TEXT
+     shade (for legibility on near-black), which would read as light-on-light
+     here. See the accent/primary split note in tokens.css. */
   ::selection {
-    background-color: var(--accent);
+    background-color: var(--primary);
     color: var(--fg-on-accent);
   }
 
@@ -190,10 +194,11 @@
 
 @layer components {
   /* --- Brand gradient ----------------------------------------------------
-     Used by the mobile nav's active-tab glow and the "gradient" IconTile
-     variant. The per-page hero banners that used to carry the other four
-     gradient tones (royal/warm/fresh/cool) were removed — brand is the only
-     one still consumed. */
+     Used by the mobile FAB and the "gradient" IconTile variant. Brown, not
+     the reference's violet/indigo/blue — no purple is allowed anywhere in
+     this product per client request; see `tokens.css`. The per-page hero
+     banners that used to carry four extra gradient tones (royal/warm/fresh/
+     cool) were removed — brand is the only one still consumed. */
   .hero-brand {
     background-image: linear-gradient(
       to right,
@@ -210,7 +215,13 @@
      on host-stand tablets, so it is reproduced here as two static gradient
      blobs moved with `transform` instead. Same slow ambient drift, composited
      on the GPU, zero repaint. `prefers-reduced-motion` freezes it via the
-     global guard at the bottom of this file. */
+     global guard at the bottom of this file.
+
+     Color: gray blending into white/near-black (`--ambient-*` in
+     tokens.css), not the reference's violet/blue — client request, same one
+     that retired purple from every button. Kept as its own token pair rather
+     than reusing `--grad-brand-*` (the brown brand gradient) because this is
+     passive backdrop, not a brand moment. */
   .ambient-field {
     position: absolute;
     inset: 0;
@@ -235,8 +246,8 @@
     left: -14vw;
     background: radial-gradient(
       circle at center,
-      var(--grad-brand-from) 0%,
-      color-mix(in srgb, var(--grad-brand-via) 55%, transparent) 45%,
+      var(--ambient-from) 0%,
+      color-mix(in srgb, var(--ambient-via) 55%, transparent) 45%,
       transparent 70%
     );
     animation: ambient-drift-a 46s ease-in-out infinite;
@@ -246,8 +257,8 @@
     bottom: -26vw;
     background: radial-gradient(
       circle at center,
-      var(--grad-brand-to) 0%,
-      color-mix(in srgb, var(--grad-brand-via) 50%, transparent) 45%,
+      var(--ambient-to) 0%,
+      color-mix(in srgb, var(--ambient-via) 50%, transparent) 45%,
       transparent 70%
     );
     animation: ambient-drift-b 58s ease-in-out infinite;

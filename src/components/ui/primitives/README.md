@@ -28,7 +28,7 @@ Anything pasted in from the shadcn site needs these substitutions:
 
 | Upstream shadcn | Here | Why |
 |---|---|---|
-| `bg-accent` / `text-accent-foreground` | `bg-surface-hover` / `text-fg` | In shadcn, `accent` means "subtle hover tint". In this codebase `--accent` is the **brand indigo** and the whole app depends on that meaning, so the role is intentionally not aliased in `tokens.css`. |
+| `bg-accent` / `text-accent-foreground` | `bg-surface-hover` / `text-fg` | In shadcn, `accent` means "subtle hover tint". In this codebase `--accent` is the **brand brown** and the whole app depends on that meaning, so the role is intentionally not aliased in `tokens.css`. |
 | `data-[state=active]:bg-background`, `bg-primary` **used to mean "selected"** | `bg-active text-active-fg` | **The client override.** Every active / selected / currently-chosen control in this product is BROWN with WHITE text. `--primary` means "this is the main action here" and must not be used to mean "this one is selected". See `tokens.css`. |
 | `rounded-md` / `rounded-lg` | `rounded-[var(--radius-sm\|md\|lg)]` | The radius scale (12 / 16 / 24px) is the product's strongest visual signature, and it is driven entirely from four token values. Nothing in `src/` may write a literal Tailwind radius class — changing the four tokens must re-shape the whole product. |
 

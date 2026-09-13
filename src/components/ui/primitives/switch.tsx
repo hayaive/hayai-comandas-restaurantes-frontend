@@ -19,8 +19,10 @@ const Switch = React.forwardRef<
       className={cn(
         "peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-[var(--radius-pill)] border-2 border-transparent p-0",
         "transition-colors duration-150 ease-out outline-none",
-        // CLIENT OVERRIDE: "on" is an active state, so the track is brown
-        // rather than the brand indigo. See `tokens.css`.
+        // CLIENT OVERRIDE: "on" is an active state, so the track reaches for
+        // the `--active-*` brown token, not `--accent` — both resolve to the
+        // same brown today, but they are separate families on purpose. See
+        // `tokens.css`.
         "data-[state=checked]:bg-active data-[state=unchecked]:bg-border-strong",
         "focus-visible:ring-[3px] focus-visible:ring-ring/45",
         "disabled:cursor-not-allowed disabled:opacity-50",

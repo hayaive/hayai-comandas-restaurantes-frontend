@@ -32,8 +32,9 @@ import { MobileMoreSheet } from "./MobileMoreSheet";
  * la misma superficie translúcida del resto del chrome. La pestaña activa
  * lleva la píldora MARRÓN con texto blanco (override del cliente), que en una
  * barra clara se lee muchísimo mejor que el antiguo cambio de color de texto
- * sobre negro. El FAB conserva el gradiente de marca: es una acción, no un
- * estado, y por eso deliberadamente NO es marrón.
+ * sobre negro. El FAB conserva su propio gradiente de marca (`.hero-brand`,
+ * ahora también marrón — ya no queda morado en ningún botón del producto),
+ * distinto del marrón plano `bg-active`: es una acción, no un estado.
  */
 
 const FAB_ROUTE = "/mesero";

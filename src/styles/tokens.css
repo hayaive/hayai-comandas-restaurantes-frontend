@@ -12,16 +12,24 @@
     * a PURE NEUTRAL GRAY canvas — the reference's identity lives in geometry
       and motion, not in a tinted palette, so the neutrals are chromatically
       silent (shadcn's `0 0%` ramp) and every drop of color is deliberate;
-    * ONE brand family — violet -> indigo -> blue — used for primary actions
-      and for the gradient hero banners that open each screen;
     * VERY LARGE RADII (12 / 16 / 24px, i.e. Tailwind xl / 2xl / 3xl). This is
       the single strongest visual tell of the reference and the reason every
       surface in this app reads as one system. Because 100% of the codebase
       writes `rounded-[var(--radius-*)]` rather than a literal Tailwind class,
       the four values below re-shape the entire product.
 
-  THE ONE OVERRIDE — non-negotiable, client-mandated:
-  ---------------------------------------------------
+  UPDATE (Sep 2026, follow-up): the reference's `violet -> indigo -> blue`
+  brand family — originally used for primary buttons and the gradient hero
+  banners — was retired at the client's request ("no debe haber botones
+  morados"). `--accent`/`--primary` now point at the same BROWN as the
+  active/selected override below, so there is exactly one brand hue left in
+  the product, not two competing ones. The full-viewport ambient background
+  wash, which used to blend that same violet into white, now blends neutral
+  gray into white instead (`--ambient-*` tokens, used only by
+  `.ambient-field` in `global.css`).
+
+  THE ACTIVE/SELECTED OVERRIDE — non-negotiable, client-mandated:
+  -----------------------------------------------------------------
   Everywhere the reference paints an ACTIVE / SELECTED state (active nav item,
   active tab, chosen filter, pressed toggle, selected table, current template
   pill), this product paints BROWN with WHITE text instead. That is what
@@ -45,9 +53,9 @@
 
   /* --- Neutral scale — chromatically silent gray -------------------------
      Deliberately untinted. The old scale was warm (kraft/espresso); mixing a
-     warm gray with the cool violet/indigo brand below is the classic "two
-     grays fighting" failure, so the neutrals sit at zero saturation and let
-     the brand be the only hue on screen. */
+     warm gray with a cool brand hue is the classic "two grays fighting"
+     failure, so the neutrals sit at zero saturation and let the (now brown)
+     brand be the only hue on screen. */
   --n-0: #ffffff;
   --n-25: #fafafa;
   --n-50: #f5f5f5;
@@ -86,26 +94,42 @@
   --fg-on-accent: #ffffff;
   --fg-on-dark-fill: var(--n-25);
 
-  /* --- Brand: violet -> indigo -> blue ----------------------------------
-     Taken straight from the reference's signature hero gradient
-     (`from-violet-600 via-indigo-600 to-blue-600`). `--accent` is the middle
-     stop, indigo-600, so a flat brand surface always reads as the centre of
-     the gradient family rather than one of its edges. */
-  --accent-50: #eef2ff;
-  --accent-200: #c7d2fe;
-  --accent-400: #818cf8;
-  --accent-500: #4f46e5;
-  --accent-600: #4338ca;
-  --accent-700: #3730a3;
+  /* --- Brand: brown -------------------------------------------------------
+     Client request (Sep 2026): no purple/indigo anywhere in the product —
+     the reference's `violet -> indigo -> blue` brand family is retired.
+     `--accent`/`--primary` now point at the SAME brown as the active/selected
+     override below, so every primary action, focus ring and "brand" tint in
+     the app reads as one consistent brown instead of two competing hues.
+     `--accent-500` is literally `--active-bg` — not a coincidence, the point
+     is that there is only one brand color left. */
+  --accent-50: #f4ece5;
+  --accent-200: #d9bfa8;
+  --accent-400: #a67c52;
+  --accent-500: #6f4a2e;
+  --accent-600: #5c3c25;
+  --accent-700: #46301e;
   --accent: var(--accent-500);
   --accent-strong: var(--accent-600);
   --accent-soft: var(--accent-50);
 
-  /* Gradient stops, as tokens rather than per-component hexes. The hero
-     banner utilities in `global.css` are the only consumers. */
-  --grad-brand-from: #6d28d9;
-  --grad-brand-via: #4338ca;
-  --grad-brand-to: #1d4ed8;
+  /* Gradient stops for "brand moment" surfaces (the mobile FAB, the
+     `IconTile` gradient tone) — a brown gradient rather than a flat fill, so
+     those spots keep a bit of depth without reintroducing purple. Token
+     names kept as `grad-brand-*` since `global.css`'s `.hero-brand` utility
+     already refers to them; only the color changed. */
+  --grad-brand-from: #8a5a35;
+  --grad-brand-via: #6f4a2e;
+  --grad-brand-to: #46301e;
+
+  /* --- Ambient background wash, color -------------------------------------
+     The reference's page-wide ambient glow was a violet/blue blend; the
+     client asked for gray/white instead. Separate from the brand gradient
+     above on purpose: the ambient field is passive backdrop, not a brand
+     moment, and neutral gray reads calmer at full-viewport scale than a
+     tinted wash would. */
+  --ambient-from: var(--n-400);
+  --ambient-via: var(--n-200);
+  --ambient-to: var(--n-500);
 
   /* ----------------------------------------------------------------------
      ACTIVE / SELECTED — the client override. Read the header note.
@@ -178,10 +202,11 @@
      long as it was up. */
   --overlay: rgb(10 10 10 / 0.55);
 
-  /* --- Ambient background wash ---
+  /* --- Ambient background wash — opacity only ---
      Opacity of the slow radial-gradient field behind the app shell. Kept as a
      token so the whole effect can be dialled to 0 in one place if a tablet
-     ever struggles with it. */
+     ever struggles with it. The wash's COLOR tokens (`--ambient-*`) live up
+     with the rest of the brand palette above. */
   --ambient-opacity: 0.16;
 
   /* --- RETIRED: the two-tone chrome surfaces -----------------------------
@@ -210,10 +235,12 @@
      the roles follow the light/dark swap for free and are written exactly
      once.
 
-     `--primary` is the indigo brand, NOT the brown. The brown is reserved for
-     active/selected state and has its own `--active-*` family; conflating the
-     two would make every primary button look like a permanently-active
-     control, which is the opposite of what the client asked for.
+     `--primary` aliases `--accent`, which is now the same brown as
+     `--active-bg` (see the file header) — the client asked for one brand
+     hue, not two, so a primary button and an active/selected control are
+     visually the same brown by design. They stay separate token FAMILIES
+     (`--accent-*` vs `--active-*`) only so either could diverge again later
+     without a find-and-replace.
 
      As before, shadcn's `--accent` role is deliberately NOT aliased: in
      shadcn `accent` means "subtle hover tint", while here `--accent` is the
@@ -284,25 +311,6 @@
     --fg-on-accent: #ffffff;
     --fg-on-dark-fill: var(--n-25);
 
-    /* Two indigos in dark mode, because one token cannot do both jobs.
-       `--accent` is read as TEXT on a near-black surface, so it must be light
-       (6.2:1 at #818cf8). `--primary` is a FILL carrying white text, so it must
-       stay dark (6.3:1 at #4f46e5). They were a single value until a contrast
-       audit measured white-on-#6366f1 at 4.47:1 — just under the floor.
-       `--accent-strong` is primary's hover and also carries white text, so it
-       lightens only as far as 5.4:1. */
-    --accent-400: #a5b4fc;
-    --accent: #818cf8;
-    --accent-strong: #5b54e8;
-    --accent-soft: #1e1b4b;
-    --primary: #4f46e5;
-
-    /* The hero gradients carry white text in BOTH themes, so they do not
-       lighten in dark mode — same deep stops as light. */
-    --grad-brand-from: #6d28d9;
-    --grad-brand-via: #4338ca;
-    --grad-brand-to: #1d4ed8;
-
     /* Brown, one step lighter so it still reads as brown (not black) against
        a near-black canvas while keeping white text at 6.58:1. */
     --active-bg: #7d5436;
@@ -311,6 +319,33 @@
     --active-soft: #2a1d13;
     --active-soft-fg: #d8b394;
     --active-border: #8e6140;
+
+    /* Brand = brown now (see the file header). Same split as before existed
+       between text-role and fill-role uses, kept because one brown value
+       still cannot do both jobs on a near-black surface: `--accent` is read
+       as TEXT (reuses `--active-soft-fg`, already measured light enough on a
+       dark brown soft background), `--primary` is a FILL carrying white text
+       (reuses `--active-bg`, already measured at 6.58:1), and
+       `--accent-strong` is primary's hover (reuses `--active-bg-hover`). */
+    --accent-400: #c99a6f;
+    --accent: var(--active-soft-fg);
+    --accent-strong: var(--active-bg-hover);
+    --accent-soft: var(--active-soft);
+    --primary: var(--active-bg);
+
+    /* Brand-gradient stops (mobile FAB, `IconTile` gradient tone) — brown,
+       not the old violet. Carries white text in both themes, so it does not
+       lighten in dark mode. */
+    --grad-brand-from: #8a5a35;
+    --grad-brand-via: #6f4a2e;
+    --grad-brand-to: #46301e;
+
+    /* Ambient background wash color: gray, not the old violet/blue — see the
+       file header. One step lighter than the light-mode grays so the blobs
+       stay visible against a near-black page. */
+    --ambient-from: var(--n-600);
+    --ambient-via: var(--n-800);
+    --ambient-to: var(--n-500);
 
     --status-free: #10b981;
     --status-free-soft: #052e23;
@@ -360,31 +395,38 @@
   --fg-on-accent: #ffffff;
   --fg-on-dark-fill: var(--n-25);
 
-  /* Two indigos in dark mode, because one token cannot do both jobs.
-     `--accent` is read as TEXT on a near-black surface, so it must be light
-     (6.2:1 at #818cf8). `--primary` is a FILL carrying white text, so it must
-     stay dark (6.3:1 at #4f46e5). They were a single value until a contrast
-     audit measured white-on-#6366f1 at 4.47:1 — just under the floor.
-     `--accent-strong` is primary's hover and also carries white text, so it
-     lightens only as far as 5.4:1. */
-  --accent-400: #a5b4fc;
-  --accent: #818cf8;
-  --accent-strong: #5b54e8;
-  --accent-soft: #1e1b4b;
-  --primary: #4f46e5;
-
-  /* The hero gradients carry white text in BOTH themes, so they do not
-     lighten in dark mode — same deep stops as light. */
-  --grad-brand-from: #6d28d9;
-  --grad-brand-via: #4338ca;
-  --grad-brand-to: #1d4ed8;
-
   --active-bg: #7d5436;
   --active-bg-hover: #8e6140;
   --active-fg: #ffffff;
   --active-soft: #2a1d13;
   --active-soft-fg: #d8b394;
   --active-border: #8e6140;
+
+  /* Brand = brown now (see the file header). Same split as before existed
+     between text-role and fill-role uses, kept because one brown value still
+     cannot do both jobs on a near-black surface: `--accent` is read as TEXT
+     (reuses `--active-soft-fg`, already measured light enough on a dark
+     brown soft background), `--primary` is a FILL carrying white text
+     (reuses `--active-bg`, already measured at 6.58:1), and `--accent-strong`
+     is primary's hover (reuses `--active-bg-hover`). */
+  --accent-400: #c99a6f;
+  --accent: var(--active-soft-fg);
+  --accent-strong: var(--active-bg-hover);
+  --accent-soft: var(--active-soft);
+  --primary: var(--active-bg);
+
+  /* Brand-gradient stops (mobile FAB, `IconTile` gradient tone) — brown, not
+     the old violet. Carries white text in both themes, so it does not
+     lighten in dark mode. */
+  --grad-brand-from: #8a5a35;
+  --grad-brand-via: #6f4a2e;
+  --grad-brand-to: #46301e;
+
+  /* Ambient background wash color: gray, not the old violet/blue — see the
+     file header. */
+  --ambient-from: var(--n-600);
+  --ambient-via: var(--n-800);
+  --ambient-to: var(--n-500);
 
   --status-free: #10b981;
   --status-free-soft: #052e23;
