@@ -16,6 +16,7 @@ import type {
   UpdateProductoInput,
 } from "./types";
 import { ApiError } from "./types";
+import { getToken, handleUnauthorized } from "./auth";
 
 /**
  * Real HTTP implementation, calling the NestJS backend per `CONTRACT.md`
@@ -35,6 +36,8 @@ function baseUrl(): string {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getToken();
+
   let response: Response;
   try {
     response = await fetch(`${baseUrl()}${path}`, {
@@ -42,11 +45,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       credentials: "include",
       headers: {
         "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...init?.headers,
       },
     });
   } catch {
     throw new ApiError("No se pudo conectar con el servidor", 0);
+  }
+
+  if (response.status === 401) {
+    // Token missing/expired/invalid: clear the stale session so the router
+    // guard sends the user back to /login instead of leaving the screen in a
+    // broken, half-loaded state.
+    handleUnauthorized();
   }
 
   if (response.status === 204) return undefined as T;

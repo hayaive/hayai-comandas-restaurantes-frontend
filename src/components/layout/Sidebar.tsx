@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import {
   Armchair,
   CalendarCheck,
@@ -6,10 +6,13 @@ import {
   Package,
   QrCode,
   Receipt,
+  SignOut,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/cn";
 import { BrandMark } from "./BrandMark";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { IconButton } from "@/components/ui/IconButton";
+import { useAuthStore } from "@/lib/useAuthStore";
 
 const navItems = [
   { to: "/mesas", label: "Mesas", icon: Armchair },
@@ -21,6 +24,14 @@ const navItems = [
 ];
 
 export function Sidebar() {
+  const navigate = useNavigate();
+  const logout = useAuthStore((s) => s.logout);
+
+  function handleLogout() {
+    logout();
+    navigate("/login", { replace: true });
+  }
+
   return (
     <aside className="flex w-[76px] flex-col items-center gap-1 border-r border-border bg-surface py-4 lg:w-[220px] lg:items-stretch lg:px-3">
       <div className="mb-4 flex items-center gap-2 px-2 lg:px-1">
@@ -51,8 +62,13 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="mt-auto flex w-full items-center justify-center px-2 pt-3 lg:justify-start lg:px-1">
+      <div className="mt-auto flex w-full items-center justify-center gap-2 px-2 pt-3 lg:justify-start lg:px-1">
         <ThemeToggle />
+        <IconButton
+          icon={<SignOut size={17} weight="bold" />}
+          label="Cerrar sesión"
+          onClick={handleLogout}
+        />
       </div>
     </aside>
   );
