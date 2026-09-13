@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/Switch";
 import { useProductStore } from "@/lib/useProductStore";
 import { formatUsd } from "@/lib/format";
 import { ProductFormModal } from "@/components/productos/ProductFormModal";
+import { ProductThumbnail } from "@/components/productos/ProductThumbnail";
 import type { Producto } from "@/api";
 
 export function ProductosPage() {
@@ -97,7 +98,12 @@ export function ProductosPage() {
               <tbody className="divide-y divide-border bg-surface">
                 {activos.map((producto) => (
                   <tr key={producto.id}>
-                    <td className="px-4 py-3 font-medium text-fg">{producto.nombre}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <ProductThumbnail imagenUrl={producto.imagenUrl} alt={producto.nombre} />
+                        <span className="font-medium text-fg">{producto.nombre}</span>
+                      </div>
+                    </td>
                     <td className="px-4 py-3">
                       <Badge tone="neutral">{producto.categoriaNombre}</Badge>
                     </td>

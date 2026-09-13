@@ -54,6 +54,8 @@ export interface Producto {
   /** Whether it's on the menu at all. */
   activo: boolean;
   orden: number;
+  /** Optional link to a product photo — pasted by staff, no upload flow yet. */
+  imagenUrl?: string;
 }
 
 export interface Reservacion {
@@ -125,10 +127,11 @@ export interface CreateProductoInput {
   precio: string;
   destino: DestinoPreparacion;
   disponible?: boolean;
+  imagenUrl?: string;
 }
 
 export type UpdateProductoInput = Partial<
-  Pick<Producto, "nombre" | "precio" | "categoriaId" | "destino" | "activo">
+  Pick<Producto, "nombre" | "precio" | "categoriaId" | "destino" | "activo" | "imagenUrl">
 >;
 
 export interface CreateReservacionInput {

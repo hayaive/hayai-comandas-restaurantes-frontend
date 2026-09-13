@@ -308,6 +308,7 @@ export const mockApi: ApiClient = {
       disponible: input.disponible ?? true,
       activo: true,
       orden: productos.length + 1,
+      imagenUrl: input.imagenUrl,
     };
     productos = [...productos, producto];
     return delay(producto);
@@ -338,6 +339,7 @@ export const mockApi: ApiClient = {
     }
     if (input.destino !== undefined) next.destino = input.destino;
     if (input.activo !== undefined) next.activo = input.activo;
+    if (input.imagenUrl !== undefined) next.imagenUrl = input.imagenUrl;
     productos = [...productos.slice(0, idx), next, ...productos.slice(idx + 1)];
     return delay(next);
   },

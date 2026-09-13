@@ -20,8 +20,12 @@ const DESTINOS: { value: DestinoPreparacion; label: string }[] = [
   { value: "ninguno", label: "Ninguno" },
 ];
 
+/** Sentinel `<option>` value that opens the inline "new category" panel instead of selecting one. */
+const NEW_CATEGORIA_VALUE = "__nueva_categoria__";
+
 export function ProductFormModal({ open, onClose, producto }: ProductFormModalProps) {
   const categorias = useProductStore((s) => s.categorias);
+  const createCategoria = useProductStore((s) => s.createCategoria);
   const createProducto = useProductStore((s) => s.createProducto);
   const updateProducto = useProductStore((s) => s.updateProducto);
 
@@ -29,8 +33,14 @@ export function ProductFormModal({ open, onClose, producto }: ProductFormModalPr
   const [categoriaId, setCategoriaId] = useState("");
   const [precio, setPrecio] = useState("");
   const [destino, setDestino] = useState<DestinoPreparacion>("cocina");
+  const [imagenUrl, setImagenUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [newCategoriaOpen, setNewCategoriaOpen] = useState(false);
+  const [newCategoriaNombre, setNewCategoriaNombre] = useState("");
+  const [newCategoriaSubmitting, setNewCategoriaSubmitting] = useState(false);
+  const [newCategoriaError, setNewCategoriaError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -38,8 +48,50 @@ export function ProductFormModal({ open, onClose, producto }: ProductFormModalPr
     setCategoriaId(producto?.categoriaId ?? categorias[0]?.id ?? "");
     setPrecio(producto?.precio ?? "");
     setDestino(producto?.destino ?? "cocina");
+    setImagenUrl(producto?.imagenUrl ?? "");
     setError(null);
+    setNewCategoriaOpen(false);
+    setNewCategoriaNombre("");
+    setNewCategoriaError(null);
   }, [open, producto, categorias]);
+
+  function handleCategoriaChange(value: string) {
+    if (value === NEW_CATEGORIA_VALUE) {
+      setNewCategoriaOpen(true);
+      setNewCategoriaNombre("");
+      setNewCategoriaError(null);
+      return;
+    }
+    setCategoriaId(value);
+  }
+
+  async function handleCreateCategoria() {
+    const trimmed = newCategoriaNombre.trim();
+    if (!trimmed) {
+      setNewCategoriaError("El nombre de la categoría es obligatorio");
+      return;
+    }
+    setNewCategoriaSubmitting(true);
+    setNewCategoriaError(null);
+    try {
+      await createCategoria(trimmed);
+      const cats = useProductStore.getState().categorias;
+      const created = [...cats].reverse().find((c) => c.nombre === trimmed) ?? cats[cats.length - 1];
+      if (created) setCategoriaId(created.id);
+      setNewCategoriaOpen(false);
+      setNewCategoriaNombre("");
+    } catch (err) {
+      setNewCategoriaError(err instanceof ApiError ? err.message : "No se pudo crear la categoría");
+    } finally {
+      setNewCategoriaSubmitting(false);
+    }
+  }
+
+  function handleCancelNewCategoria() {
+    setNewCategoriaOpen(false);
+    setNewCategoriaNombre("");
+    setNewCategoriaError(null);
+  }
 
   async function handleSubmit() {
     if (!nombre.trim()) {
@@ -58,10 +110,23 @@ export function ProductFormModal({ open, onClose, producto }: ProductFormModalPr
     setSubmitting(true);
     setError(null);
     try {
+      const imagenUrlTrimmed = imagenUrl.trim() || undefined;
       if (producto) {
-        await updateProducto(producto.id, { nombre: nombre.trim(), categoriaId, precio, destino });
+        await updateProducto(producto.id, {
+          nombre: nombre.trim(),
+          categoriaId,
+          precio,
+          destino,
+          imagenUrl: imagenUrlTrimmed,
+        });
       } else {
-        await createProducto({ nombre: nombre.trim(), categoriaId, precio, destino });
+        await createProducto({
+          nombre: nombre.trim(),
+          categoriaId,
+          precio,
+          destino,
+          imagenUrl: imagenUrlTrimmed,
+        });
       }
       onClose();
     } catch (err) {
@@ -97,8 +162,8 @@ export function ProductFormModal({ open, onClose, producto }: ProductFormModalPr
         />
         <Select
           label="Categoría"
-          value={categoriaId}
-          onChange={(e) => setCategoriaId(e.target.value)}
+          value={newCategoriaOpen ? NEW_CATEGORIA_VALUE : categoriaId}
+          onChange={(e) => handleCategoriaChange(e.target.value)}
         >
           {categorias.length === 0 && <option value="">Sin categorías</option>}
           {categorias.map((cat) => (
@@ -106,7 +171,36 @@ export function ProductFormModal({ open, onClose, producto }: ProductFormModalPr
               {cat.nombre}
             </option>
           ))}
+          <option value={NEW_CATEGORIA_VALUE}>+ Nueva categoría…</option>
         </Select>
+
+        {newCategoriaOpen && (
+          <div className="flex flex-col gap-2 rounded-[var(--radius-sm)] border border-dashed border-border p-3">
+            <div className="flex items-end gap-2">
+              <Input
+                label="Nueva categoría"
+                value={newCategoriaNombre}
+                onChange={(e) => setNewCategoriaNombre(e.target.value)}
+                placeholder="Ej. Postres"
+                className="flex-1"
+                autoFocus
+              />
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => void handleCreateCategoria()}
+                disabled={newCategoriaSubmitting}
+              >
+                {newCategoriaSubmitting ? "Creando…" : "Crear"}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={handleCancelNewCategoria} disabled={newCategoriaSubmitting}>
+                Cancelar
+              </Button>
+            </div>
+            {newCategoriaError && <p className="text-[12px] text-danger">{newCategoriaError}</p>}
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-3">
           <Input
             label="Precio (USD)"
@@ -129,6 +223,12 @@ export function ProductFormModal({ open, onClose, producto }: ProductFormModalPr
             ))}
           </Select>
         </div>
+        <Input
+          label="URL de imagen (opcional)"
+          value={imagenUrl}
+          onChange={(e) => setImagenUrl(e.target.value)}
+          placeholder="https://…"
+        />
         {error && <p className="text-[12px] text-danger">{error}</p>}
       </div>
     </Modal>
