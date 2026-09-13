@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { create } from "zustand";
 import { api, ApiError } from "@/api";
 import type { Categoria, CreateProductoInput, Producto, UpdateProductoInput } from "@/api";
@@ -22,6 +23,18 @@ function messageOf(error: unknown): string {
   return "Ocurrió un error inesperado";
 }
 
+/**
+ * El backend real no denormaliza `categoriaNombre` en `/productos` (sólo
+ * manda `categoriaId`) — el tipo `Producto` lo espera porque el mock sí lo
+ * traía a mano. Sin este join, `categoriaNombre` llega `undefined` y
+ * `.localeCompare()` en ProductosPage revienta la pantalla completa.
+ */
+function conCategoriaNombre(producto: Producto, categorias: Categoria[]): Producto {
+  if (producto.categoriaNombre) return producto;
+  const categoria = categorias.find((c) => c.id === producto.categoriaId);
+  return { ...producto, categoriaNombre: categoria?.nombre ?? "Sin categoría" };
+}
+
 export const useProductStore = create<ProductState>((set, get) => ({
   categorias: [],
   productos: [],
@@ -31,7 +44,8 @@ export const useProductStore = create<ProductState>((set, get) => ({
   load: async () => {
     set({ status: "loading", error: null });
     try {
-      const [categorias, productos] = await Promise.all([api.listCategorias(), api.listProductos()]);
+      const [categorias, productosCrudos] = await Promise.all([api.listCategorias(), api.listProductos()]);
+      const productos = productosCrudos.map((p) => conCategoriaNombre(p, categorias));
       set({ categorias, productos, status: "ready" });
     } catch (error) {
       set({ status: "error", error: messageOf(error) });
@@ -45,17 +59,19 @@ export const useProductStore = create<ProductState>((set, get) => ({
 
   createProducto: async (input) => {
     const producto = await api.createProducto(input);
-    set({ productos: [...get().productos, producto] });
+    set({ productos: [...get().productos, conCategoriaNombre(producto, get().categorias)] });
   },
 
   updateProducto: async (id, input) => {
     const updated = await api.updateProducto(id, input);
-    set({ productos: get().productos.map((p) => (p.id === id ? updated : p)) });
+    const enriched = conCategoriaNombre(updated, get().categorias);
+    set({ productos: get().productos.map((p) => (p.id === id ? enriched : p)) });
   },
 
   toggleDisponibilidad: async (id, disponible) => {
     const updated = await api.setProductoDisponibilidad(id, disponible);
-    set({ productos: get().productos.map((p) => (p.id === id ? updated : p)) });
+    const enriched = conCategoriaNombre(updated, get().categorias);
+    set({ productos: get().productos.map((p) => (p.id === id ? enriched : p)) });
   },
 
   deleteProducto: async (id) => {
@@ -65,5 +81,9 @@ export const useProductStore = create<ProductState>((set, get) => ({
 }));
 
 export function useActiveProducts(): Producto[] {
-  return useProductStore((state) => state.productos.filter((p) => p.activo));
+  // Mismo cuidado que useTodaysReservations: seleccionar el arreglo crudo
+  // (referencia estable) y memoizar el filtro, no devolver un arreglo nuevo
+  // desde el selector de Zustand (ver commit del fix de Reservaciones).
+  const productos = useProductStore((state) => state.productos);
+  return useMemo(() => productos.filter((p) => p.activo), [productos]);
 }
