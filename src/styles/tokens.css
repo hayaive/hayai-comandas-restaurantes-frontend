@@ -1,0 +1,175 @@
+/*
+  Design tokens — Hayai Comandas
+  ------------------------------------------------------------
+  Direction: "service rail" operational dashboard. One brand
+  accent (rail cyan) reserved for selection/primary actions,
+  kept deliberately separate from the three semantic table
+  states (free / reserved / occupied) so they never collide.
+
+  Theme strategy: CSS custom properties, swapped by
+  [data-theme] or system preference. Light palette lives on
+  bare :root; dark redefines under the media guard AND the
+  explicit [data-theme="dark"] attribute so a manual toggle
+  always wins. Never add a color only inside a media query.
+*/
+
+:root {
+  color-scheme: light;
+
+  /* --- Neutral scale (warm-leaning graphite, not cold zinc) --- */
+  --n-0: #ffffff;
+  --n-25: #faf9f8;
+  --n-50: #f4f2f0;
+  --n-100: #e9e6e2;
+  --n-150: #dcd8d3;
+  --n-200: #cac5bf;
+  --n-300: #a8a29b;
+  --n-400: #86807a;
+  --n-500: #6b655f;
+  --n-600: #524d48;
+  --n-700: #3d3936;
+  --n-800: #2a2724;
+  --n-850: #1e1c1a;
+  --n-900: #151312;
+  --n-950: #0d0c0b;
+
+  /* --- Surfaces --- */
+  --bg: var(--n-25);
+  --bg-canvas: var(--n-50);
+  --surface: var(--n-0);
+  --surface-raised: var(--n-0);
+  --surface-sunken: var(--n-50);
+  --surface-hover: var(--n-100);
+  --border: var(--n-150);
+  --border-strong: var(--n-200);
+
+  /* --- Text --- */
+  --fg: var(--n-900);
+  --fg-muted: var(--n-500);
+  --fg-subtle: var(--n-400);
+  --fg-on-accent: #04222b;
+  --fg-on-dark-fill: #f4f2f0;
+
+  /* --- Brand accent: rail cyan --- */
+  --accent-50: #e6f7fb;
+  --accent-200: #a4e2ef;
+  --accent-400: #3fbedd;
+  --accent-500: #17a8e0;
+  --accent-600: #0f8cbe;
+  --accent-700: #0d6f97;
+  --accent: var(--accent-500);
+  --accent-strong: var(--accent-600);
+  --accent-soft: var(--accent-50);
+
+  /* --- Semantic table states --- */
+  --status-free: #2fae6b;
+  --status-free-soft: #e4f5ec;
+  --status-free-fg: #0f5c34;
+
+  --status-reserved: #d69a1f;
+  --status-reserved-soft: #fbf0da;
+  --status-reserved-fg: #7a5510;
+
+  --status-occupied: #e1495a;
+  --status-occupied-soft: #fbe4e6;
+  --status-occupied-fg: #8c1c28;
+
+  /* --- Feedback --- */
+  --danger: #d3403f;
+  --danger-soft: #fbe2e1;
+
+  /* --- Shadows (tinted, not pure black) --- */
+  --shadow-color: 30 27 24;
+  --shadow-sm: 0 1px 2px rgb(var(--shadow-color) / 0.08);
+  --shadow-md: 0 4px 12px -2px rgb(var(--shadow-color) / 0.12), 0 2px 4px -2px rgb(var(--shadow-color) / 0.08);
+  --shadow-lg: 0 16px 40px -12px rgb(var(--shadow-color) / 0.22), 0 4px 10px -4px rgb(var(--shadow-color) / 0.12);
+
+  /* --- Radius scale (locked system-wide) --- */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+
+  /* --- Canvas grid dot --- */
+  --canvas-dot: var(--n-200);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --bg: var(--n-950);
+    --bg-canvas: var(--n-900);
+    --surface: var(--n-850);
+    --surface-raised: var(--n-800);
+    --surface-sunken: var(--n-950);
+    --surface-hover: var(--n-800);
+    --border: var(--n-700);
+    --border-strong: var(--n-600);
+
+    --fg: var(--n-50);
+    --fg-muted: var(--n-300);
+    --fg-subtle: var(--n-500);
+    --fg-on-accent: #04222b;
+    --fg-on-dark-fill: #f4f2f0;
+
+    --accent-soft: #103240;
+
+    --status-free-soft: #10331f;
+    --status-free-fg: #6fdba0;
+
+    --status-reserved-soft: #3a2c0c;
+    --status-reserved-fg: #f0c565;
+
+    --status-occupied-soft: #3d1519;
+    --status-occupied-fg: #f5a0a9;
+
+    --danger-soft: #3d1516;
+
+    --shadow-color: 0 0 0;
+    --shadow-sm: 0 1px 2px rgb(var(--shadow-color) / 0.32);
+    --shadow-md: 0 4px 14px -2px rgb(var(--shadow-color) / 0.44), 0 2px 6px -2px rgb(var(--shadow-color) / 0.32);
+    --shadow-lg: 0 20px 48px -12px rgb(var(--shadow-color) / 0.6), 0 6px 14px -4px rgb(var(--shadow-color) / 0.4);
+
+    --canvas-dot: var(--n-700);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: var(--n-950);
+  --bg-canvas: var(--n-900);
+  --surface: var(--n-850);
+  --surface-raised: var(--n-800);
+  --surface-sunken: var(--n-950);
+  --surface-hover: var(--n-800);
+  --border: var(--n-700);
+  --border-strong: var(--n-600);
+
+  --fg: var(--n-50);
+  --fg-muted: var(--n-300);
+  --fg-subtle: var(--n-500);
+  --fg-on-accent: #04222b;
+  --fg-on-dark-fill: #f4f2f0;
+
+  --accent-soft: #103240;
+
+  --status-free-soft: #10331f;
+  --status-free-fg: #6fdba0;
+
+  --status-reserved-soft: #3a2c0c;
+  --status-reserved-fg: #f0c565;
+
+  --status-occupied-soft: #3d1519;
+  --status-occupied-fg: #f5a0a9;
+
+  --danger-soft: #3d1516;
+
+  --shadow-color: 0 0 0;
+  --shadow-sm: 0 1px 2px rgb(var(--shadow-color) / 0.32);
+  --shadow-md: 0 4px 14px -2px rgb(var(--shadow-color) / 0.44), 0 2px 6px -2px rgb(var(--shadow-color) / 0.32);
+  --shadow-lg: 0 20px 48px -12px rgb(var(--shadow-color) / 0.6), 0 6px 14px -4px rgb(var(--shadow-color) / 0.4);
+
+  --canvas-dot: var(--n-700);
+}
