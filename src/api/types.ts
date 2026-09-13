@@ -30,6 +30,57 @@ export type EstadoComandaItem = "pendiente" | "en_preparacion" | "servido" | "ca
 
 export type DestinoPreparacion = "cocina" | "barra" | "ninguno";
 
+export type MetodoPago =
+  | "efectivo_usd"
+  | "efectivo_bs"
+  | "pago_movil"
+  | "transferencia"
+  | "punto"
+  | "binance"
+  | "otro";
+
+export type Moneda = "USD" | "BS";
+
+export type FuenteTasa = "bcv" | "manual" | "binance";
+
+/**
+ * OJO: `monto` viaja como **number**, no como string. Es la única cifra
+ * monetaria del contrato que lo hace — el backend valida `@IsPositive()` sobre
+ * un number y rechaza el Decimal-as-string con 400.
+ */
+export interface PagoInput {
+  metodo: MetodoPago;
+  moneda: Moneda;
+  monto: number;
+  /** Obligatoria para `pago_movil` y `transferencia` (conciliación bancaria). */
+  referencia?: string;
+}
+
+export interface ComandaPago {
+  id: string;
+  metodo: MetodoPago;
+  moneda: Moneda;
+  monto: string;
+  montoUsd: string;
+  referencia?: string;
+  recibidoEn: string;
+}
+
+export interface CobrarComandaInput {
+  propina?: number;
+  descuento?: number;
+  /** La suma en USD debe cuadrar con el total de la comanda. */
+  pagos: PagoInput[];
+}
+
+export interface TasaCambio {
+  id: string;
+  fecha: string;
+  /** Bs por USD, decimal-as-string. */
+  valor: string;
+  fuente: FuenteTasa;
+}
+
 export type FormaMesa = "redonda" | "cuadrada" | "rectangular" | "barra";
 
 /**
@@ -229,10 +280,15 @@ export interface Comanda {
   clienteNombre?: string;
   comensales: number;
   estado: EstadoComanda;
+  /** Número visible del día, único por (restaurante, fecha operativa). */
+  numeroDia?: number;
   abiertaEn: string;
   cerradaEn?: string;
   items: ComandaItem[];
+  /** Sólo viene con el detalle (`GET /comandas/:id`) y al cobrar. */
+  pagos?: ComandaPago[];
   subtotal: string;
+  propina?: string;
   total: string;
 }
 
@@ -247,6 +303,8 @@ export interface ReporteDia {
   fecha: string;
   totalVentasUsd: string;
   numeroComandas: number;
+  comensales: number;
+  propinasUsd: string;
 }
 
 export type OrdenReporteProducto = "cantidad" | "ingreso";
@@ -349,9 +407,22 @@ export interface ApiClient {
     estado: EstadoComandaItem,
   ): Promise<ComandaItem>;
   removeComandaItem(comandaId: string, itemId: string, motivo: string): Promise<void>;
-  pedirCuenta(comandaId: string): Promise<Comanda>;
-  cobrarComanda(comandaId: string): Promise<Comanda>;
+  cobrarComanda(comandaId: string, input: CobrarComandaInput): Promise<Comanda>;
   anularComanda(comandaId: string, motivo: string): Promise<Comanda>;
+  /**
+   * Comandas cobradas de un día operativo, con su detalle.
+   *
+   * Devuelve `null` cuando el backend no expone el listado — hoy es el caso:
+   * `CONTRACT.md` sólo define `GET /comandas/activas` y `GET /comandas/:id`,
+   * no hay forma de pedir el histórico. Las pantallas deben distinguir "no hay
+   * comandas cobradas" de "el backend no sabe contestar esto".
+   */
+  listComandasCobradas(fecha: string): Promise<Comanda[] | null>;
+
+  // --- Tasa de cambio ---
+  /** `null` si el restaurante todavía no registró ninguna. */
+  getTasaVigente(): Promise<TasaCambio | null>;
+  registrarTasa(valor: number, fuente: FuenteTasa): Promise<TasaCambio>;
 
   // --- Reservaciones ---
   listReservaciones(): Promise<Reservacion[]>;
@@ -364,5 +435,14 @@ export interface ApiClient {
 
   // --- Reportes ---
   getReporteDia(fecha: string): Promise<ReporteDia>;
-  getReporteProductos(orden: OrdenReporteProducto, limite?: number): Promise<ProductoVendido[]>;
+  /**
+   * `fecha` es el día operativo a consultar. No es opcional de verdad contra el
+   * backend real: sin rango de fechas devuelve una lista vacía aunque haya
+   * ventas. Se deja opcional sólo por compatibilidad del mock.
+   */
+  getReporteProductos(
+    orden: OrdenReporteProducto,
+    limite?: number,
+    fecha?: string,
+  ): Promise<ProductoVendido[]>;
 }

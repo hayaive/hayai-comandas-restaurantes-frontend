@@ -5,6 +5,8 @@ import type {
   Categoria,
   Comanda,
   ComandaItem,
+  ComandaPago,
+  CobrarComandaInput,
   CreateComandaInput,
   CreatePlantillaInput,
   CreatePlantillaMesaInput,
@@ -12,6 +14,7 @@ import type {
   CreateReservacionInput,
   EstadoComandaItem,
   EstadoMesa,
+  FuenteTasa,
   Mesa,
   MesaEstado,
   OrdenReporteProducto,
@@ -23,6 +26,7 @@ import type {
   ReporteDia,
   Reservacion,
   Salon,
+  TasaCambio,
   UpdateMesaInput,
   UpdatePlantillaInput,
   UpdatePlantillaMesaInput,
@@ -156,12 +160,15 @@ interface ComandaDetalleResponse {
   mesaId: string | null;
   comensales: number;
   estado: Comanda["estado"];
+  numeroDia?: number;
   abiertaEn: string;
   cerradaEn?: string | null;
   reservacionId?: string | null;
   subtotal: string;
+  propina?: string;
   total: string;
   items?: RawComandaItem[];
+  pagos?: ComandaPago[];
   mesa?: { etiqueta: string } | null;
 }
 
@@ -198,11 +205,57 @@ function toComanda(raw: ComandaDetalleResponse, mesaEtiquetaFallback = ""): Coma
     reservacionId: raw.reservacionId ?? undefined,
     comensales: raw.comensales,
     estado: raw.estado,
+    numeroDia: raw.numeroDia,
     abiertaEn: raw.abiertaEn,
     cerradaEn: raw.cerradaEn ?? undefined,
     items: (raw.items ?? []).map(toComandaItem),
+    pagos: raw.pagos,
+    propina: raw.propina,
     subtotal: raw.subtotal,
     total: raw.total,
+  };
+}
+
+interface VentaDiaRow {
+  comandas?: number;
+  comensales?: number;
+  total_usd?: string;
+  ventas_usd?: string;
+  propinas_usd?: string;
+}
+
+function toReporteDia(fecha: string, row: VentaDiaRow | null): ReporteDia {
+  return {
+    fecha,
+    totalVentasUsd: row?.total_usd ?? row?.ventas_usd ?? "0",
+    numeroComandas: Number(row?.comandas ?? 0),
+    comensales: Number(row?.comensales ?? 0),
+    propinasUsd: row?.propinas_usd ?? "0",
+  };
+}
+
+/**
+ * Fila de `v_producto_vendido_dia`. El nombre del producto viene en
+ * `producto_nombre`, no en `nombre` — verificado contra el backend real. Se
+ * aceptan las dos grafías por si el backend llega a normalizar a camelCase.
+ */
+interface ProductoVendidoRow {
+  producto_id?: string;
+  productoId?: string;
+  producto_nombre?: string;
+  nombre?: string;
+  cantidad: string | number;
+  ingreso_usd?: string;
+  ingresoUsd?: string;
+}
+
+function toProductoVendido(row: ProductoVendidoRow): ProductoVendido {
+  const nombre = row.producto_nombre ?? row.nombre ?? "Producto sin nombre";
+  return {
+    productoId: row.producto_id ?? row.productoId ?? nombre,
+    nombre,
+    cantidad: Number(row.cantidad),
+    ingresoUsd: row.ingreso_usd ?? row.ingresoUsd ?? "0",
   };
 }
 
@@ -342,17 +395,15 @@ export const httpApi: ApiClient = {
       method: "DELETE",
       ...json({ motivo }),
     }),
-  pedirCuenta: async (comandaId) =>
-    toComanda(
-      await request<ComandaDetalleResponse>(`/comandas/${comandaId}/cuenta`, { method: "POST" }),
-    ),
-  cobrarComanda: async (comandaId) =>
-    toComanda(
-      await request<ComandaDetalleResponse>(`/comandas/${comandaId}/cobrar`, {
-        method: "POST",
-        ...json({ pagos: [] }),
-      }),
-    ),
+  cobrarComanda: async (comandaId, input: CobrarComandaInput) => {
+    const cobrada = await request<ComandaDetalleResponse>(`/comandas/${comandaId}/cobrar`, {
+      method: "POST",
+      ...json(input),
+    });
+    // La respuesta del cobro no embebe la mesa ni los ítems: se relee el
+    // detalle para poder archivarla completa en el histórico de Ventas.
+    return toComanda(await request<ComandaDetalleResponse>(`/comandas/${comandaId}`), cobrada.mesa?.etiqueta ?? "");
+  },
   anularComanda: async (comandaId, motivo) =>
     toComanda(
       await request<ComandaDetalleResponse>(`/comandas/${comandaId}/anular`, {
@@ -360,6 +411,28 @@ export const httpApi: ApiClient = {
         ...json({ motivo }),
       }),
     ),
+  listComandasCobradas: async () => {
+    // El backend no expone el histórico: `CONTRACT.md` sólo define
+    // `/comandas/activas` y `/comandas/:id`. Probado contra el servidor real:
+    // `GET /comandas`, `?estado=cobrada` y `/comandas/cobradas` dan 404/422.
+    // Se devuelve `null` (no `[]`) para que Ventas pueda decir la verdad en vez
+    // de fingir que hoy no se cobró nada.
+    return null;
+  },
+
+  // --- Tasa de cambio ---
+  getTasaVigente: async () => {
+    try {
+      return await request<TasaCambio>("/tasa/vigente");
+    } catch (error) {
+      // 400 "No hay ninguna tasa de cambio registrada todavía" es un estado
+      // normal del primer día, no un fallo.
+      if (error instanceof ApiError && (error.status === 400 || error.status === 404)) return null;
+      throw error;
+    }
+  },
+  registrarTasa: (valor, fuente: FuenteTasa) =>
+    request<TasaCambio>("/tasa", { method: "POST", ...json({ valor, fuente }) }),
 
   // --- Reservaciones ---
   listReservaciones: async () =>
@@ -406,10 +479,23 @@ export const httpApi: ApiClient = {
     ),
 
   // --- Reportes ---
+  // `/reportes/dia` y `/reportes/productos` también devuelven filas crudas de
+  // vista (`v_venta_dia`, `v_producto_vendido_dia`) en snake_case. El shape
+  // documentado `{ fecha, totalVentasUsd, numeroComandas }` no existe: lo que
+  // llega es `{ porTurno, total: { comandas, comensales, total_usd, ... } }`.
   getReporteDia: async (fecha) => {
-    const data = await request<{ total: ReporteDia }>(`/reportes/dia?fecha=${fecha}`);
-    return data.total;
+    const data = await request<{ total: VentaDiaRow | null }>(`/reportes/dia?fecha=${fecha}`);
+    return toReporteDia(fecha, data.total);
   },
-  getReporteProductos: (orden: OrdenReporteProducto, limite = 10) =>
-    request<ProductoVendido[]>(`/reportes/productos?orden=${orden}&limite=${limite}`),
+  getReporteProductos: async (orden: OrdenReporteProducto, limite = 10, fecha) => {
+    // `desde`/`hasta` NO son opcionales en la práctica: sin ellos el backend
+    // devuelve [] aunque el día tenga ventas. Verificado contra el real.
+    const params = new URLSearchParams({ orden, limite: String(limite) });
+    if (fecha) {
+      params.set("desde", fecha);
+      params.set("hasta", fecha);
+    }
+    const rows = await request<ProductoVendidoRow[]>(`/reportes/productos?${params.toString()}`);
+    return rows.map(toProductoVendido);
+  },
 };

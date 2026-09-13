@@ -4,6 +4,7 @@ import type {
   Categoria,
   Comanda,
   ComandaItem,
+  CobrarComandaInput,
   CreateComandaInput,
   CreatePlantillaInput,
   CreatePlantillaMesaInput,
@@ -12,6 +13,7 @@ import type {
   EstadoComandaItem,
   EstadoMesa,
   FormaMesa,
+  FuenteTasa,
   Mesa,
   MesaEstado,
   OrdenReporteProducto,
@@ -21,6 +23,7 @@ import type {
   ProductoVendido,
   Reservacion,
   Salon,
+  TasaCambio,
   UpdateMesaInput,
   UpdatePlantillaInput,
   UpdatePlantillaMesaInput,
@@ -138,6 +141,18 @@ function withMesa(row: PlantillaMesa): PlantillaMesa {
 function nextMockId(prefix: string): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
 }
+
+/**
+ * Tasa del día. El backend real la exige para cobrar (congela `tasaValor` y
+ * `totalBs` en la comanda), así que el mock arranca con una registrada para
+ * que el modo demo pueda cerrar cuentas sin configurar nada.
+ */
+let tasaVigente: TasaCambio | null = {
+  id: "tasa-demo",
+  fecha: new Date().toISOString().slice(0, 10),
+  valor: "40.00",
+  fuente: "manual",
+};
 
 // ---------------------------------------------------------------------------
 // Seed: menú
@@ -275,6 +290,24 @@ let comandasCobradasHoy: Comanda[] = [
   { id: "cmd-h5", mesaId: "t13", mesaEtiqueta: "M-13", comensales: 2, estado: "cobrada", abiertaEn: todayAt(18, 20), cerradaEn: todayAt(19, 15), items: [buildItem("p-3", 1, "servido"), buildItem("p-7", 2, "servido"), buildItem("p-10", 2, "servido")], subtotal: "0", total: "0" },
 ];
 comandasCobradasHoy.forEach(recomputeTotals);
+// Los pagos se arman después de recalcular totales: la suma tiene que cuadrar
+// con el total, igual que exige el backend (vista `v_comanda_descuadre`).
+comandasCobradasHoy = comandasCobradasHoy.map((comanda, index) => ({
+  ...comanda,
+  numeroDia: index + 1,
+  propina: "0.00",
+  pagos: [
+    {
+      id: uid("pag"),
+      metodo: index % 2 === 0 ? ("efectivo_usd" as const) : ("pago_movil" as const),
+      moneda: "USD" as const,
+      monto: comanda.total,
+      montoUsd: comanda.total,
+      referencia: index % 2 === 0 ? undefined : `00${index}45678`,
+      recibidoEn: comanda.cerradaEn ?? comanda.abiertaEn,
+    },
+  ],
+}));
 
 // ---------------------------------------------------------------------------
 // Seed: reservaciones de hoy
@@ -768,25 +801,73 @@ export const mockApi: ApiClient = {
     return delay(undefined);
   },
 
-  async pedirCuenta(comandaId: string) {
+  async cobrarComanda(comandaId: string, input: CobrarComandaInput) {
     const idx = comandas.findIndex((c) => c.id === comandaId);
     if (idx === -1) throw new ApiError("La comanda no existe", 404);
-    const next: Comanda = { ...comandas[idx], estado: "por_cobrar" };
-    comandas = [...comandas.slice(0, idx), next, ...comandas.slice(idx + 1)];
-    return delay(next);
-  },
-
-  async cobrarComanda(comandaId: string) {
-    const idx = comandas.findIndex((c) => c.id === comandaId);
-    if (idx === -1) throw new ApiError("La comanda no existe", 404);
+    const tasa = tasaVigente;
+    if (!tasa) {
+      // Misma precondición que el backend real: cobrar congela la tasa del día,
+      // así que sin tasa registrada no se puede cerrar una comanda.
+      throw new ApiError("No hay una tasa de cambio registrada; regístrala antes de cobrar", 400);
+    }
+    const current = comandas[idx];
+    const aCobrar = Number(current.total) + (input.propina ?? 0) - (input.descuento ?? 0);
+    const recibidoUsd = input.pagos.reduce(
+      (sum, p) => sum + (p.moneda === "BS" ? p.monto / Number(tasa.valor) : p.monto),
+      0,
+    );
+    if (input.pagos.length === 0 || Math.abs(recibidoUsd - aCobrar) > 0.009) {
+      throw new ApiError(
+        `Los pagos (${money(recibidoUsd)}) no cuadran con el total a cobrar (${money(aCobrar)})`,
+        422,
+      );
+    }
     const comanda: Comanda = {
-      ...comandas[idx],
+      ...current,
       estado: "cobrada",
       cerradaEn: new Date().toISOString(),
+      propina: money(input.propina ?? 0),
+      total: money(aCobrar),
+      pagos: input.pagos.map((p) => ({
+        id: uid("pag"),
+        metodo: p.metodo,
+        moneda: p.moneda,
+        monto: money(p.monto),
+        montoUsd: money(p.moneda === "BS" ? p.monto / Number(tasa.valor) : p.monto),
+        referencia: p.referencia,
+        recibidoEn: new Date().toISOString(),
+      })),
     };
     comandas = comandas.filter((c) => c.id !== comandaId);
     comandasCobradasHoy = [...comandasCobradasHoy, comanda];
     return delay(comanda);
+  },
+
+  async listComandasCobradas(fecha: string) {
+    const dia = fecha.slice(0, 10);
+    return delay(
+      comandasCobradasHoy
+        .filter((c) => (c.cerradaEn ?? c.abiertaEn).slice(0, 10) === dia)
+        .sort((a, b) => (b.cerradaEn ?? b.abiertaEn).localeCompare(a.cerradaEn ?? a.abiertaEn)),
+    );
+  },
+
+  // --- Tasa de cambio ---------------------------------------------------
+  async getTasaVigente() {
+    return delay(tasaVigente);
+  },
+
+  async registrarTasa(valor: number, fuente: FuenteTasa) {
+    if (!Number.isFinite(valor) || valor <= 0) {
+      throw new ApiError("La tasa debe ser un número mayor a cero", 422);
+    }
+    tasaVigente = {
+      id: uid("tasa"),
+      fecha: new Date().toISOString().slice(0, 10),
+      valor: valor.toFixed(2),
+      fuente,
+    };
+    return delay(tasaVigente);
   },
 
   async anularComanda(comandaId: string, motivo: string) {
@@ -903,7 +984,6 @@ export const mockApi: ApiClient = {
 
   // --- Reportes -------------------------------------------------------
   async getReporteDia(fecha: string) {
-    void fecha;
     const totalVentasUsd = money(
       comandasCobradasHoy.reduce((sum, c) => sum + Number(c.total), 0),
     );
@@ -911,12 +991,16 @@ export const mockApi: ApiClient = {
       fecha,
       totalVentasUsd,
       numeroComandas: comandasCobradasHoy.length,
+      comensales: comandasCobradasHoy.reduce((sum, c) => sum + c.comensales, 0),
+      propinasUsd: money(comandasCobradasHoy.reduce((sum, c) => sum + Number(c.propina ?? 0), 0)),
     });
   },
 
-  async getReporteProductos(orden: OrdenReporteProducto, limite = 10) {
+  async getReporteProductos(orden: OrdenReporteProducto, limite = 10, fecha?: string) {
+    const dia = fecha?.slice(0, 10);
     const byProduct = new Map<string, ProductoVendido>();
     for (const comanda of comandasCobradasHoy) {
+      if (dia && (comanda.cerradaEn ?? comanda.abiertaEn).slice(0, 10) !== dia) continue;
       for (const item of comanda.items) {
         if (item.estado === "cancelado") continue;
         const existing = byProduct.get(item.productoId);
