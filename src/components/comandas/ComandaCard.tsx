@@ -4,21 +4,26 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { IconButton } from "@/components/ui/IconButton";
+import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { cn } from "@/lib/cn";
+import { api, ApiError } from "@/api";
 import type { Comanda, EstadoComandaItem } from "@/api";
 import { COMANDA_ESTADO_META, COMANDA_ITEM_META, COMANDA_ITEM_ORDER } from "@/lib/comandaMeta";
 import { formatTime, formatUsd } from "@/lib/format";
-import { useComandaStore } from "@/lib/useComandaStore";
+import { TasaRequeridaError, useComandaStore } from "@/lib/useComandaStore";
 import { AddItemModal } from "./AddItemModal";
 
 export function ComandaCard({ comanda }: { comanda: Comanda }) {
   const [addOpen, setAddOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  /** Se abre sólo si el backend rechaza el cobro por falta de tasa del día. */
+  const [tasaPrompt, setTasaPrompt] = useState<string | null>(null);
+  const [tasaValor, setTasaValor] = useState("");
   const addItem = useComandaStore((s) => s.addItem);
   const setItemEstado = useComandaStore((s) => s.setItemEstado);
   const removeItem = useComandaStore((s) => s.removeItem);
-  const pedirCuenta = useComandaStore((s) => s.pedirCuenta);
   const cobrarYLiberar = useComandaStore((s) => s.cobrarYLiberar);
 
   const activeItems = comanda.items.filter((item) => item.estado !== "cancelado");
@@ -26,17 +31,36 @@ export function ComandaCard({ comanda }: { comanda: Comanda }) {
 
   async function handleCobrar() {
     setBusy(true);
+    setError(null);
     try {
       await cobrarYLiberar(comanda.id);
+    } catch (err) {
+      if (err instanceof TasaRequeridaError) {
+        setTasaPrompt(err.message);
+      } else {
+        setError(err instanceof ApiError ? err.message : "No se pudo cobrar la comanda");
+      }
     } finally {
       setBusy(false);
     }
   }
 
-  async function handlePedirCuenta() {
+  /** Registra la tasa del día y reintenta el cobro en el mismo gesto. */
+  async function handleRegistrarTasaYCobrar() {
+    const valor = Number(tasaValor);
+    if (!Number.isFinite(valor) || valor <= 0) {
+      setError("La tasa debe ser un número mayor a cero");
+      return;
+    }
     setBusy(true);
+    setError(null);
     try {
-      await pedirCuenta(comanda.id);
+      await api.registrarTasa(valor, "manual");
+      setTasaPrompt(null);
+      setTasaValor("");
+      await cobrarYLiberar(comanda.id);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No se pudo registrar la tasa");
     } finally {
       setBusy(false);
     }
@@ -106,23 +130,47 @@ export function ComandaCard({ comanda }: { comanda: Comanda }) {
           <span className="font-mono text-[16px] font-semibold text-fg">{formatUsd(comanda.total)}</span>
         </div>
 
+        {tasaPrompt && (
+          <div className="flex flex-col gap-2 rounded-[var(--radius-sm)] border border-status-reserved bg-status-reserved-soft px-3 py-2.5">
+            <p className="text-[12px] text-status-reserved-fg">
+              {tasaPrompt} Es el cambio del día en Bs por dólar; queda congelado en cada comanda
+              que cobres.
+            </p>
+            <div className="flex items-end gap-2">
+              <Input
+                label="Tasa (Bs por USD)"
+                type="number"
+                min={0}
+                step="0.01"
+                value={tasaValor}
+                onChange={(e) => setTasaValor(e.target.value)}
+                className="flex-1"
+                autoFocus
+              />
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => void handleRegistrarTasaYCobrar()}
+                disabled={busy}
+              >
+                Guardar y cobrar
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <p className="rounded-[var(--radius-sm)] border border-danger/30 bg-danger-soft px-3 py-2 text-[12px] text-danger">
+            {error}
+          </p>
+        )}
+
         <div className="flex flex-wrap gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            className="flex-1"
-            onClick={() => setAddOpen(true)}
-            disabled={comanda.estado === "por_cobrar"}
-          >
+          <Button variant="secondary" size="sm" className="flex-1" onClick={() => setAddOpen(true)}>
             <Plus size={14} /> Agregar ítem
           </Button>
-          {comanda.estado === "abierta" && (
-            <Button variant="secondary" size="sm" onClick={() => void handlePedirCuenta()} disabled={busy}>
-              Pedir cuenta
-            </Button>
-          )}
           <Button variant="primary" size="sm" onClick={() => void handleCobrar()} disabled={busy}>
-            <Receipt size={14} /> Cobrar y cerrar
+            <Receipt size={14} /> {busy ? "Cobrando…" : "Cobrar y cerrar"}
           </Button>
         </div>
       </CardBody>

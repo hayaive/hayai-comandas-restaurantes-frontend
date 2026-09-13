@@ -15,12 +15,39 @@ import { useFloorPlanStore } from "./useFloorPlanStore";
  * lo que el servidor realmente tiene.
  */
 
+/**
+ * El backend rechaza el cobro mientras el restaurante no tenga registrada la
+ * tasa del día: cobrar congela `tasaValor`/`totalBs` en la comanda, así que sin
+ * tasa no hay cierre posible. No es un fallo técnico sino un paso operativo que
+ * falta, y por eso se distingue del resto de errores: la UI lo resuelve
+ * pidiendo la tasa, no mostrando un mensaje rojo.
+ */
+export class TasaRequeridaError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TasaRequeridaError";
+  }
+}
+
+function esFaltaDeTasa(error: unknown): boolean {
+  return error instanceof ApiError && /tasa de cambio/i.test(error.message);
+}
+
 interface ComandaState {
   comandas: Comanda[];
+  /** Comandas ya cobradas del día operativo — alimentan el histórico de Ventas. */
+  cobradasHoy: Comanda[];
+  /**
+   * `false` cuando el backend no sabe listar el histórico y lo único que se ve
+   * son los cobros hechos en esta sesión. Ventas lo dice explícitamente en vez
+   * de hacer pasar una lista incompleta por el histórico del día.
+   */
+  historicoCompleto: boolean;
   status: "idle" | "loading" | "ready" | "error";
   error: string | null;
 
   load: () => Promise<void>;
+  loadCobradas: (fecha: string) => Promise<void>;
   ensureComandaForTable: (mesaId: string, mesaEtiqueta: string, clienteNombre?: string) => Promise<void>;
   releaseComandaForTable: (mesaId: string) => Promise<void>;
   /** Registers a comanda already created server-side (e.g. by a reservation check-in), without calling the API again. */
@@ -28,7 +55,10 @@ interface ComandaState {
   addItem: (comandaId: string, productoId: string, cantidad: number, nota?: string) => Promise<void>;
   setItemEstado: (comandaId: string, itemId: string, estado: EstadoComandaItem) => Promise<void>;
   removeItem: (comandaId: string, itemId: string, motivo: string) => Promise<void>;
-  pedirCuenta: (comandaId: string) => Promise<void>;
+  /**
+   * Cobra la comanda completa y libera la mesa. Lanza `TasaRequeridaError` si
+   * falta la tasa del día, para que la tarjeta pueda pedirla y reintentar.
+   */
   cobrarYLiberar: (comandaId: string) => Promise<void>;
 }
 
@@ -42,6 +72,8 @@ const creationLocks = new Set<string>();
 
 export const useComandaStore = create<ComandaState>((set, get) => ({
   comandas: [],
+  cobradasHoy: [],
+  historicoCompleto: true,
   status: "idle",
   error: null,
 
@@ -53,6 +85,17 @@ export const useComandaStore = create<ComandaState>((set, get) => ({
     } catch (error) {
       set({ status: "error", error: messageOf(error) });
     }
+  },
+
+  loadCobradas: async (fecha) => {
+    const delBackend = await api.listComandasCobradas(fecha);
+    if (delBackend === null) {
+      // Sin endpoint de histórico: se conserva lo cobrado en esta sesión.
+      set({ historicoCompleto: false });
+      return;
+    }
+    // El backend manda la verdad completa; lo de la sesión ya viene incluido.
+    set({ cobradasHoy: delBackend, historicoCompleto: true });
   },
 
   ensureComandaForTable: async (mesaId, mesaEtiqueta, clienteNombre) => {
@@ -128,16 +171,29 @@ export const useComandaStore = create<ComandaState>((set, get) => ({
     });
   },
 
-  pedirCuenta: async (comandaId) => {
-    const updated = await api.pedirCuenta(comandaId);
-    set({ comandas: get().comandas.map((c) => (c.id === comandaId ? updated : c)) });
-  },
-
   cobrarYLiberar: async (comandaId) => {
     const comanda = get().comandas.find((c) => c.id === comandaId);
     if (!comanda) return;
-    await api.cobrarComanda(comandaId);
-    set({ comandas: get().comandas.filter((c) => c.id !== comandaId) });
+
+    // Un solo pago en efectivo USD por el total: es el caso normal y lo que
+    // significa el botón "Cobrar y cerrar". Un cobro mixto o en Bs necesita
+    // elegir método, y eso es una pantalla de caja que todavía no existe.
+    const total = Number(comanda.total);
+    let cobrada: Comanda;
+    try {
+      cobrada = await api.cobrarComanda(comandaId, {
+        pagos: [{ metodo: "efectivo_usd", moneda: "USD", monto: total }],
+      });
+    } catch (error) {
+      if (esFaltaDeTasa(error)) throw new TasaRequeridaError(messageOf(error));
+      throw error;
+    }
+
+    set({
+      comandas: get().comandas.filter((c) => c.id !== comandaId),
+      // La comanda cobrada sale del panel y pasa al histórico del día.
+      cobradasHoy: [cobrada, ...get().cobradasHoy.filter((c) => c.id !== cobrada.id)],
+    });
     // Optimista primero (la UI no debe esperar al round-trip), reconciliación después.
     useFloorPlanStore.getState().setStatus(comanda.mesaId, "free");
     void useFloorPlanStore.getState().refreshPlano();
