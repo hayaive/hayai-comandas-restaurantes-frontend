@@ -6,7 +6,6 @@ import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { StatTile } from "@/components/ui/StatTile";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { PageHero } from "@/components/ui/PageHero";
 import { PageBody, Section, StaggerGrid } from "@/components/ui/Section";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { ComandaHistorialRow } from "@/components/ventas/ComandaHistorialRow";
@@ -73,25 +72,6 @@ export function VentasPage() {
       />
 
       <PageBody>
-        <PageHero
-          tone="fresh"
-          eyebrow="Cierre del día"
-          title="Cómo va el turno"
-          description="Todas las cifras de arriba vienen del reporte del día completo del backend, no de lo que esta sesión alcanzó a ver."
-          stats={
-            totales
-              ? [
-                  { label: "Vendido", value: formatUsd(totales.totalVentasUsd) },
-                  { label: "Comandas", value: totales.numeroComandas },
-                  {
-                    label: "Ticket prom.",
-                    value: ticketPromedio === null ? "—" : formatUsd(ticketPromedio),
-                  },
-                ]
-              : undefined
-          }
-        />
-
         {status === "loading" && !totales && (
           <p className="py-10 text-center text-sm text-fg-muted">Cargando reporte del día…</p>
         )}

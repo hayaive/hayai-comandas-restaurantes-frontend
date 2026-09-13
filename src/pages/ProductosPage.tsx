@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { IconButton } from "@/components/ui/IconButton";
 import { Switch } from "@/components/ui/Switch";
-import { PageHero } from "@/components/ui/PageHero";
 import { PageBody, Section } from "@/components/ui/Section";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useProductStore } from "@/lib/useProductStore";
@@ -57,8 +56,6 @@ export function ProductosPage() {
     [activos, categoria],
   );
 
-  const disponibles = useMemo(() => activos.filter((p) => p.disponible).length, [activos]);
-
   function openCreate() {
     setEditing(null);
     setFormOpen(true);
@@ -82,18 +79,6 @@ export function ProductosPage() {
       />
 
       <PageBody>
-        <PageHero
-          tone="warm"
-          eyebrow="Catálogo"
-          title="El menú de la casa"
-          description="Todo lo que el mesero puede agregar a una comanda vive aquí. Apaga la disponibilidad de un plato para sacarlo del servicio sin borrarlo del catálogo."
-          stats={[
-            { label: "Productos", value: activos.length },
-            { label: "Disponibles", value: disponibles },
-            { label: "Categorías", value: categorias.length },
-          ]}
-        />
-
         {status === "loading" && productos.length === 0 && (
           <p className="py-10 text-center text-sm text-fg-muted">Cargando catálogo…</p>
         )}

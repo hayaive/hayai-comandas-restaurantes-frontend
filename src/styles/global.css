@@ -189,24 +189,11 @@
 }
 
 @layer components {
-  /* --- Hero banner gradients -------------------------------------------
-     The reference opens each of its tabs with a full-width gradient banner in
-     a different family, which is most of what gives that dashboard its sense
-     of place — you know which section you are in before you read the title.
-     Ported here as five named classes so no screen carries a raw hex, and so
-     the set stays finite (a sixth gradient is a design decision, not an
-     inline improvisation).
-
-     Screen assignment:
-       brand -> Mesas / login / brand surfaces   fresh -> Ventas
-       royal -> Comandas                         cool  -> Reservaciones, Check-in, Escanear
-       warm  -> Mesero, Productos
-     Every stop is dark enough that white text clears 4.5:1 even at the 80%
-     opacity the hero's description and stat labels use — measured, not
-     assumed. An earlier pass used Tailwind's -600 stops like the reference
-     does; at 80% opacity those measured 3.8-4.0:1, so the whole set moved one
-     step deeper. They read richer for it. Do not lighten them without
-     re-running the contrast check. */
+  /* --- Brand gradient ----------------------------------------------------
+     Used by the mobile nav's active-tab glow and the "gradient" IconTile
+     variant. The per-page hero banners that used to carry the other four
+     gradient tones (royal/warm/fresh/cool) were removed — brand is the only
+     one still consumed. */
   .hero-brand {
     background-image: linear-gradient(
       to right,
@@ -214,18 +201,6 @@
       var(--grad-brand-via),
       var(--grad-brand-to)
     );
-  }
-  .hero-royal {
-    background-image: linear-gradient(to right, #7e22ce, #6d28d9, #4338ca);
-  }
-  .hero-warm {
-    background-image: linear-gradient(to right, #9d174d, #991b1b, #9a3412);
-  }
-  .hero-fresh {
-    background-image: linear-gradient(to right, #166534, #065f46, #115e59);
-  }
-  .hero-cool {
-    background-image: linear-gradient(to right, #115e59, #155e75, #1e40af);
   }
 
   /* --- Ambient background field ----------------------------------------

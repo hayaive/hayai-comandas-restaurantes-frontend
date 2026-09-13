@@ -15,7 +15,6 @@ import { Button } from "@/components/ui/Button";
 import { IconButton } from "@/components/ui/IconButton";
 import { IconTile } from "@/components/ui/IconTile";
 import { Input } from "@/components/ui/Input";
-import { PageHero } from "@/components/ui/PageHero";
 import { PageBody, Section } from "@/components/ui/Section";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { ProductThumbnail } from "@/components/productos/ProductThumbnail";
@@ -110,14 +109,6 @@ export function MeseroPage() {
     () => cart.reduce((sum, line) => sum + Number(line.precio) * line.cantidad, 0),
     [cart],
   );
-  const cartUnidades = useMemo(
-    () => cart.reduce((sum, line) => sum + line.cantidad, 0),
-    [cart],
-  );
-  const mesasLibres = useMemo(
-    () => sortedTables.filter((t) => t.status === "free").length,
-    [sortedTables],
-  );
 
   function selectTable(table: RestaurantTable) {
     setSelectedTableId(table.id);
@@ -211,17 +202,6 @@ export function MeseroPage() {
       />
 
       <PageBody>
-        <PageHero
-          tone="warm"
-          eyebrow={activeTemplate.name}
-          title="Tomar un pedido"
-          description="Elige la mesa, busca los productos y envía. Si la mesa estaba libre, se marca como ocupada y se le abre su comanda automáticamente."
-          stats={[
-            { label: "Mesas libres", value: mesasLibres },
-            { label: "En el pedido", value: cartUnidades },
-          ]}
-        />
-
         <Section>
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
             <div className="flex flex-col gap-5">

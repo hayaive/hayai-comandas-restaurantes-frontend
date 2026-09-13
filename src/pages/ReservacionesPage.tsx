@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { CalendarCheck, Plus, QrCode } from "lucide-react";
 
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { IconButton } from "@/components/ui/IconButton";
-import { PageHero } from "@/components/ui/PageHero";
 import { PageBody, Section } from "@/components/ui/Section";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useReservationStore, useTodaysReservations } from "@/lib/useReservationStore";
@@ -32,12 +31,6 @@ export function ReservacionesPage() {
 
   const canCancel = (r: Reservacion) => r.estado === "pendiente" || r.estado === "confirmada";
 
-  const resumen = useMemo(() => {
-    const comensales = reservations.reduce((sum, r) => sum + r.personas, 0);
-    const sinMesa = reservations.filter((r) => !r.mesaEtiqueta).length;
-    return { comensales, sinMesa };
-  }, [reservations]);
-
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <PageHeader
@@ -51,18 +44,6 @@ export function ReservacionesPage() {
       />
 
       <PageBody>
-        <PageHero
-          tone="cool"
-          eyebrow="Hoy"
-          title="Quién viene hoy"
-          description="Cada reserva lleva su propio código QR. Compártelo con el cliente para que elija mesa desde su teléfono, o valídalo en la puerta desde Check-in."
-          stats={[
-            { label: "Reservas", value: reservations.length },
-            { label: "Comensales", value: resumen.comensales },
-            { label: "Sin mesa", value: resumen.sinMesa },
-          ]}
-        />
-
         {status === "loading" && reservations.length === 0 && (
           <p className="py-10 text-center text-sm text-fg-muted">Cargando reservaciones…</p>
         )}
