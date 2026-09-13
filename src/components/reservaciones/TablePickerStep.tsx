@@ -1,9 +1,9 @@
-import { Warning } from "@phosphor-icons/react";
 import { FloorPlanCanvas } from "@/components/floor-plan/FloorPlanCanvas";
 import { STATUS_META, STATUS_ORDER } from "@/components/floor-plan/statusMeta";
 import { Button } from "@/components/ui/Button";
 import { useFloorPlanStore } from "@/lib/useFloorPlanStore";
 import type { FloorPlanTemplate, RestaurantTable } from "@/lib/types";
+import { AlertTriangle } from "lucide-react";
 
 interface TablePickerStepProps {
   template: FloorPlanTemplate;
@@ -33,16 +33,16 @@ export function TablePickerStep({ template, onPick }: TablePickerStepProps) {
 
   if (status === "loading" && template.tables.length === 0) {
     return (
-      <p className="py-16 text-center text-[13px] text-fg-muted">Cargando el plano del salón…</p>
+      <p className="py-16 text-center text-sm text-fg-muted">Cargando el plano del salón…</p>
     );
   }
 
   if (status === "error" && template.tables.length === 0) {
     return (
       <div className="flex flex-col items-center gap-3 py-12 text-center">
-        <Warning size={24} className="text-danger" weight="duotone" />
-        <p className="text-[13px] text-fg-muted">{error ?? "No se pudo cargar el plano."}</p>
-        <Button variant="secondary" size="sm" onClick={() => void load()}>
+        <AlertTriangle size={24} className="text-danger" />
+        <p className="text-sm text-fg-muted">{error ?? "No se pudo cargar el plano."}</p>
+        <Button size="sm" onClick={() => void load()}>
           Reintentar
         </Button>
       </div>
@@ -53,7 +53,7 @@ export function TablePickerStep({ template, onPick }: TablePickerStepProps) {
 
   if (template.tables.length === 0) {
     return (
-      <p className="py-16 text-center text-[13px] text-fg-muted">
+      <p className="py-16 text-center text-sm text-fg-muted">
         El salón todavía no tiene mesas dibujadas. Agrégalas desde la pantalla de Mesas.
       </p>
     );
@@ -62,10 +62,10 @@ export function TablePickerStep({ template, onPick }: TablePickerStepProps) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[13px] text-fg-muted">
+        <p className="text-sm text-fg-muted">
           Toca una mesa libre en <span className="font-medium text-fg">{template.name}</span>.
         </p>
-        <ul className="flex items-center gap-3 font-mono text-[11px] text-fg-muted">
+        <ul className="flex items-center gap-3 font-mono text-[11px] tabular-nums text-fg-muted">
           {STATUS_ORDER.map((tableStatus) => (
             <li key={tableStatus} className="flex items-center gap-1.5">
               <span className={`h-2 w-2 rounded-full ${STATUS_META[tableStatus].dotClass}`} />
@@ -75,7 +75,7 @@ export function TablePickerStep({ template, onPick }: TablePickerStepProps) {
         </ul>
       </div>
 
-      <div className="flex h-[min(46dvh,380px)] overflow-hidden rounded-[var(--radius-md)] border border-border">
+      <div className="flex h-[min(46dvh,380px)] overflow-hidden rounded-[var(--radius-lg)] border border-border">
         <FloorPlanCanvas
           tables={template.tables}
           selectedTableId={null}

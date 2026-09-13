@@ -18,23 +18,37 @@ import {
  * browser's `title` bubble — `title` renders in the OS chrome with the OS
  * font, which is the cheapest visual tell that a UI was assembled rather than
  * designed, and it never appears for keyboard or touch users at all.
+ *
+ * Redesign notes:
+ * - `default` is now **borderless**, matching the reference's `ghost`
+ *   icon buttons in its top bar. A bordered square next to a 24px card reads
+ *   as a leftover form control. `outline` keeps the old bordered look for the
+ *   places that genuinely need a visible affordance (table row actions).
+ * - `active` (the `active` *prop*, not a variant) is the client-mandated
+ *   brown fill for a toggle that is currently on. It applies to every
+ *   variant through `compoundVariants` so no call site has to know which
+ *   brown to use.
+ * - `nav` and `footer` are deprecated aliases of `default`; the surfaces they
+ *   were tuned for were retired with the coffee palette. See `tokens.css`.
  */
-const iconButtonVariants = cva([...buttonBase, "border"], {
+const iconButtonVariants = cva(buttonBase, {
   variants: {
     variant: {
-      default:
-        "border-input bg-surface-raised text-fg-muted shadow-[var(--shadow-token-sm)] hover:border-border-strong hover:bg-surface-hover hover:text-fg",
+      default: "text-fg-muted hover:bg-surface-hover hover:text-fg",
+      outline:
+        "border border-input bg-surface-raised text-fg-muted hover:border-border-strong hover:bg-surface-hover hover:text-fg",
       accent:
-        "border-transparent bg-primary text-primary-foreground shadow-[var(--shadow-token-sm)] hover:bg-accent-strong",
+        "bg-primary text-primary-foreground shadow-[var(--shadow-token-sm)] hover:bg-accent-strong",
       danger:
-        "border-danger/35 bg-danger-soft text-danger hover:bg-destructive hover:text-destructive-foreground focus-visible:ring-destructive/35",
-      nav: "border-transparent text-nav-fg-muted hover:bg-nav-bg-hover hover:text-nav-fg",
-      footer:
-        "border-transparent text-footer-fg-muted hover:bg-footer-bg-hover hover:text-footer-fg focus-visible:ring-footer-accent/55",
+        "border border-danger/35 bg-danger-soft text-danger hover:bg-destructive hover:text-destructive-foreground focus-visible:ring-destructive/35",
+      /** @deprecated Alias of `default`; the kraft rail no longer exists. */
+      nav: "text-fg-muted hover:bg-surface-hover hover:text-fg",
+      /** @deprecated Alias of `default`; the black footer no longer exists. */
+      footer: "text-fg-muted hover:bg-surface-hover hover:text-fg",
     },
     size: {
-      sm: "size-8",
-      md: "size-9",
+      sm: "size-9",
+      md: "size-10",
     },
     /** Pressed/selected state — a toggle that is currently on. */
     active: {
@@ -43,20 +57,28 @@ const iconButtonVariants = cva([...buttonBase, "border"], {
     },
   },
   compoundVariants: [
+    // CLIENT OVERRIDE: every "this control is currently on" state is brown
+    // with white glyph, regardless of the variant it started from.
     {
+      active: true,
       variant: "default",
-      active: true,
-      className: "border-accent bg-accent-soft text-accent hover:bg-accent-soft",
+      className: "bg-active text-active-fg hover:bg-active-hover hover:text-active-fg",
     },
     {
+      active: true,
+      variant: "outline",
+      className:
+        "border-transparent bg-active text-active-fg hover:bg-active-hover hover:text-active-fg",
+    },
+    {
+      active: true,
       variant: "nav",
-      active: true,
-      className: "bg-accent-soft text-accent",
+      className: "bg-active text-active-fg hover:bg-active-hover hover:text-active-fg",
     },
     {
-      variant: "footer",
       active: true,
-      className: "bg-footer-bg-hover text-footer-accent",
+      variant: "footer",
+      className: "bg-active text-active-fg hover:bg-active-hover hover:text-active-fg",
     },
   ],
   defaultVariants: {

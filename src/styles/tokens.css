@@ -1,39 +1,68 @@
 /*
   Design tokens — Hayai Comandas
-  ------------------------------------------------------------
-  Direction: "specialty coffee house" operational dashboard.
-  Warm cream/kraft/espresso neutrals carry the interface; one
-  burnt-terracotta brand accent (`--accent`) is reserved for
-  selection/primary actions, kept deliberately separate from the
-  three semantic table states (moss-green free / caramel-gold
-  reserved / wine-red occupied) so they never collide.
+  ============================================================
+  Direction: "soft neutral console".
 
-  Theme strategy: CSS custom properties, swapped by
-  [data-theme] or system preference. Light palette lives on
-  bare :root; dark redefines under the media guard AND the
-  explicit [data-theme="dark"] attribute so a manual toggle
-  always wins. Never add a color only inside a media query.
+  This file was rewritten (Sep 2026) when the product owner asked for a full
+  visual clone of the `custom-globe-component` reference dashboard. The
+  previous "specialty coffee house" system (cream / kraft / espresso neutrals
+  + burnt terracotta) was retired wholesale at the client's request. What
+  replaced it:
+
+    * a PURE NEUTRAL GRAY canvas — the reference's identity lives in geometry
+      and motion, not in a tinted palette, so the neutrals are chromatically
+      silent (shadcn's `0 0%` ramp) and every drop of color is deliberate;
+    * ONE brand family — violet -> indigo -> blue — used for primary actions
+      and for the gradient hero banners that open each screen;
+    * VERY LARGE RADII (12 / 16 / 24px, i.e. Tailwind xl / 2xl / 3xl). This is
+      the single strongest visual tell of the reference and the reason every
+      surface in this app reads as one system. Because 100% of the codebase
+      writes `rounded-[var(--radius-*)]` rather than a literal Tailwind class,
+      the four values below re-shape the entire product.
+
+  THE ONE OVERRIDE — non-negotiable, client-mandated:
+  ---------------------------------------------------
+  Everywhere the reference paints an ACTIVE / SELECTED state (active nav item,
+  active tab, chosen filter, pressed toggle, selected table, current template
+  pill), this product paints BROWN with WHITE text instead. That is what
+  `--active-bg` / `--active-fg` below are for. Never hardcode the brown hex in
+  a component — reach for `bg-active` / `text-active-fg`, or the
+  `is-active` recipe, so the rule stays enforceable from one place.
+
+  Contrast, measured (not estimated):
+    light  #6f4a2e on #ffffff text  -> 7.79:1  (AAA)
+    dark   #7d5436 on #ffffff text  -> 6.58:1  (AA, comfortably)
+  Both clear the 4.5:1 floor the brief set.
+
+  Theme strategy is unchanged and still correct: light lives on bare `:root`,
+  dark is redefined under BOTH the `prefers-color-scheme` media guard and the
+  explicit `[data-theme="dark"]` attribute, so a manual toggle always wins.
+  No color is ever defined only inside a media query.
 */
 
 :root {
   color-scheme: light;
 
-  /* --- Neutral scale (warm coffee: cream -> kraft -> espresso) --- */
+  /* --- Neutral scale — chromatically silent gray -------------------------
+     Deliberately untinted. The old scale was warm (kraft/espresso); mixing a
+     warm gray with the cool violet/indigo brand below is the classic "two
+     grays fighting" failure, so the neutrals sit at zero saturation and let
+     the brand be the only hue on screen. */
   --n-0: #ffffff;
-  --n-25: #fdfaf5;
-  --n-50: #f6eee0;
-  --n-100: #ecdec4;
-  --n-150: #ddc9a3;
-  --n-200: #cbb086;
-  --n-300: #b08e63;
-  --n-400: #916f4a;
-  --n-500: #755638;
-  --n-600: #5c4229;
-  --n-700: #45301e;
-  --n-800: #302014;
-  --n-850: #24170e;
-  --n-900: #1a100a;
-  --n-950: #100a06;
+  --n-25: #fafafa;
+  --n-50: #f5f5f5;
+  --n-100: #ededed;
+  --n-150: #e5e5e5;
+  --n-200: #d4d4d4;
+  --n-300: #b4b4b4;
+  --n-400: #909090;
+  --n-500: #6b6b6b;
+  --n-600: #525252;
+  --n-700: #3f3f3f;
+  --n-800: #262626;
+  --n-850: #1c1c1c;
+  --n-900: #141414;
+  --n-950: #0a0a0a;
 
   /* --- Surfaces --- */
   --bg: var(--n-25);
@@ -46,112 +75,151 @@
   --border-strong: var(--n-200);
 
   /* --- Text --- */
-  --fg: var(--n-900);
-  --fg-muted: var(--n-500);
-  --fg-subtle: var(--n-400);
-  --fg-on-accent: var(--n-25);
-  --fg-on-dark-fill: var(--n-50);
+  --fg: var(--n-950);
+  /* Both secondary text steps clear 4.5:1 on the *sunken* surface, which is
+     the tightest background either of them actually lands on — `--fg-subtle`
+     draws input placeholders and field hints, exactly the text a user squints
+     at. An earlier pass had `--fg-subtle` at #909090, which measured 2.93:1
+     there; it now measures 4.89:1, and the two steps stay visibly distinct. */
+  --fg-muted: var(--n-600);
+  --fg-subtle: var(--n-500);
+  --fg-on-accent: #ffffff;
+  --fg-on-dark-fill: var(--n-25);
 
-  /* --- Brand accent: burnt terracotta --- */
-  --accent-50: #fbeee0;
-  --accent-200: #edbd8f;
-  --accent-400: #c97a3f;
-  --accent-500: #a8501f;
-  --accent-600: #8a3f18;
-  --accent-700: #6b3012;
+  /* --- Brand: violet -> indigo -> blue ----------------------------------
+     Taken straight from the reference's signature hero gradient
+     (`from-violet-600 via-indigo-600 to-blue-600`). `--accent` is the middle
+     stop, indigo-600, so a flat brand surface always reads as the centre of
+     the gradient family rather than one of its edges. */
+  --accent-50: #eef2ff;
+  --accent-200: #c7d2fe;
+  --accent-400: #818cf8;
+  --accent-500: #4f46e5;
+  --accent-600: #4338ca;
+  --accent-700: #3730a3;
   --accent: var(--accent-500);
   --accent-strong: var(--accent-600);
   --accent-soft: var(--accent-50);
 
-  /* --- Semantic table states --- */
-  --status-free: #5b8a4f;
-  --status-free-soft: #e6efe0;
-  --status-free-fg: #2f4a24;
+  /* Gradient stops, as tokens rather than per-component hexes. The hero
+     banner utilities in `global.css` are the only consumers. */
+  --grad-brand-from: #6d28d9;
+  --grad-brand-via: #4338ca;
+  --grad-brand-to: #1d4ed8;
 
-  --status-reserved: #c98a2e;
-  --status-reserved-soft: #f7ecd6;
-  --status-reserved-fg: #6b4712;
+  /* ----------------------------------------------------------------------
+     ACTIVE / SELECTED — the client override. Read the header note.
+     Brown fill, white text, everywhere the reference would have used its own
+     active color. `--active-soft` is the low-emphasis companion for places
+     that need a brown *tint* rather than a brown *fill* (a selected row's
+     background behind dark text, say).
+     -------------------------------------------------------------------- */
+  --active-bg: #6f4a2e;
+  --active-bg-hover: #5c3c25;
+  --active-fg: #ffffff;
+  --active-soft: #f4ece5;
+  --active-soft-fg: #5c3c25;
+  --active-border: #6f4a2e;
 
-  --status-occupied: #a8354a;
-  --status-occupied-soft: #f6e2e6;
-  --status-occupied-fg: #7a1f30;
+  /* --- Semantic table states ---
+     Re-hued onto the new system's color family (emerald / amber / rose) but
+     the rule that made them exist is unchanged: they never borrow the brand
+     hue, and they never borrow the brown, so "this table is occupied" can
+     never be misread as "this table is selected". */
+  --status-free: #059669;
+  --status-free-soft: #ecfdf5;
+  --status-free-fg: #065f46;
 
-  /* --- Feedback --- */
-  --danger: #c23b34;
-  --danger-soft: #f8e1de;
+  --status-reserved: #d97706;
+  --status-reserved-soft: #fffbeb;
+  --status-reserved-fg: #92400e;
 
-  /* --- Shadows (tinted warm espresso, not pure black) --- */
-  --shadow-color: 48 32 20;
-  --shadow-sm: 0 1px 2px rgb(var(--shadow-color) / 0.08);
-  --shadow-md: 0 4px 12px -2px rgb(var(--shadow-color) / 0.12), 0 2px 4px -2px rgb(var(--shadow-color) / 0.08);
-  --shadow-lg: 0 16px 40px -12px rgb(var(--shadow-color) / 0.22), 0 4px 10px -4px rgb(var(--shadow-color) / 0.12);
+  --status-occupied: #e11d48;
+  --status-occupied-soft: #fff1f2;
+  --status-occupied-fg: #9f1239;
 
-  /* --- Radius scale (locked system-wide) --- */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
+  /* --- Feedback ---
+     `--danger` is the TEXT hue: it has to clear 4.5:1 on `--danger-soft`.
+     `--destructive` (role block below) is the FILL hue: it has to hold white
+     text. They were one value until a contrast audit measured `#dc2626` at
+     4.41:1 as text on its own soft background, just under the floor. */
+  --danger: #b91c1c;
+  --danger-soft: #fef2f2;
+  /* Hover for a filled destructive button. Not `brightness-110`: brightening
+     a red fill lowers its contrast with the white label it carries. */
+  --destructive-strong: #991b1b;
+
+  /* --- Shadows ---
+     Neutral and soft, matching the reference's quiet elevation. The large
+     step is intentionally wide and low-opacity: on a 24px radius a tight
+     shadow reads as a dark rim rather than as lift. */
+  --shadow-color: 0 0 0;
+  --shadow-sm: 0 1px 2px rgb(var(--shadow-color) / 0.05);
+  --shadow-md: 0 4px 12px -2px rgb(var(--shadow-color) / 0.08), 0 2px 4px -2px rgb(var(--shadow-color) / 0.05);
+  --shadow-lg: 0 24px 48px -12px rgb(var(--shadow-color) / 0.18), 0 8px 16px -8px rgb(var(--shadow-color) / 0.08);
+
+  /* --- Radius scale — the reference's geometry -------------------------
+     sm  12px = Tailwind rounded-xl   (badges, chips, inner elements)
+     md  16px = Tailwind rounded-2xl  (buttons, inputs, nav items, icon tiles)
+     lg  24px = Tailwind rounded-3xl  (cards, panels, modals, hero banners)
+     Changing these four numbers re-shapes the whole product, which is exactly
+     why nothing in `src/` is allowed to write a literal `rounded-2xl`. */
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
   --radius-pill: 999px;
 
   /* --- Canvas grid dot --- */
   --canvas-dot: var(--n-200);
 
   /* --- Modal / sheet scrim ---
-     Warm espresso rather than neutral black: a pure-black veil over a cream
-     interface desaturates the whole palette for as long as it is up. */
-  --overlay: rgb(26 16 10 / 0.55);
+     Now a true neutral: the palette it veils is neutral too, so the warm
+     espresso scrim the old system needed would tint the whole screen for as
+     long as it was up. */
+  --overlay: rgb(10 10 10 / 0.55);
 
-  /* --- Header/rail surface: Sidebar rail body + PageHeader + TasaBar ---
-     Client feedback (Sep 2026): the previous solid espresso-brown chrome
-     (`#593b27` on every header, the sidebar and the mobile tab bar at once)
-     read as "too much brown". Brown now lives as the brand ACCENT
-     (`--accent`, the logo, the black footer's active-state color) instead
-     of as the dominant chrome surface — this rail uses a light warm kraft
-     tone from the neutral scale so it reads as one calm, coffee-tinted
-     backdrop rather than a heavy block. Fixed per client request (brand
-     chrome), so it does NOT change with light/dark content mode. */
-  --nav-bg: var(--n-150);
-  --nav-bg-hover: var(--n-200);
-  --nav-bg-active: var(--n-300);
-  --nav-fg: var(--n-900);
-  --nav-fg-muted: var(--n-600);
-  --nav-fg-subtle: var(--n-500);
-  --nav-border: var(--n-200);
+  /* --- Ambient background wash ---
+     Opacity of the slow radial-gradient field behind the app shell. Kept as a
+     token so the whole effect can be dialled to 0 in one place if a tablet
+     ever struggles with it. */
+  --ambient-opacity: 0.16;
 
-  /* --- Footer surface: Sidebar's bottom utility strip + MobileBottomNav ---
-     Client-requested: "el footer debe ser negro". A warm near-black (not a
-     flat #000) so it still belongs to the coffee neutral family instead of
-     reading like an unrelated dark-mode patch. Fixed like the rail above —
-     does not change with light/dark content mode. */
-  --footer-bg: var(--n-900);
-  --footer-bg-hover: var(--n-850);
-  --footer-fg: var(--n-25);
-  --footer-fg-muted: rgb(253 250 245 / 0.68);
-  --footer-border: rgb(253 250 245 / 0.12);
-  /* Brighter copper for text/icons on the black footer — the light-mode
-     `--accent` (#a8501f) falls under 4.5:1 on `--footer-bg`; reuse the same
-     brightened copper already used for dark surfaces elsewhere in this file. */
-  --footer-accent: #dd8a4a;
+  /* --- RETIRED: the two-tone chrome surfaces -----------------------------
+     Recorded so the removal is not mistaken for an oversight. The previous
+     system gave the sidebar rail a light kraft surface (`--nav-bg`) and the
+     sidebar foot / mobile tab bar a solid black one (`--footer-bg`), both at
+     the client's request ("el footer debe ser negro"), and both deliberately
+     frozen against the light/dark toggle.
+
+     Both were retired together with the coffee identity in the Sep 2026
+     redesign. The reference dashboard draws its entire chrome on one
+     continuous `bg-background` with hairline borders, and a black strip inside
+     an otherwise light minimal sidebar is precisely the "one dark section
+     pasted into a light page" tell this redesign existed to remove. Every
+     `--nav-*` / `--footer-*` token and its Tailwind utility is gone; the
+     chrome now uses `bg-bg` / `bg-surface` / `text-fg-muted` like everything
+     else. If the client ever asks for the black footer back, it belongs as a
+     new explicit surface pair, not as a revival of these aliases. */
 
   /* ---------------------------------------------------------------------
      shadcn/ui role tokens
      ---------------------------------------------------------------------
-     The UI primitives in `src/components/ui` are shadcn/ui components built
-     on Radix. shadcn addresses color by ROLE (`primary`, `muted`, `ring`, …)
-     rather than by our brand names, so this block is the adapter: every
-     shadcn role points at a coffee token that already exists above. No new
-     color is invented here.
+     The primitives in `src/components/ui/primitives` are canonical shadcn
+     components, which address color by ROLE (`primary`, `muted`, `ring`, …).
+     This block is the adapter: every role aliases a token declared above, so
+     the roles follow the light/dark swap for free and are written exactly
+     once.
 
-     Because each role is an alias (`var(--token)`), not a copied value, the
-     roles follow our light/dark swaps automatically — they are declared once,
-     here, and never repeated in the dark blocks below.
+     `--primary` is the indigo brand, NOT the brown. The brown is reserved for
+     active/selected state and has its own `--active-*` family; conflating the
+     two would make every primary button look like a permanently-active
+     control, which is the opposite of what the client asked for.
 
-     `--primary` is the burnt terracotta: this is the client-mandated "marrón
-     como primary". We deliberately do NOT define shadcn's `--accent` role: in
-     shadcn `accent` means "subtle hover tint", but in this codebase `--accent`
-     is the BRAND hue and the whole app already relies on that meaning. Our
-     ported components write `surface-hover`/`fg` wherever upstream shadcn
-     writes `accent`/`accent-foreground`. See
-     `src/components/ui/primitives/README.md`.
+     As before, shadcn's `--accent` role is deliberately NOT aliased: in
+     shadcn `accent` means "subtle hover tint", while here `--accent` is the
+     brand hue and the whole app depends on that meaning. Ported components
+     write `surface-hover`/`fg` where upstream writes `accent`/
+     `accent-foreground`. See `src/components/ui/primitives/README.md`.
      --------------------------------------------------------------------- */
   --background: var(--bg);
   --foreground: var(--fg);
@@ -177,18 +245,25 @@
   --input: var(--border);
   --ring: var(--accent);
 
-  /* Sidebar roles — pointed at the fixed brand chrome tokens so a shadcn
-     `sidebar`/`sheet` dropped in later inherits the kraft rail and the black
-     footer instead of shadcn's default gray. */
-  --sidebar: var(--nav-bg);
-  --sidebar-foreground: var(--nav-fg);
-  --sidebar-primary: var(--accent);
-  --sidebar-primary-foreground: var(--fg-on-accent);
-  --sidebar-accent: var(--nav-bg-hover);
-  --sidebar-accent-foreground: var(--nav-fg);
-  --sidebar-border: var(--nav-border);
+  /* Sidebar roles. `sidebar-primary` is the ACTIVE brown, not the brand —
+     a shadcn `sidebar` dropped in later must honour the client override
+     without anyone having to remember it. */
+  --sidebar: var(--bg);
+  --sidebar-foreground: var(--fg);
+  --sidebar-primary: var(--active-bg);
+  --sidebar-primary-foreground: var(--active-fg);
+  --sidebar-accent: var(--surface-hover);
+  --sidebar-accent-foreground: var(--fg);
+  --sidebar-border: var(--border);
   --sidebar-ring: var(--accent);
 }
+
+/* ---------------------------------------------------------------------------
+   Dark theme.
+   Declared twice on purpose — once behind the system preference (scoped so an
+   explicit light choice wins) and once behind the explicit attribute. Keep the
+   two blocks identical; they are a pair.
+   ------------------------------------------------------------------------- */
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -196,47 +271,74 @@
 
     --bg: var(--n-950);
     --bg-canvas: var(--n-900);
-    --surface: var(--n-850);
-    --surface-raised: var(--n-800);
-    --surface-sunken: var(--n-950);
-    --surface-hover: var(--n-700);
-    --border: var(--n-700);
-    --border-strong: var(--n-600);
+    --surface: var(--n-900);
+    --surface-raised: var(--n-900);
+    --surface-sunken: var(--n-850);
+    --surface-hover: var(--n-800);
+    --border: var(--n-800);
+    --border-strong: var(--n-700);
 
-    --fg: var(--n-50);
-    /* Kept in step with the `[data-theme="dark"]` block below — see the note
-       there on why dark secondary text moved up one rung. */
-    --fg-muted: var(--n-200);
-    --fg-subtle: var(--n-300);
-    --fg-on-accent: var(--n-900);
-    --fg-on-dark-fill: var(--n-50);
+    --fg: var(--n-25);
+    --fg-muted: var(--n-300);
+    --fg-subtle: var(--n-400);
+    --fg-on-accent: #ffffff;
+    --fg-on-dark-fill: var(--n-25);
 
-    /* Brighter copper in dark mode: the light-mode terracotta reads
-       too dark for text-on-dark-soft (nav active state, focus ring
-       glow) at 4.5:1, so dark mode uses a lighter step of the same
-       hue rather than the exact light-mode value. */
-    --accent: #dd8a4a;
-    --accent-strong: #c4753a;
-    --accent-soft: #3a2413;
+    /* Two indigos in dark mode, because one token cannot do both jobs.
+       `--accent` is read as TEXT on a near-black surface, so it must be light
+       (6.2:1 at #818cf8). `--primary` is a FILL carrying white text, so it must
+       stay dark (6.3:1 at #4f46e5). They were a single value until a contrast
+       audit measured white-on-#6366f1 at 4.47:1 — just under the floor.
+       `--accent-strong` is primary's hover and also carries white text, so it
+       lightens only as far as 5.4:1. */
+    --accent-400: #a5b4fc;
+    --accent: #818cf8;
+    --accent-strong: #5b54e8;
+    --accent-soft: #1e1b4b;
+    --primary: #4f46e5;
 
-    --status-free-soft: #23301c;
-    --status-free-fg: #a3cf8f;
+    /* The hero gradients carry white text in BOTH themes, so they do not
+       lighten in dark mode — same deep stops as light. */
+    --grad-brand-from: #6d28d9;
+    --grad-brand-via: #4338ca;
+    --grad-brand-to: #1d4ed8;
 
-    --status-reserved-soft: #3d2c10;
-    --status-reserved-fg: #f0c565;
+    /* Brown, one step lighter so it still reads as brown (not black) against
+       a near-black canvas while keeping white text at 6.58:1. */
+    --active-bg: #7d5436;
+    --active-bg-hover: #8e6140;
+    --active-fg: #ffffff;
+    --active-soft: #2a1d13;
+    --active-soft-fg: #d8b394;
+    --active-border: #8e6140;
 
-    --status-occupied-soft: #3a1620;
-    --status-occupied-fg: #f0a0b3;
+    --status-free: #10b981;
+    --status-free-soft: #052e23;
+    --status-free-fg: #6ee7b7;
 
-    --danger-soft: #3d1815;
+    --status-reserved: #f59e0b;
+    --status-reserved-soft: #3a2508;
+    --status-reserved-fg: #fcd34d;
 
-    --shadow-color: 16 10 6;
-    --shadow-sm: 0 1px 2px rgb(var(--shadow-color) / 0.32);
-    --shadow-md: 0 4px 14px -2px rgb(var(--shadow-color) / 0.44), 0 2px 6px -2px rgb(var(--shadow-color) / 0.32);
-    --shadow-lg: 0 20px 48px -12px rgb(var(--shadow-color) / 0.6), 0 6px 14px -4px rgb(var(--shadow-color) / 0.4);
+    --status-occupied: #f43f5e;
+    --status-occupied-soft: #3d0d1a;
+    --status-occupied-fg: #fda4af;
+
+    --danger: #f87171;
+    --danger-soft: #3a1010;
+    /* Fill hue, dark enough to hold white text (4.8:1). `--danger` above is a
+       text hue and far too light to sit under a white label. */
+    --destructive: #dc2626;
+    --destructive-strong: #b91c1c;
+
+    --shadow-color: 0 0 0;
+    --shadow-sm: 0 1px 2px rgb(var(--shadow-color) / 0.4);
+    --shadow-md: 0 4px 14px -2px rgb(var(--shadow-color) / 0.5), 0 2px 6px -2px rgb(var(--shadow-color) / 0.4);
+    --shadow-lg: 0 24px 56px -12px rgb(var(--shadow-color) / 0.7), 0 8px 18px -8px rgb(var(--shadow-color) / 0.5);
 
     --canvas-dot: var(--n-700);
-    --overlay: rgb(8 5 3 / 0.7);
+    --overlay: rgb(0 0 0 / 0.72);
+    --ambient-opacity: 0.24;
   }
 }
 
@@ -245,44 +347,70 @@
 
   --bg: var(--n-950);
   --bg-canvas: var(--n-900);
-  --surface: var(--n-850);
-  --surface-raised: var(--n-800);
-  --surface-sunken: var(--n-950);
-  --surface-hover: var(--n-700);
-  --border: var(--n-700);
-  --border-strong: var(--n-600);
+  --surface: var(--n-900);
+  --surface-raised: var(--n-900);
+  --surface-sunken: var(--n-850);
+  --surface-hover: var(--n-800);
+  --border: var(--n-800);
+  --border-strong: var(--n-700);
 
-  --fg: var(--n-50);
-  /* Dark secondary text was too dark to read. `--fg-subtle` at `--n-500`
-     measures ~2.0:1 on `--surface`, and that token draws the input
-     placeholder and the hint line under a field — exactly the text a user
-     squints at. Both steps move up one rung on the same warm scale:
-     `--fg-muted` now clears 8:1 and `--fg-subtle` 5.6:1 on `--surface`. */
-  --fg-muted: var(--n-200);
-  --fg-subtle: var(--n-300);
-  --fg-on-accent: var(--n-900);
-  --fg-on-dark-fill: var(--n-50);
+  --fg: var(--n-25);
+  --fg-muted: var(--n-300);
+  --fg-subtle: var(--n-400);
+  --fg-on-accent: #ffffff;
+  --fg-on-dark-fill: var(--n-25);
 
-  --accent: #dd8a4a;
-  --accent-strong: #c4753a;
-  --accent-soft: #3a2413;
+  /* Two indigos in dark mode, because one token cannot do both jobs.
+     `--accent` is read as TEXT on a near-black surface, so it must be light
+     (6.2:1 at #818cf8). `--primary` is a FILL carrying white text, so it must
+     stay dark (6.3:1 at #4f46e5). They were a single value until a contrast
+     audit measured white-on-#6366f1 at 4.47:1 — just under the floor.
+     `--accent-strong` is primary's hover and also carries white text, so it
+     lightens only as far as 5.4:1. */
+  --accent-400: #a5b4fc;
+  --accent: #818cf8;
+  --accent-strong: #5b54e8;
+  --accent-soft: #1e1b4b;
+  --primary: #4f46e5;
 
-  --status-free-soft: #23301c;
-  --status-free-fg: #a3cf8f;
+  /* The hero gradients carry white text in BOTH themes, so they do not
+     lighten in dark mode — same deep stops as light. */
+  --grad-brand-from: #6d28d9;
+  --grad-brand-via: #4338ca;
+  --grad-brand-to: #1d4ed8;
 
-  --status-reserved-soft: #3d2c10;
-  --status-reserved-fg: #f0c565;
+  --active-bg: #7d5436;
+  --active-bg-hover: #8e6140;
+  --active-fg: #ffffff;
+  --active-soft: #2a1d13;
+  --active-soft-fg: #d8b394;
+  --active-border: #8e6140;
 
-  --status-occupied-soft: #3a1620;
-  --status-occupied-fg: #f0a0b3;
+  --status-free: #10b981;
+  --status-free-soft: #052e23;
+  --status-free-fg: #6ee7b7;
 
-  --danger-soft: #3d1815;
+  --status-reserved: #f59e0b;
+  --status-reserved-soft: #3a2508;
+  --status-reserved-fg: #fcd34d;
 
-  --shadow-color: 16 10 6;
-  --shadow-sm: 0 1px 2px rgb(var(--shadow-color) / 0.32);
-  --shadow-md: 0 4px 14px -2px rgb(var(--shadow-color) / 0.44), 0 2px 6px -2px rgb(var(--shadow-color) / 0.32);
-  --shadow-lg: 0 20px 48px -12px rgb(var(--shadow-color) / 0.6), 0 6px 14px -4px rgb(var(--shadow-color) / 0.4);
+  --status-occupied: #f43f5e;
+  --status-occupied-soft: #3d0d1a;
+  --status-occupied-fg: #fda4af;
+
+  --danger: #f87171;
+  --danger-soft: #3a1010;
+  /* Fill hue, dark enough to hold white text (4.8:1). `--danger` above is a
+     text hue and far too light to sit under a white label. */
+  --destructive: #dc2626;
+  --destructive-strong: #b91c1c;
+
+  --shadow-color: 0 0 0;
+  --shadow-sm: 0 1px 2px rgb(var(--shadow-color) / 0.4);
+  --shadow-md: 0 4px 14px -2px rgb(var(--shadow-color) / 0.5), 0 2px 6px -2px rgb(var(--shadow-color) / 0.4);
+  --shadow-lg: 0 24px 56px -12px rgb(var(--shadow-color) / 0.7), 0 8px 18px -8px rgb(var(--shadow-color) / 0.5);
 
   --canvas-dot: var(--n-700);
-  --overlay: rgb(8 5 3 / 0.7);
+  --overlay: rgb(0 0 0 / 0.72);
+  --ambient-opacity: 0.24;
 }

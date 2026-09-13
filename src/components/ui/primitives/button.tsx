@@ -8,22 +8,27 @@ import { cn } from "@/lib/utils";
  * Canonical shadcn/ui button.
  *
  * Two deviations from upstream, both deliberate:
- * - hover darkens with the real `--accent-strong` terracotta instead of
- *   `bg-primary/90`. The `/90` form is `color-mix(…, transparent)`, so on our
- *   cream background it makes the button *lighter* on hover, which reads as
+ * - hover darkens with the real `--accent-strong` indigo instead of
+ *   `bg-primary/90`. The `/90` form is `color-mix(…, transparent)`, so on a
+ *   light background it makes the button *lighter* on hover, which reads as
  *   the button losing weight under the cursor.
- * - shadows use the warm espresso-tinted `--shadow-token-*` scale rather than
- *   Tailwind's neutral black `shadow-xs`.
+ * - shadows use the `--shadow-token-*` scale rather than Tailwind's
+ *   `shadow-xs`, so elevation stays in step with the theme.
  */
 /**
  * The shared button base. Exported (a small deviation from upstream shadcn,
  * which inlines it) so `ui/Button.tsx` and `ui/IconButton.tsx` can express
- * this project's own variant vocabulary — `primary`/`secondary`/`nav`/
- * `footer` — on exactly the same geometry, focus ring, and transition timing
- * instead of drifting into a second, near-identical base string.
+ * this project's own variant vocabulary on exactly the same geometry, focus
+ * ring and transition timing instead of drifting into a second, near-identical
+ * base string.
+ *
+ * Geometry note: the radius is `--radius-md` (16px), matching the reference's
+ * `rounded-2xl` buttons. At that radius a 36-40px control is visibly softened
+ * without becoming a pill, which is the distinction the reference draws
+ * between a button and a filter chip.
  */
 export const buttonBase = [
-  "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-sm)] text-sm font-medium",
+  "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-md)] text-sm font-medium",
   "transition-[background-color,border-color,color,box-shadow,transform] duration-150 ease-out",
   "outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/45",
   "disabled:pointer-events-none disabled:opacity-45",
@@ -38,7 +43,7 @@ export const buttonVariants = cva(buttonBase, {
       default:
         "bg-primary text-primary-foreground shadow-[var(--shadow-token-sm)] hover:bg-accent-strong",
       destructive:
-        "bg-destructive text-destructive-foreground shadow-[var(--shadow-token-sm)] hover:brightness-110 focus-visible:ring-destructive/35",
+        "bg-destructive text-destructive-foreground shadow-[var(--shadow-token-sm)] hover:bg-destructive-strong focus-visible:ring-destructive/35",
       outline:
         "border border-input bg-surface-raised text-fg shadow-[var(--shadow-token-sm)] hover:bg-surface-hover hover:border-border-strong",
       secondary: "bg-secondary text-secondary-foreground hover:bg-border",
@@ -46,10 +51,10 @@ export const buttonVariants = cva(buttonBase, {
       link: "text-primary underline-offset-4 hover:underline",
     },
     size: {
-      default: "h-9 px-4 py-2 has-[>svg]:px-3",
-      sm: "h-8 gap-1.5 px-3 text-[13px] has-[>svg]:px-2.5",
-      lg: "h-10 px-6 has-[>svg]:px-4",
-      icon: "size-9",
+      default: "h-10 px-4 py-2 has-[>svg]:px-3.5",
+      sm: "h-9 gap-1.5 px-3.5 text-[13px] has-[>svg]:px-3",
+      lg: "h-11 px-6 has-[>svg]:px-5",
+      icon: "size-10",
     },
   },
   defaultVariants: {

@@ -7,30 +7,27 @@
 @import "tw-animate-css";
 @import "./tokens.css";
 
-/* Latin + Latin Extended only — covers Spanish (á é í ó ú ñ ¿ ¡) without
-   shipping the Cyrillic/Greek/Vietnamese subsets this app never uses. */
-@import "@fontsource/inter/latin-400.css";
-@import "@fontsource/inter/latin-ext-400.css";
-@import "@fontsource/inter/latin-500.css";
-@import "@fontsource/inter/latin-ext-500.css";
-@import "@fontsource/inter/latin-600.css";
-@import "@fontsource/inter/latin-ext-600.css";
-@import "@fontsource/inter/latin-700.css";
-@import "@fontsource/inter/latin-ext-700.css";
-@import "@fontsource/jetbrains-mono/latin-500.css";
-@import "@fontsource/jetbrains-mono/latin-ext-500.css";
-@import "@fontsource/jetbrains-mono/latin-600.css";
-@import "@fontsource/jetbrains-mono/latin-ext-600.css";
+/* Geist — the reference dashboard's typeface, self-hosted as a variable font.
+   One file per axis covers 100-900, so the four static Inter weights the old
+   system shipped collapse into a single request and we gain the in-between
+   weights (450, 550) the new type scale uses for optical balance.
+
+   `wght.css` declares every subset behind a `unicode-range`, so a Spanish UI
+   only ever downloads the latin and latin-ext faces — the Cyrillic and
+   Vietnamese files are never fetched. Italics are not imported: nothing in
+   this interface is set in italic. */
+@import "@fontsource-variable/geist/wght.css";
+@import "@fontsource-variable/geist-mono/wght.css";
 
 /*
   Tailwind v4 theme mapping.
-  These generate real utilities (bg-bg, text-fg, bg-accent, ...)
-  whose values are our runtime CSS variables, so a class written
-  once works correctly in both themes without a `dark:` variant.
+  These generate real utilities (bg-bg, text-fg, bg-accent, ...) whose values
+  are our runtime CSS variables, so a class written once works correctly in
+  both themes without a `dark:` variant.
 */
 @theme inline {
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, "SFMono-Regular", Menlo, monospace;
 
   --color-bg: var(--bg);
   --color-bg-canvas: var(--bg-canvas);
@@ -50,6 +47,18 @@
   --color-accent-strong: var(--accent-strong);
   --color-accent-soft: var(--accent-soft);
 
+  /* --- ACTIVE / SELECTED (client override) ----------------------------
+     `bg-active text-active-fg` is THE recipe for any active, selected or
+     currently-chosen control in this product. It is a pair of real Tailwind
+     utilities rather than a composed CSS class on purpose: `cn()` runs every
+     component's classes through `tailwind-merge`, and only real utilities let
+     a call site's own `bg-*` predictably win. See `tokens.css`. */
+  --color-active: var(--active-bg);
+  --color-active-hover: var(--active-bg-hover);
+  --color-active-fg: var(--active-fg);
+  --color-active-soft: var(--active-soft);
+  --color-active-soft-fg: var(--active-soft-fg);
+
   --color-status-free: var(--status-free);
   --color-status-free-soft: var(--status-free-soft);
   --color-status-free-fg: var(--status-free-fg);
@@ -68,10 +77,10 @@
   /* --- shadcn/ui role utilities ---------------------------------------
      Turns the role tokens declared in `tokens.css` into real Tailwind
      utilities (`bg-primary`, `text-muted-foreground`, `ring-ring`, …) so a
-     shadcn component pasted in from upstream renders in the coffee palette
-     with no class rewriting — except for shadcn's `accent` role, which we
-     intentionally do not alias because `--accent`/`bg-accent` already means
-     the brand terracotta here. Substitute `surface-hover`/`fg` for it.
+     shadcn component pasted in from upstream renders in this palette with no
+     class rewriting — except shadcn's `accent` role, which we intentionally
+     do not alias because `--accent`/`bg-accent` already means the brand
+     indigo here. Substitute `surface-hover`/`fg` for it.
      ------------------------------------------------------------------- */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -92,6 +101,7 @@
 
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-strong: var(--destructive-strong);
 
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -104,21 +114,6 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-
-  --color-nav-bg: var(--nav-bg);
-  --color-nav-bg-hover: var(--nav-bg-hover);
-  --color-nav-bg-active: var(--nav-bg-active);
-  --color-nav-fg: var(--nav-fg);
-  --color-nav-fg-muted: var(--nav-fg-muted);
-  --color-nav-fg-subtle: var(--nav-fg-subtle);
-  --color-nav-border: var(--nav-border);
-
-  --color-footer-bg: var(--footer-bg);
-  --color-footer-bg-hover: var(--footer-bg-hover);
-  --color-footer-fg: var(--footer-fg);
-  --color-footer-fg-muted: var(--footer-fg-muted);
-  --color-footer-border: var(--footer-border);
-  --color-footer-accent: var(--footer-accent);
 
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
@@ -144,6 +139,16 @@
   body {
     background-color: var(--bg);
     color: var(--fg);
+  }
+
+  /* Display and section headings get the reference's tight optical tracking.
+     Applied here rather than repeated as `tracking-tight` on every heading,
+     so the rule cannot drift screen to screen. */
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.02em;
+    text-wrap: balance;
   }
 
   ::selection {
@@ -183,6 +188,122 @@
   }
 }
 
+@layer components {
+  /* --- Hero banner gradients -------------------------------------------
+     The reference opens each of its tabs with a full-width gradient banner in
+     a different family, which is most of what gives that dashboard its sense
+     of place — you know which section you are in before you read the title.
+     Ported here as five named classes so no screen carries a raw hex, and so
+     the set stays finite (a sixth gradient is a design decision, not an
+     inline improvisation).
+
+     Screen assignment:
+       brand -> Mesas / login / brand surfaces   fresh -> Ventas
+       royal -> Comandas                         cool  -> Reservaciones, Check-in, Escanear
+       warm  -> Mesero, Productos
+     Every stop is dark enough that white text clears 4.5:1 even at the 80%
+     opacity the hero's description and stat labels use — measured, not
+     assumed. An earlier pass used Tailwind's -600 stops like the reference
+     does; at 80% opacity those measured 3.8-4.0:1, so the whole set moved one
+     step deeper. They read richer for it. Do not lighten them without
+     re-running the contrast check. */
+  .hero-brand {
+    background-image: linear-gradient(
+      to right,
+      var(--grad-brand-from),
+      var(--grad-brand-via),
+      var(--grad-brand-to)
+    );
+  }
+  .hero-royal {
+    background-image: linear-gradient(to right, #7e22ce, #6d28d9, #4338ca);
+  }
+  .hero-warm {
+    background-image: linear-gradient(to right, #9d174d, #991b1b, #9a3412);
+  }
+  .hero-fresh {
+    background-image: linear-gradient(to right, #166534, #065f46, #115e59);
+  }
+  .hero-cool {
+    background-image: linear-gradient(to right, #115e59, #155e75, #1e40af);
+  }
+
+  /* --- Ambient background field ----------------------------------------
+     The reference animates a full-screen `radial-gradient` by interpolating
+     the `background` property itself on a 30s loop. That repaints an entire
+     viewport-sized layer every frame — genuinely expensive, and this app runs
+     on host-stand tablets, so it is reproduced here as two static gradient
+     blobs moved with `transform` instead. Same slow ambient drift, composited
+     on the GPU, zero repaint. `prefers-reduced-motion` freezes it via the
+     global guard at the bottom of this file. */
+  .ambient-field {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    pointer-events: none;
+    opacity: var(--ambient-opacity);
+  }
+  .ambient-field::before,
+  .ambient-field::after {
+    content: "";
+    position: absolute;
+    width: 70vw;
+    height: 70vw;
+    min-width: 480px;
+    min-height: 480px;
+    border-radius: 999px;
+    will-change: transform;
+  }
+  .ambient-field::before {
+    top: -22vw;
+    left: -14vw;
+    background: radial-gradient(
+      circle at center,
+      var(--grad-brand-from) 0%,
+      color-mix(in srgb, var(--grad-brand-via) 55%, transparent) 45%,
+      transparent 70%
+    );
+    animation: ambient-drift-a 46s ease-in-out infinite;
+  }
+  .ambient-field::after {
+    right: -20vw;
+    bottom: -26vw;
+    background: radial-gradient(
+      circle at center,
+      var(--grad-brand-to) 0%,
+      color-mix(in srgb, var(--grad-brand-via) 50%, transparent) 45%,
+      transparent 70%
+    );
+    animation: ambient-drift-b 58s ease-in-out infinite;
+  }
+}
+
+@keyframes ambient-drift-a {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(10%, 8%, 0) scale(1.18);
+  }
+}
+
+@keyframes ambient-drift-b {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1.12);
+  }
+  50% {
+    transform: translate3d(-9%, -7%, 0) scale(1);
+  }
+}
+
+/* CSS-driven motion is neutralised here. Framer Motion animates inline styles
+   rather than CSS animations, so it cannot be caught by this block — it reads
+   the same user preference itself through `useAppMotion()` in
+   `src/lib/useAppMotion.ts`, which is the only place components get their
+   variants from. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

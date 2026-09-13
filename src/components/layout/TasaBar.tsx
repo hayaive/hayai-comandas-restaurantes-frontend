@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowClockwise } from "@phosphor-icons/react";
+import { RefreshCw } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { IconButton } from "@/components/ui/IconButton";
@@ -11,7 +11,8 @@ import type { TasaDivisa } from "@/api";
  * Franja fija con la tasa BCV (USD) y Euro vigentes, visible desde cualquier
  * pantalla de staff — el mesero la necesita todo el tiempo, no sólo al
  * cobrar. Patrón tomado de karelys-pedidos (banda inferior + panel de
- * detalle), sobre la misma superficie clara de rail/header (`--nav-bg`).
+ * detalle). Tras el rediseño vive sobre la misma superficie translúcida que
+ * el resto del chrome, no sobre el kraft del rail anterior.
  */
 export function TasaBar() {
   const vigente = useTasaStore((s) => s.vigente);
@@ -28,31 +29,30 @@ export function TasaBar() {
 
   return (
     <>
-      <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-t border-nav-border bg-nav-bg px-3 py-1.5 sm:px-6">
+      <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-t border-border bg-bg/85 px-3 py-2 backdrop-blur-md sm:px-6">
         <button
           type="button"
           onClick={() => setDetailOpen(true)}
-          className="flex shrink-0 items-center gap-3 rounded-[var(--radius-sm)] px-1.5 py-0.5 text-left transition-colors duration-150 hover:bg-nav-bg-hover"
+          className="flex shrink-0 items-center gap-3 rounded-[var(--radius-sm)] px-2 py-1 text-left transition-colors duration-150 hover:bg-surface-hover"
         >
           <span className="flex items-center gap-1.5 whitespace-nowrap font-mono text-[11px]">
-            <span className="font-semibold text-nav-fg">BCV</span>
-            <span className="text-nav-fg-muted">{formatTasaValor(vigente?.usd?.valor)}</span>
+            <span className="font-semibold text-fg">BCV</span>
+            <span className="text-fg-muted">{formatTasaValor(vigente?.usd?.valor)}</span>
           </span>
-          <span className="h-3 w-px shrink-0 bg-nav-border" aria-hidden="true" />
+          <span className="h-3 w-px shrink-0 bg-border" aria-hidden="true" />
           <span className="flex items-center gap-1.5 whitespace-nowrap font-mono text-[11px]">
-            <span className="font-semibold text-nav-fg">EUR</span>
-            <span className="text-nav-fg-muted">{formatTasaValor(vigente?.eur?.valor)}</span>
+            <span className="font-semibold text-fg">EUR</span>
+            <span className="text-fg-muted">{formatTasaValor(vigente?.eur?.valor)}</span>
           </span>
         </button>
 
-        <span className="ml-auto shrink-0 whitespace-nowrap text-[10.5px] text-nav-fg-muted">
+        <span className="ml-auto shrink-0 whitespace-nowrap text-[10.5px] text-fg-muted">
           {vigente ? `Vigente ${vigente.fecha}` : status === "loading" ? "Cargando tasa…" : ""}
         </span>
 
         <IconButton
-          variant="nav"
           size="sm"
-          icon={<ArrowClockwise size={14} className={refreshing ? "animate-spin" : undefined} />}
+          icon={<RefreshCw size={14} className={refreshing ? "animate-spin" : undefined} />}
           label="Actualizar tasa"
           onClick={() => void actualizar()}
           disabled={refreshing}
@@ -67,7 +67,7 @@ export function TasaBar() {
       >
         <div className="flex flex-col gap-3">
           {error && (
-            <p className="rounded-[var(--radius-sm)] border border-danger/30 bg-danger-soft px-3 py-2 text-[12px] text-danger">
+            <p className="rounded-[var(--radius-md)] border border-danger/30 bg-danger-soft px-3 py-2 text-[12px] text-danger">
               {error}
             </p>
           )}
@@ -80,7 +80,7 @@ export function TasaBar() {
             onClick={() => void actualizar()}
             disabled={refreshing}
           >
-            <ArrowClockwise size={14} className={refreshing ? "animate-spin" : undefined} />
+            <RefreshCw size={14} className={refreshing ? "animate-spin" : undefined} />
             {refreshing ? "Actualizando…" : "Actualizar ahora"}
           </Button>
         </div>
@@ -91,11 +91,11 @@ export function TasaBar() {
 
 function DetalleTasa({ label, tasa }: { label: string; tasa: TasaDivisa | null }) {
   return (
-    <div className="rounded-[var(--radius-sm)] border border-border bg-surface-raised px-3 py-2.5">
+    <div className="rounded-[var(--radius-md)] border border-border bg-surface-raised px-4 py-3">
       <p className="text-[12px] font-medium text-fg-muted">{label}</p>
       {tasa ? (
         <>
-          <p className="font-mono text-[18px] font-semibold text-fg">{formatTasaValor(tasa.valor)}</p>
+          <p className="font-mono text-xl font-semibold tabular-nums text-fg">{formatTasaValor(tasa.valor)}</p>
           <p className="text-[11px] text-fg-subtle">
             Fuente: {tasa.fuente} · Registrada {formatDateTime(tasa.creadaEn)}
           </p>

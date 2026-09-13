@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { DotsThreeCircle, Plus } from "@phosphor-icons/react";
+import { MoreHorizontal, Plus } from "lucide-react";
+
 import { cn } from "@/lib/cn";
 import { navItems } from "./navItems";
 import { MobileMoreSheet } from "./MobileMoreSheet";
@@ -8,9 +9,7 @@ import { MobileMoreSheet } from "./MobileMoreSheet";
 /**
  * Barra de navegación inferior, exclusiva de mobile (`md:hidden`) — sustituye
  * al `Sidebar` angosto de 76px, que en un teléfono se comía espacio
- * horizontal crítico y no es cómodo de alcanzar con el pulgar. Es el
- * "footer" que ve el usuario en mobile, así que usa la superficie negra
- * `--footer-bg` (mismo tratamiento que el pie del Sidebar en desktop).
+ * horizontal crítico y no es cómodo de alcanzar con el pulgar.
  *
  * Máximo 5 opciones visibles, patrón FAB-en-tab-bar:
  *   Mesas · Comandas · [Agregar Orden] · Reservaciones · Más
@@ -27,8 +26,14 @@ import { MobileMoreSheet } from "./MobileMoreSheet";
  * Se renderiza en el flujo normal del layout (no `position: fixed`), igual
  * que `TasaBar` y `BottomToolbar` — así el AppShell reserva su espacio
  * automáticamente dentro del `flex-col` acotado por `h-dvh`, sin necesitar
- * padding-bottom calculado a mano en cada pantalla con scroll, y sin riesgo
- * de taparlas.
+ * padding-bottom calculado a mano en cada pantalla con scroll.
+ *
+ * REDISEÑO: la barra ya no es el bloque negro del sistema anterior; ahora es
+ * la misma superficie translúcida del resto del chrome. La pestaña activa
+ * lleva la píldora MARRÓN con texto blanco (override del cliente), que en una
+ * barra clara se lee muchísimo mejor que el antiguo cambio de color de texto
+ * sobre negro. El FAB conserva el gradiente de marca: es una acción, no un
+ * estado, y por eso deliberadamente NO es marrón.
  */
 
 const FAB_ROUTE = "/mesero";
@@ -54,7 +59,7 @@ export function MobileBottomNav() {
     <>
       <nav
         aria-label="Navegación principal"
-        className="grid shrink-0 grid-cols-5 border-t border-footer-border bg-footer-bg pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-1.5 md:hidden"
+        className="grid shrink-0 grid-cols-5 gap-1 border-t border-border bg-bg/90 px-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 backdrop-blur-md md:hidden"
       >
         <NavTab item={mesasItem} />
         <NavTab item={comandasItem} />
@@ -67,16 +72,18 @@ export function MobileBottomNav() {
             <>
               <span
                 className={cn(
-                  "-mt-7 flex h-14 w-14 items-center justify-center rounded-full text-fg-on-accent shadow-[var(--shadow-token-lg)] ring-4 ring-footer-bg transition-transform duration-150 active:scale-95",
-                  isActive ? "bg-accent-strong" : "bg-accent",
+                  "-mt-7 flex size-14 items-center justify-center rounded-[var(--radius-md)] text-white",
+                  "hero-brand shadow-[var(--shadow-token-lg)] ring-4 ring-bg",
+                  "transition-transform duration-150 active:scale-95",
+                  isActive && "ring-active",
                 )}
               >
-                <Plus size={26} weight="bold" />
+                <Plus size={26} strokeWidth={2.5} />
               </span>
               <span
                 className={cn(
                   "text-[10.5px] font-medium",
-                  isActive ? "text-footer-fg" : "text-footer-fg-muted",
+                  isActive ? "text-fg" : "text-fg-muted",
                 )}
               >
                 {FAB_LABEL}
@@ -93,11 +100,14 @@ export function MobileBottomNav() {
           aria-haspopup="dialog"
           aria-expanded={moreOpen}
           className={cn(
-            "flex flex-col items-center justify-center gap-0.5 px-1 py-1 text-[10.5px] font-medium transition-colors duration-150",
-            isMoreActive ? "text-footer-accent" : "text-footer-fg-muted hover:text-footer-fg",
+            "flex flex-col items-center justify-center gap-1 rounded-[var(--radius-md)] px-1 py-1.5",
+            "text-[10.5px] font-medium transition-colors duration-150",
+            isMoreActive
+              ? "bg-active text-active-fg"
+              : "text-fg-muted hover:bg-surface-hover hover:text-fg",
           )}
         >
-          <DotsThreeCircle size={20} weight={isMoreActive ? "fill" : "duotone"} />
+          <MoreHorizontal size={20} />
           Más
         </button>
       </nav>
@@ -114,17 +124,16 @@ function NavTab({ item }: { item: (typeof navItems)[number] }) {
       to={to}
       className={({ isActive }) =>
         cn(
-          "flex flex-col items-center justify-center gap-0.5 px-1 py-1 text-[10.5px] font-medium transition-colors duration-150",
-          isActive ? "text-footer-accent" : "text-footer-fg-muted hover:text-footer-fg",
+          "flex flex-col items-center justify-center gap-1 rounded-[var(--radius-md)] px-1 py-1.5",
+          "text-[10.5px] font-medium transition-colors duration-150",
+          isActive
+            ? "bg-active text-active-fg"
+            : "text-fg-muted hover:bg-surface-hover hover:text-fg",
         )
       }
     >
-      {({ isActive }) => (
-        <>
-          <Icon size={20} weight={isActive ? "fill" : "duotone"} />
-          {label}
-        </>
-      )}
+      <Icon size={20} />
+      <span className="truncate">{label}</span>
     </NavLink>
   );
 }

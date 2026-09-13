@@ -19,7 +19,9 @@ const Switch = React.forwardRef<
       className={cn(
         "peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-[var(--radius-pill)] border-2 border-transparent p-0",
         "transition-colors duration-150 ease-out outline-none",
-        "data-[state=checked]:bg-primary data-[state=unchecked]:bg-border-strong",
+        // CLIENT OVERRIDE: "on" is an active state, so the track is brown
+        // rather than the brand indigo. See `tokens.css`.
+        "data-[state=checked]:bg-active data-[state=unchecked]:bg-border-strong",
         "focus-visible:ring-[3px] focus-visible:ring-ring/45",
         "disabled:cursor-not-allowed disabled:opacity-50",
         className,
@@ -29,7 +31,7 @@ const Switch = React.forwardRef<
       <SwitchPrimitive.Thumb
         data-slot="switch-thumb"
         className={cn(
-          "pointer-events-none block size-4 rounded-full bg-surface shadow-[var(--shadow-token-sm)] ring-0",
+          "pointer-events-none block size-4 rounded-full bg-white shadow-[var(--shadow-token-sm)] ring-0",
           "transition-transform duration-150 ease-out",
           "data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0",
         )}

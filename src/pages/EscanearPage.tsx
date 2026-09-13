@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import { AlertTriangle, Armchair, Camera, CheckCircle2, QrCode, User } from "lucide-react";
 import QrScanner from "qr-scanner";
-import { Armchair, Camera, CheckCircle, User, Warning } from "@phosphor-icons/react";
 import { Card, CardBody } from "@/components/ui/Card";
+import { IconTile } from "@/components/ui/IconTile";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -140,15 +141,15 @@ export function EscanearPage() {
         subtitle="Valida la reserva de un cliente al llegar, escaneando el QR de su reserva"
       />
 
-      <div className="flex flex-1 items-center justify-center overflow-y-auto px-6 py-6">
+      <div className="flex flex-1 items-center justify-center overflow-y-auto px-4 py-6 sm:px-6">
         <div className="grid w-full max-w-3xl gap-5 md:grid-cols-2">
           <Card className="overflow-hidden">
             <div className="relative aspect-square w-full bg-black">
               <video ref={videoRef} className="h-full w-full object-cover" muted playsInline />
               {cameraStatus !== "ready" && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/85 px-6 text-center text-white">
-                  <Camera size={26} weight="duotone" />
-                  <p className="text-[13px]">
+                  <Camera size={26} />
+                  <p className="text-sm">
                     {cameraStatus === "starting"
                       ? "Activando la cámara…"
                       : (cameraError ?? "No se pudo acceder a la cámara.")}
@@ -157,7 +158,7 @@ export function EscanearPage() {
               )}
             </div>
             <CardBody>
-              <p className="text-[12px] text-fg-subtle">
+              <p className="text-[12px] leading-relaxed text-fg-subtle">
                 Apunta la cámara al código QR de la reserva del cliente. En cuanto detecte uno
                 válido, se busca automáticamente.
               </p>
@@ -165,20 +166,27 @@ export function EscanearPage() {
           </Card>
 
           <Card className="flex flex-col">
-            <CardBody className="flex flex-1 flex-col items-center justify-center gap-3 py-8 text-center">
-              {buscando && <p className="text-[13px] text-fg-muted">Buscando reserva…</p>}
+            <CardBody className="flex flex-1 flex-col items-center justify-center gap-4 py-10 text-center">
+              {buscando && <p className="text-sm text-fg-muted">Buscando reserva…</p>}
 
               {!buscando && !resultado && (
-                <p className="text-[13px] text-fg-muted">
-                  Esperando un código QR — aquí aparecerá el resultado de cada escaneo.
-                </p>
+                <>
+                  <IconTile tone="neutral" size="xl">
+                    <QrCode size={26} />
+                  </IconTile>
+                  <p className="max-w-[30ch] text-sm text-fg-muted">
+                    Esperando un código QR — aquí aparecerá el resultado de cada escaneo.
+                  </p>
+                </>
               )}
 
               {!buscando && resultado?.tipo === "con_mesa" && (
                 <div className="flex flex-col items-center gap-2">
-                  <CheckCircle size={28} weight="fill" className="text-status-free-fg" />
-                  <p className="text-[15px] font-semibold text-fg">{resultado.reservacion.clienteNombre}</p>
-                  <Badge tone="free" className="font-mono text-[15px]">
+                  <IconTile tone="free" size="xl">
+                    <CheckCircle2 size={26} />
+                  </IconTile>
+                  <p className="text-lg font-semibold text-fg">{resultado.reservacion.clienteNombre}</p>
+                  <Badge tone="free" className="font-mono text-base tabular-nums">
                     <Armchair size={14} /> Mesa {resultado.reservacion.mesaEtiqueta}
                   </Badge>
                   <p className="text-[12px] text-fg-subtle">
@@ -190,9 +198,11 @@ export function EscanearPage() {
 
               {!buscando && resultado?.tipo === "sin_mesa" && (
                 <div className="flex flex-col items-center gap-2">
-                  <User size={26} className="text-status-reserved-fg" weight="duotone" />
-                  <p className="text-[14px] font-medium text-fg">{resultado.reservacion.clienteNombre}</p>
-                  <p className="max-w-xs text-[13px] text-status-reserved-fg">
+                  <IconTile tone="reserved" size="xl">
+                    <User size={26} />
+                  </IconTile>
+                  <p className="text-base font-medium text-fg">{resultado.reservacion.clienteNombre}</p>
+                  <p className="max-w-xs text-sm text-status-reserved-fg">
                     Esta reserva todavía no tiene mesa asignada; pide al cliente que elija una desde
                     su enlace.
                   </p>
@@ -201,9 +211,11 @@ export function EscanearPage() {
 
               {!buscando && resultado?.tipo === "inactiva" && (
                 <div className="flex flex-col items-center gap-2">
-                  <Warning size={26} className="text-danger" weight="duotone" />
-                  <p className="text-[14px] font-medium text-fg">{resultado.reservacion.clienteNombre}</p>
-                  <p className="max-w-xs text-[13px] text-danger">
+                  <IconTile tone="danger" size="xl">
+                    <AlertTriangle size={26} />
+                  </IconTile>
+                  <p className="text-base font-medium text-fg">{resultado.reservacion.clienteNombre}</p>
+                  <p className="max-w-xs text-sm text-danger">
                     Esta reserva ya no está activa (
                     {resultado.reservacion.estado === "cancelada" ? "cancelada" : "no se presentó"}
                     ).
@@ -213,8 +225,10 @@ export function EscanearPage() {
 
               {!buscando && resultado?.tipo === "no_encontrada" && (
                 <div className="flex flex-col items-center gap-2">
-                  <Warning size={26} className="text-danger" weight="duotone" />
-                  <p className="text-[14px] font-medium text-fg">Cliente no registrado</p>
+                  <IconTile tone="danger" size="xl">
+                    <AlertTriangle size={26} />
+                  </IconTile>
+                  <p className="text-base font-medium text-fg">Cliente no registrado</p>
                   <p className="max-w-xs text-[12px] text-fg-subtle">
                     Ese código no corresponde a ninguna reserva.
                   </p>
@@ -223,13 +237,15 @@ export function EscanearPage() {
 
               {!buscando && resultado?.tipo === "error" && (
                 <div className="flex flex-col items-center gap-2">
-                  <Warning size={26} className="text-danger" weight="duotone" />
-                  <p className="max-w-xs text-[13px] text-danger">{resultado.mensaje}</p>
+                  <IconTile tone="danger" size="xl">
+                    <AlertTriangle size={26} />
+                  </IconTile>
+                  <p className="max-w-xs text-sm text-danger">{resultado.mensaje}</p>
                 </div>
               )}
 
               {resultado && !buscando && (
-                <Button variant="secondary" size="sm" onClick={handleSiguiente} className="mt-2">
+                <Button onClick={handleSiguiente} className="mt-2">
                   Escanear siguiente cliente
                 </Button>
               )}

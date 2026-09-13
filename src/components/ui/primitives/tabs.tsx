@@ -26,7 +26,11 @@ const TabsList = React.forwardRef<
       ref={ref}
       data-slot="tabs-list"
       className={cn(
-        "inline-flex w-fit items-center gap-1 rounded-[var(--radius-pill)] bg-surface-sunken p-1",
+        // The reference's tab bar: a 16px-radius sunken tray with 4px of
+        // padding, holding 12px-radius triggers. The nested-radius pair is
+        // what makes the selected tab look seated in the tray rather than
+        // floating over it.
+        "inline-flex w-fit items-center gap-1 rounded-[var(--radius-md)] bg-surface-sunken p-1",
         className,
       )}
       {...props}
@@ -43,12 +47,15 @@ const TabsTrigger = React.forwardRef<
       ref={ref}
       data-slot="tabs-trigger"
       className={cn(
-        "inline-flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-[var(--radius-pill)] px-3 py-1 text-[13px] font-medium text-fg-muted",
+        "inline-flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-[var(--radius-sm)] px-3.5 py-1.5 text-[13px] font-medium text-fg-muted",
         "transition-[background-color,color,box-shadow] duration-150 ease-out outline-none",
         "hover:text-fg",
         "focus-visible:ring-[3px] focus-visible:ring-ring/45",
         "disabled:pointer-events-none disabled:opacity-50",
-        "data-[state=active]:bg-surface-raised data-[state=active]:text-fg data-[state=active]:shadow-[var(--shadow-token-sm)]",
+        // CLIENT OVERRIDE: the selected tab is brown with white text, not the
+        // reference's raised white chip. This is the one rule that applies to
+        // every active state in the product — see `tokens.css`.
+        "data-[state=active]:bg-active data-[state=active]:text-active-fg data-[state=active]:shadow-[var(--shadow-token-sm)]",
         "[&_svg]:pointer-events-none [&_svg]:shrink-0",
         className,
       )}

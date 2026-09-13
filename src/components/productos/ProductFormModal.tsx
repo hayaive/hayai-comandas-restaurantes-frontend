@@ -143,7 +143,7 @@ export function ProductFormModal({ open, onClose, producto }: ProductFormModalPr
       title={producto ? "Editar producto" : "Nuevo producto"}
       footer={
         <>
-          <Button variant="secondary" size="sm" onClick={onClose} disabled={submitting}>
+          <Button size="sm" onClick={onClose} disabled={submitting}>
             Cancelar
           </Button>
           <Button variant="primary" size="sm" onClick={() => void handleSubmit()} disabled={submitting}>
@@ -175,18 +175,17 @@ export function ProductFormModal({ open, onClose, producto }: ProductFormModalPr
         </Select>
 
         {newCategoriaOpen && (
-          <div className="flex flex-col gap-2 rounded-[var(--radius-sm)] border border-dashed border-border p-3">
+          <div className="flex flex-col gap-2 rounded-[var(--radius-md)] border border-dashed border-border p-3.5">
             <div className="flex items-end gap-2">
               <Input
                 label="Nueva categoría"
                 value={newCategoriaNombre}
                 onChange={(e) => setNewCategoriaNombre(e.target.value)}
                 placeholder="Ej. Postres"
-                className="flex-1"
+                fieldClassName="flex-1"
                 autoFocus
               />
               <Button
-                variant="secondary"
                 size="sm"
                 onClick={() => void handleCreateCategoria()}
                 disabled={newCategoriaSubmitting}

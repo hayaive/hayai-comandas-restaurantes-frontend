@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { X } from "@phosphor-icons/react";
+import { X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { IconButton } from "./IconButton";
@@ -72,25 +72,24 @@ export function Modal({
           SIZES[size],
         )}
       >
-        <DialogHeader className="flex shrink-0 flex-row items-start justify-between gap-4 border-b border-border px-5 py-4">
+        <DialogHeader className="flex shrink-0 flex-row items-start justify-between gap-4 border-b border-border px-6 py-5">
           <div className="min-w-0 space-y-0.5">
             <DialogTitle>{title}</DialogTitle>
             {description && <DialogDescription>{description}</DialogDescription>}
           </div>
           <IconButton
-            icon={<X size={16} weight="bold" />}
+            icon={<X size={16} />}
             label="Cerrar"
-            variant="nav"
             size="sm"
-            className="-mr-1.5 -mt-1 shrink-0 text-fg-subtle hover:bg-surface-hover hover:text-fg"
+            className="-mr-2 -mt-1.5 shrink-0 text-fg-subtle"
             onClick={onClose}
           />
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">{children}</div>
 
         {footer && (
-          <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border bg-surface-sunken/60 px-5 py-3">
+          <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border bg-surface-sunken/60 px-6 py-4">
             {footer}
           </div>
         )}

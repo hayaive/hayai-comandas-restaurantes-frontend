@@ -1,12 +1,13 @@
 import { useState } from "react";
-import { Plus, Receipt, User, X } from "@phosphor-icons/react";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { Plus, Receipt, User, X } from "lucide-react";
+
+import { CardBody, CardHeader } from "@/components/ui/Card";
+import { MotionCard } from "@/components/ui/MotionCard";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { IconButton } from "@/components/ui/IconButton";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { cn } from "@/lib/cn";
 import { api, ApiError } from "@/api";
 import type { Comanda, EstadoComandaItem } from "@/api";
 import { COMANDA_ESTADO_META, COMANDA_ITEM_META, COMANDA_ITEM_ORDER } from "@/lib/comandaMeta";
@@ -15,6 +16,19 @@ import { TasaRequeridaError, useComandaStore } from "@/lib/useComandaStore";
 import { DualPrice } from "@/components/shared/DualPrice";
 import { AddItemModal } from "./AddItemModal";
 
+/**
+ * One open table's comanda.
+ *
+ * `lift` without `interactive`: the card rises and presses because it sits in
+ * a grid of peers and that motion is what makes the grid feel physical, but it
+ * does not take a pointer cursor or a hover outline — the click targets are
+ * the controls inside it, and promising a card-level click it does not handle
+ * would be a lie.
+ *
+ * The footer row is pinned with `mt-auto` so every card in a row lines its
+ * total and its buttons up on the same baseline no matter how many items it
+ * holds.
+ */
 export function ComandaCard({ comanda }: { comanda: Comanda }) {
   const [addOpen, setAddOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -68,35 +82,42 @@ export function ComandaCard({ comanda }: { comanda: Comanda }) {
   }
 
   return (
-    <Card className="flex flex-col">
+    <MotionCard interactive={false} lift>
       <CardHeader>
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-[15px] font-semibold text-fg">{comanda.mesaEtiqueta}</span>
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="font-mono text-base font-semibold tabular-nums text-fg">
+            {comanda.mesaEtiqueta}
+          </span>
           <Badge tone={estadoMeta.tone}>{estadoMeta.label}</Badge>
         </div>
-        <span className="font-mono text-[12px] text-fg-subtle">{formatTime(comanda.abiertaEn)}</span>
+        <span className="shrink-0 font-mono text-[12px] tabular-nums text-fg-subtle">
+          {formatTime(comanda.abiertaEn)}
+        </span>
       </CardHeader>
 
-      <CardBody className="flex flex-col gap-3">
-        <div className="flex items-center gap-2 text-[13px] text-fg-muted">
-          <User size={15} />
-          {comanda.clienteNombre ?? "Sin nombre registrado"}
-          <span className="text-fg-subtle">· {comanda.comensales} pers.</span>
+      <CardBody className="flex flex-1 flex-col gap-4">
+        <div className="flex items-center gap-2 text-sm text-fg-muted">
+          <User size={15} className="shrink-0" />
+          <span className="truncate">{comanda.clienteNombre ?? "Sin nombre registrado"}</span>
+          <span className="shrink-0 text-fg-subtle">· {comanda.comensales} pers.</span>
         </div>
 
         {activeItems.length === 0 ? (
-          <p className="rounded-[var(--radius-sm)] border border-dashed border-border px-3 py-4 text-center text-[13px] text-fg-subtle">
+          <p className="rounded-[var(--radius-md)] border border-dashed border-border px-3 py-5 text-center text-sm text-fg-subtle">
             Sin ítems todavía
           </p>
         ) : (
           <ul className="flex flex-col divide-y divide-border">
             {activeItems.map((item) => (
-              <li key={item.id} className="flex items-center gap-2 py-2">
-                <div className="flex-1">
-                  <p className="text-[13px] font-medium text-fg">
+              <li key={item.id} className="flex items-center gap-2 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-fg">
                     {item.cantidad}× {item.nombreSnap}
                   </p>
-                  <DualPrice usd={item.totalLinea} className="font-mono text-[11px] text-fg-subtle" />
+                  <DualPrice
+                    usd={item.totalLinea}
+                    className="font-mono text-[11px] tabular-nums text-fg-subtle"
+                  />
                 </div>
                 <Select
                   aria-label={`Estado de ${item.nombreSnap}`}
@@ -105,7 +126,7 @@ export function ComandaCard({ comanda }: { comanda: Comanda }) {
                   onChange={(e) =>
                     void setItemEstado(comanda.id, item.id, e.target.value as EstadoComandaItem)
                   }
-                  className="h-7! w-[132px] text-[12px]!"
+                  className="h-9! w-[136px] text-[12px]!"
                 >
                   {COMANDA_ITEM_ORDER.map((estado) => (
                     <option key={estado} value={estado}>
@@ -126,14 +147,17 @@ export function ComandaCard({ comanda }: { comanda: Comanda }) {
           </ul>
         )}
 
-        <div className={cn("flex items-center justify-between border-t border-border pt-3")}>
-          <span className="text-[13px] font-medium text-fg-muted">Total</span>
-          <DualPrice usd={comanda.total} className="font-mono text-[16px] font-semibold text-fg" />
+        <div className="mt-auto flex items-center justify-between border-t border-border pt-4">
+          <span className="text-sm font-medium text-fg-muted">Total</span>
+          <DualPrice
+            usd={comanda.total}
+            className="font-mono text-base font-semibold tabular-nums text-fg"
+          />
         </div>
 
         {tasaPrompt && (
-          <div className="flex flex-col gap-2 rounded-[var(--radius-sm)] border border-status-reserved bg-status-reserved-soft px-3 py-2.5">
-            <p className="text-[12px] text-status-reserved-fg">
+          <div className="flex flex-col gap-2 rounded-[var(--radius-md)] border border-status-reserved/40 bg-status-reserved-soft px-3 py-3">
+            <p className="text-[12px] leading-relaxed text-status-reserved-fg">
               {tasaPrompt} Es el cambio del día en Bs por dólar; queda congelado en cada comanda
               que cobres.
             </p>
@@ -145,7 +169,7 @@ export function ComandaCard({ comanda }: { comanda: Comanda }) {
                 step="0.01"
                 value={tasaValor}
                 onChange={(e) => setTasaValor(e.target.value)}
-                className="flex-1"
+                fieldClassName="flex-1"
                 autoFocus
               />
               <Button
@@ -161,13 +185,16 @@ export function ComandaCard({ comanda }: { comanda: Comanda }) {
         )}
 
         {error && (
-          <p className="rounded-[var(--radius-sm)] border border-danger/30 bg-danger-soft px-3 py-2 text-[12px] text-danger">
+          <p
+            role="alert"
+            className="rounded-[var(--radius-md)] border border-danger/30 bg-danger-soft px-3 py-2 text-[12px] text-danger"
+          >
             {error}
           </p>
         )}
 
         <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" size="sm" className="flex-1" onClick={() => setAddOpen(true)}>
+          <Button size="sm" className="flex-1" onClick={() => setAddOpen(true)}>
             <Plus size={14} /> Agregar ítem
           </Button>
           <Button variant="primary" size="sm" onClick={() => void handleCobrar()} disabled={busy}>
@@ -182,6 +209,6 @@ export function ComandaCard({ comanda }: { comanda: Comanda }) {
         mesaLabel={comanda.mesaEtiqueta}
         onAdd={(productoId, cantidad) => addItem(comanda.id, productoId, cantidad)}
       />
-    </Card>
+    </MotionCard>
   );
 }

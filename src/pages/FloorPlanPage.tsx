@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Armchair, CheckCircle, Info, Warning } from "@phosphor-icons/react";
+import { AlertTriangle, Armchair, CheckCircle2, Info } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -60,7 +60,7 @@ export function FloorPlanPage() {
   if (status === "loading" && templates.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <p className="text-[13px] text-fg-muted">Cargando el plano del salón…</p>
+        <p className="text-sm text-fg-muted">Cargando el plano del salón…</p>
       </div>
     );
   }
@@ -69,14 +69,10 @@ export function FloorPlanPage() {
     return (
       <div className="flex flex-1 items-center justify-center px-6">
         <EmptyState
-          icon={<Warning size={26} weight="duotone" />}
+          icon={<AlertTriangle size={26} />}
           title="No se pudo cargar el plano"
           description={error ?? "Ocurrió un error inesperado."}
-          action={
-            <Button variant="secondary" size="sm" onClick={() => void load()}>
-              Reintentar
-            </Button>
-          }
+          action={<Button onClick={() => void load()}>Reintentar</Button>}
         />
       </div>
     );
@@ -86,14 +82,10 @@ export function FloorPlanPage() {
     return (
       <div className="flex flex-1 items-center justify-center px-6">
         <EmptyState
-          icon={<Armchair size={26} weight="duotone" />}
+          icon={<Armchair size={26} />}
           title="Este salón todavía no tiene distribuciones"
           description="Crea una plantilla desde el backend o pide a un administrador que configure el salón para empezar a dibujar el plano."
-          action={
-            <Button variant="secondary" size="sm" onClick={() => void load()}>
-              Recargar
-            </Button>
-          }
+          action={<Button onClick={() => void load()}>Recargar</Button>}
         />
       </div>
     );
@@ -103,7 +95,7 @@ export function FloorPlanPage() {
     <div className="flex flex-1 flex-col overflow-hidden">
       <PageHeader
         title="Mesas"
-        className="px-3 py-2.5 sm:px-5 sm:py-3"
+        className="px-3 sm:px-5"
         left={
           <TemplateSwitcher
             templates={templates}
@@ -116,20 +108,20 @@ export function FloorPlanPage() {
         actions={
           <>
             {isEditingActive ? (
-              <span className="flex items-center gap-1.5 text-[12px] text-nav-fg-muted">
-                <CheckCircle size={14} weight="fill" className="text-status-free" />
+              <span className="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-status-free/30 bg-status-free-soft px-2.5 py-1 text-[12px] font-medium text-status-free-fg">
+                <CheckCircle2 size={14} />
                 En uso ahora
               </span>
             ) : (
-              <Button variant="secondary" size="sm" onClick={() => void activateTemplate(editingTemplateId)}>
+              <Button variant="primary" size="sm" onClick={() => void activateTemplate(editingTemplateId)}>
                 Usar esta distribución
               </Button>
             )}
 
-            <ul className="flex items-center gap-2 font-mono text-[11px] text-nav-fg-muted sm:gap-3 sm:text-[12px]">
+            <ul className="flex items-center gap-2 font-mono text-[11px] tabular-nums text-fg-muted sm:gap-3 sm:text-[12px]">
               {STATUS_ORDER.map((tableStatus) => (
-                <li key={tableStatus} className="flex items-center gap-1.5">
-                  <span className={`h-2 w-2 rounded-full ${STATUS_META[tableStatus].dotClass}`} />
+                <li key={tableStatus} className="flex items-center gap-1.5 whitespace-nowrap">
+                  <span className={`size-2 rounded-full ${STATUS_META[tableStatus].dotClass}`} />
                   {statusCounts[tableStatus]} {STATUS_META[tableStatus].label.toLowerCase()}
                 </li>
               ))}
@@ -139,8 +131,8 @@ export function FloorPlanPage() {
       />
 
       {error && (
-        <div className="flex items-start gap-2 border-b border-danger/30 bg-danger-soft px-5 py-2.5 text-[13px] text-danger">
-          <Warning size={16} className="mt-0.5 shrink-0" />
+        <div role="alert" className="flex shrink-0 items-start gap-2 border-b border-danger/30 bg-danger-soft px-5 py-3 text-sm text-danger">
+          <AlertTriangle size={16} className="mt-0.5 shrink-0" />
           <span className="flex-1">{error}</span>
           <button type="button" onClick={clearError} className="shrink-0 font-medium underline">
             Cerrar
@@ -149,7 +141,7 @@ export function FloorPlanPage() {
       )}
 
       {notice && (
-        <div className="flex items-start gap-2 border-b border-border bg-surface-raised px-5 py-2.5 text-[13px] text-fg-muted">
+        <div role="status" className="flex shrink-0 items-start gap-2 border-b border-border bg-surface-sunken px-5 py-3 text-sm text-fg-muted">
           <Info size={16} className="mt-0.5 shrink-0" />
           <span className="flex-1">{notice}</span>
           <button type="button" onClick={clearNotice} className="shrink-0 font-medium underline">

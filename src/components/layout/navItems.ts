@@ -2,18 +2,18 @@ import {
   Armchair,
   CalendarCheck,
   Camera,
-  CurrencyDollar,
-  ForkKnife,
+  DollarSign,
   Package,
   QrCode,
   Receipt,
-} from "@phosphor-icons/react";
-import type { Icon } from "@phosphor-icons/react";
+  UtensilsCrossed,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 export interface NavItem {
   to: string;
   label: string;
-  icon: Icon;
+  icon: LucideIcon;
 }
 
 /**
@@ -23,11 +23,11 @@ export interface NavItem {
  */
 export const navItems: NavItem[] = [
   { to: "/mesas", label: "Mesas", icon: Armchair },
-  { to: "/mesero", label: "Mesero", icon: ForkKnife },
+  { to: "/mesero", label: "Mesero", icon: UtensilsCrossed },
   { to: "/comandas", label: "Comandas", icon: Receipt },
   { to: "/reservaciones", label: "Reservaciones", icon: CalendarCheck },
   { to: "/checkin", label: "Check-in", icon: QrCode },
   { to: "/escanear", label: "Escanear", icon: Camera },
   { to: "/productos", label: "Productos", icon: Package },
-  { to: "/ventas", label: "Ventas", icon: CurrencyDollar },
+  { to: "/ventas", label: "Ventas", icon: DollarSign },
 ];

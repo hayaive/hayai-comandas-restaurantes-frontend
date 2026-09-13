@@ -2,190 +2,349 @@
 
 <!-- impeccable:design-schema 1 -->
 
-Direction: **specialty coffee house**. An operational dashboard for a
-restaurant floor, built to be scanned in a glance under service pressure,
-not admired — now carrying the "HAYAI Coffee" brand identity (warm
-brown/cream/kraft, not a generic SaaS dashboard palette). One brand accent
-is reserved for selection and primary actions; three semantic colors carry
-table state and never borrow the brand hue so the two can never be confused.
+Direction: **soft neutral console**. An operational dashboard for a restaurant
+floor, built to be scanned at a glance under service pressure. A chromatically
+silent neutral canvas, very large radii, gradient banners that tell you which
+part of the product you are in, and exactly one warm colour — brown — which
+means, everywhere and only, *this is the thing that is currently selected*.
+
+> **This document was rewritten in Sep 2026.** The previous system ("specialty
+> coffee house": cream / kraft / espresso neutrals, burnt-terracotta accent,
+> 6/10/16px radii, Inter, Phosphor icons, a kraft sidebar rail and a solid
+> black footer) was replaced wholesale at the product owner's request, who
+> asked for a full visual clone of the `custom-globe-component` reference
+> dashboard. Decisions that were reversed are recorded below with their
+> reasoning rather than deleted, so nobody re-litigates them by accident.
 
 ## Direction contract
 
 - **THESIS.** The floor plan is an instrument staff read at a glance, not a
-  generic canvas app; every table communicates its state before its shape
-  does. The palette reads as a specialty coffee shop (roasted beans, cream,
-  kraft paper), not an operational SaaS dashboard.
-- **OWN-WORLD.** Deep espresso-brown dark theme (default, matches host-
-  stand/back-of-house lighting) with a warm cream/kraft light theme as an
-  equal citizen; one burnt-terracotta brand accent (`--accent`) for
-  selection and primary actions; three semantic colors (moss-green free,
-  caramel-gold reserved, wine-red occupied) kept separate from the brand
-  hue; JetBrains Mono for every numeral (table labels, seat counts), Inter
-  for all other UI text; hairline dot-grid canvas; locked 6/10/16px radius
-  scale; pill-shaped template tabs.
-- **STORY.** A host scans the floor, taps a table to relabel or resize it in
-  a docked inspector (never a modal for routine edits), drags it to a new
-  spot with optional grid-snap, and switches or creates plan templates
-  without leaving the canvas.
-- **FIRST VIEWPORT.** Top bar (page title, template pill-tabs, live status
-  counts) + full-bleed SVG canvas with a docked bottom toolbar (add
-  circle/add square, grid-snap switch) + right docked inspector (empty-state
-  until a table is selected). The status legend that used to live in a left
-  tool rail was dropped: it duplicated the top bar's live counts, and no
-  screen should show the same fact twice.
-- **FORM.** Chosen directly as sole art director for this delegated build.
-  This session had no image-generation tool and no live interactive
-  decision surface, so the skill's dice-roll / decision-page apparatus
-  (`concept-seed`, `serve-question`) could not run; that substitution was
-  disclosed to the requester up front rather than silently skipped.
-- **FINISH.** Reviewed by hand (no finish-reviewer subagent is installed in
-  this setup, per this agent's own operating instructions): typecheck,
-  lint, and production build all pass; the mechanical detector
-  (`impeccable detect --json`) ran clean; no browser/screenshot tool was
-  available in this session, so visual verification was a full manual
-  code read against the craft floor rather than a captured screenshot
-  diff. That gap is disclosed, not hidden.
+  generic canvas app; every table communicates its state before its shape does.
+  The surrounding product reads as one soft, quiet, large-radius system so that
+  the three table-state colours and the one brown selection colour are the only
+  things on screen competing for attention.
+- **OWN-WORLD.** Pure neutral gray surfaces (zero saturation); one brand family
+  — violet → indigo → blue — used for primary actions and for the five gradient
+  hero banners; **brown `#6f4a2e` with white text for every active/selected
+  state**; three semantic table colours (emerald free / amber reserved / rose
+  occupied) that borrow neither the brand nor the brown; Geist for UI and Geist
+  Mono for every numeral; a 12 / 16 / 24px radius scale; a slow ambient
+  gradient field behind the shell.
+- **STORY.** A host scans the floor, taps a table to relabel or resize it in a
+  docked inspector (never a modal for routine edits), drags it with optional
+  grid-snap, and switches or creates plan templates without leaving the canvas.
+  A waiter picks a table, searches products, and sends an order in three
+  numbered steps. A cashier reads the day's figures off three stat tiles.
+- **FIRST VIEWPORT.** Sticky translucent top bar (title + actions) over a
+  scrolling body that opens with a gradient hero carrying the screen's live
+  figures, then stacked titled sections on an 8-unit rhythm.
+- **FORM.** Reference-driven. The visual language was extracted by reading
+  `custom-globe-component/components/creative.tsx` in full — its sidebar
+  anatomy, radius frequency (72 × `rounded-2xl`, 40 × `rounded-xl`, 23 ×
+  `rounded-3xl`), card treatment, gradient banners, motion props and type scale
+  — and re-expressed on this project's Vite + Tailwind v4 stack. No Next.js
+  anything was carried over.
+- **FINISH.** Reviewed by hand. `typecheck`, `lint` and `build` all pass. A
+  60-pair contrast audit was run numerically against the real token values in
+  both themes and **caught six genuine failures**, all fixed (see *Colour*).
+  No browser or screenshot tool was available in this session, so visual
+  verification was a dev-server smoke test plus a full manual code read, not a
+  rendered screenshot diff. That gap is disclosed, not hidden.
 
-## Color
+## The one non-negotiable rule
 
-Strategy: **Restrained** (Operate default) — neutrals carry the interface,
-one accent reserved for brand/selection, three semantic colors reserved for
-table state. Tokens live in `src/styles/tokens.css` as CSS custom
-properties, mapped into real Tailwind utilities via `@theme inline` in
-`src/styles/global.css` (e.g. `bg-status-occupied-soft`,
-`text-status-free-fg`, `fill-status-reserved` for SVG). Never hardcode a hex
-value in a component; always reach for a token class.
+**Every active, selected, or currently-chosen control is brown with white
+text.** This is a client mandate and it overrides whatever the reference
+template does for its own active states.
+
+```
+bg-active text-active-fg      ← the recipe. Never hardcode the hex.
+```
+
+Tokens live in `tokens.css` as `--active-bg` / `--active-bg-hover` /
+`--active-fg` / `--active-soft` / `--active-soft-fg`, and are exposed as real
+Tailwind utilities (`bg-active`, `text-active-fg`, `bg-active-soft`,
+`border-active`, `ring-active`, `stroke-active`, `fill-active-soft`) so a call
+site's own `className` can still override them predictably through
+`tailwind-merge`.
+
+Where the rule is applied today — this list is the thing to check first if the
+treatment ever looks like it has drifted:
+
+| Surface | File |
+|---|---|
+| Sidebar nav item | `layout/Sidebar.tsx` |
+| Mobile tab + "Más" | `layout/MobileBottomNav.tsx` |
+| Mobile more-sheet item | `layout/MobileMoreSheet.tsx` |
+| Tab trigger | `ui/primitives/tabs.tsx` |
+| Switch track (on) | `ui/primitives/switch.tsx` |
+| Template pill | `floor-plan/TemplateSwitcher.tsx` |
+| Table shape toggle | `floor-plan/TableInspectorForm.tsx` |
+| Selected-table ring on the SVG canvas | `floor-plan/TableShape.tsx` |
+| Grid-snap mode | `floor-plan/BottomToolbar.tsx` |
+| Category filter chip | `pages/ProductosPage.tsx` |
+| Clave/PIN segmented control | `pages/LoginPage.tsx` |
+| Selected table (waiter) | `pages/MeseroPage.tsx` |
+| Chosen table (guest) | `pages/SelfSeatPage.tsx` |
+| `Badge tone="active"`, `Button variant="active"`, `IconButton active`, `IconTile tone="active"` | `ui/` |
+
+Two deliberate exemptions, both defensible:
+
+- **Table status** (libre / reservada / ocupada) keeps its own semantic colour
+  even when selected, and is marked by a brown *ring* instead. A host must read
+  "this table is occupied" as occupied, not as selected; overriding the fill
+  would make the three states indistinguishable at a glance, which is the one
+  thing the status palette exists to prevent.
+- **The mobile FAB** ("Agregar Orden") keeps the brand gradient. It is an
+  action, not a state.
+
+## Colour
+
+Strategy: **restrained**. Neutrals carry the interface, one brand family is
+reserved for primary actions and heroes, one brown is reserved for selection,
+three semantic colours are reserved for table state. Tokens live in
+`src/styles/tokens.css` and are mapped to Tailwind utilities via `@theme inline`
+in `src/styles/global.css`. Never hardcode a hex in a component.
 
 | Role | Token | Light | Dark |
 |---|---|---|---|
-| Brand accent | `--accent` | `#a8501f` (deep terracotta) | `#dd8a4a` (copper — lightened for text-on-dark contrast) |
-| Free | `--status-free` | `#5b8a4f` (moss green) | `#5b8a4f` |
-| Reserved | `--status-reserved` | `#c98a2e` (caramel gold) | `#c98a2e` |
-| Occupied | `--status-occupied` | `#a8354a` (wine red) | `#a8354a` |
-| Surface | `--surface` | `#ffffff` | `#24170e` |
-| Background | `--bg` | `#fdfaf5` (warm cream) | `#100a06` (coffee bean) |
+| **Active / selected** | `--active-bg` | `#6f4a2e` | `#7d5436` |
+| Active foreground | `--active-fg` | `#ffffff` | `#ffffff` |
+| Brand (fill) | `--primary` | `#4f46e5` | `#4f46e5` |
+| Brand (text) | `--accent` | `#4f46e5` | `#818cf8` |
+| Free | `--status-free` | `#059669` | `#10b981` |
+| Reserved | `--status-reserved` | `#d97706` | `#f59e0b` |
+| Occupied | `--status-occupied` | `#e11d48` | `#f43f5e` |
+| Danger (text) | `--danger` | `#b91c1c` | `#f87171` |
+| Danger (fill) | `--destructive` | `#b91c1c` | `#dc2626` |
+| Surface | `--surface` | `#ffffff` | `#141414` |
+| Background | `--bg` | `#fafafa` | `#0a0a0a` |
 
-Note: `--accent` itself is redefined per theme (not just its `-soft`
-variant) because the light-mode terracotta is too dark to read as text at
-4.5:1 against a dark soft-fill background — dark mode uses a lighter step
-of the same hue instead. Both themes are fully defined (no color lives
-only inside a media query); `[data-theme]` on `<html>` overrides system
-preference, toggled from `src/lib/useTheme.ts` and persisted to
-`localStorage`.
+The neutrals are deliberately **untinted**. The old scale was warm; mixing a
+warm gray with a cool violet/indigo brand is the classic "two grays fighting"
+failure, so the neutrals sit at zero saturation and let the brand and the brown
+be the only hues on screen.
+
+### Tokens that are split in dark mode, and why
+
+One value cannot always do two jobs. A contrast audit forced three splits:
+
+- **`--accent` vs `--primary`.** `--accent` is read as *text* on a near-black
+  surface, so in dark mode it must be light (`#818cf8`, 6.18:1). `--primary` is
+  a *fill* carrying white text, so it must stay dark (`#4f46e5`, 6.29:1). They
+  were one value until the audit measured white-on-`#6366f1` at **4.47:1**,
+  just under the floor.
+- **`--danger` vs `--destructive`.** Same shape: text hue vs fill hue.
+  `#dc2626` measured **4.41:1** as text on its own soft background.
+- **`--destructive-strong`** exists because the destructive button's hover used
+  to be `brightness-110`; brightening a red fill *lowers* its contrast with the
+  white label it carries. The hover is now an explicit darker token.
+
+### Contrast audit
+
+60 text/background pairs checked numerically in both themes; all clear their
+floor. Notable results:
+
+| Pair | Light | Dark |
+|---|---|---|
+| White on active brown | **7.79:1** | **6.58:1** |
+| White on primary | 6.29:1 | 6.29:1 |
+| Secondary text (`--fg-muted`) on sunken surface | 7.17:1 | 8.22:1 |
+| Hint/placeholder (`--fg-subtle`) on sunken surface | 4.89:1 | 5.34:1 |
+| White on every hero gradient stop | ≥ 6.70:1 | same |
+| White **at 80% opacity** on every hero stop | ≥ 4.89:1 | same |
+
+Two fixes worth remembering:
+
+- The hero gradients originally used Tailwind's `-600` stops, exactly like the
+  reference. At the 80% opacity the hero description and stat labels use, those
+  measured **3.82–4.04:1**. The whole set moved one step deeper to `-700/-800`.
+  They read richer for it. **Do not lighten them without re-running the check.**
+- `--fg-subtle` was `#909090`, which measured **2.93:1** on the sunken surface —
+  and that token draws input placeholders and field hints, exactly the text a
+  user squints at. Both secondary steps moved down the scale and stay visibly
+  distinct from each other.
+
+Both themes are fully defined (no colour lives only inside a media query);
+`[data-theme]` on `<html>` overrides system preference, toggled from
+`src/lib/useTheme.ts` and persisted to `localStorage`. The dark palette is
+declared **twice** — once behind `prefers-color-scheme`, once behind the
+explicit attribute. Keep the two blocks identical; they are a pair.
 
 ## Typography
 
-One family for UI (`Inter`, self-hosted via `@fontsource/inter`, latin +
-latin-ext subsets only), one monospace for every numeral and short code
-(`JetBrains Mono`, same self-hosting approach) — table labels, seat counts,
-status counts. Fixed rem scale, not fluid clamp; this is Operate mode, not a
-marketing page.
+**Geist Variable** for UI, **Geist Mono Variable** for every numeral and short
+code (table labels, seat counts, money, times, reservation codes). Both
+self-hosted via `@fontsource-variable/*`, one variable file per family covering
+100–900, so the four static Inter weights the old system shipped collapse into
+a single request and the in-between weights (450/550) become available. Only
+`wght.css` is imported — no italics, because nothing in this interface is set
+in italic. Subsets are `unicode-range`-gated, so a Spanish UI only ever
+downloads the latin and latin-ext faces.
+
+Scale, taken from the reference:
+
+| Use | Class |
+|---|---|
+| Hero title | `text-2xl sm:text-3xl font-semibold` |
+| Section heading | `text-xl sm:text-2xl font-semibold` |
+| Page title (top bar) | `text-lg font-semibold` |
+| Card title | `text-base font-medium` |
+| Body / table cell | `text-sm` |
+| Control label | `text-[13px] font-medium` |
+| Meta / caption | `text-[12px]` |
+
+`h1`–`h3` get `letter-spacing: -0.02em` and `text-wrap: balance` globally in
+`global.css` rather than per-heading, so the rule cannot drift screen to
+screen. Every figure carries `tabular-nums` — these numbers refresh while
+someone is reading them, and proportional digits visibly shift width as they
+change.
 
 ## Spacing, radius, shadow
 
-Locked radius scale: `--radius-sm` (6px, controls/buttons/inputs),
-`--radius-md` (10px, cards/panels-within-panels), `--radius-lg` (16px,
-canvas frame/modal), `--radius-pill` (template tabs, switches). Shadows are
-hue-tinted, never pure black (`--shadow-sm/md/lg`).
+**Radius is the single strongest signature of this system** and is driven
+entirely from four token values:
+
+| Token | Value | Tailwind equivalent | Used for |
+|---|---|---|---|
+| `--radius-sm` | 12px | `rounded-xl` | badges, chips, inner elements |
+| `--radius-md` | 16px | `rounded-2xl` | buttons, inputs, nav items, icon tiles |
+| `--radius-lg` | 24px | `rounded-3xl` | cards, panels, modals, heroes |
+| `--radius-pill` | 999px | `rounded-full` | switch tracks only |
+
+**Nothing in `src/` writes a literal Tailwind radius class.** That is what makes
+changing these four numbers re-shape the entire product, and it is worth
+protecting.
+
+Shadows are neutral and soft. Cards carry **no resting shadow** — at a 24px
+radius a tight shadow reads as a dark rim rather than lift, so interactive
+cards signal elevation by *outlining* on hover (`hover:border-accent/45`)
+exactly as the reference does. Page rhythm is `space-y-6` on phones and
+`space-y-8` from `sm` up, applied once by `PageBody`.
+
+## Motion
+
+`framer-motion`, added for this redesign, and deliberately constrained — this
+app runs on host-stand tablets.
+
+- **`<LazyMotion features={domAnimation} strict>`** in `main.tsx` instead of
+  the full `motion` tree: roughly half the bundle, and covers everything used
+  here (variants, `animate`, `whileHover`, `whileTap`). `strict` makes
+  `motion.div` throw, so components use `m.div` and nobody can silently pull
+  the full bundle back in. This saved ~15 kB gzipped.
+- **All variants come from `src/lib/useAppMotion.ts`.** Framer animates inline
+  styles and therefore escapes the CSS `prefers-reduced-motion` guard in
+  `global.css` entirely; honouring the preference has to happen in JS, and
+  doing it per component would guarantee somebody forgets.
+- **No hover `scale` on cards.** The reference uses
+  `whileHover={{ scale: 1.02, y: -5 }}`; scaling a card re-rasterises its text
+  every frame and a grid of a dozen is visibly gritty on a tablet. Translating
+  on Y reads the same and stays a pure composite. `whileTap` is the feedback
+  that actually matters on a touch screen.
+- **The ambient background is CSS, not JS.** The reference interpolates the
+  `background` property of a viewport-sized layer on a 30s loop, which repaints
+  every frame. `.ambient-field` in `global.css` is two static gradient blobs
+  moved with `transform` instead — same slow drift, GPU-composited, zero
+  repaint.
+- **Nothing animates inside the floor-plan canvas.** `TableShape` runs
+  pointer-capture drags at 60fps and must not compete with anything.
+
+## Iconography
+
+**`lucide-react`** — a reversal of the previous decision to use
+`@phosphor-icons/react`, made because lucide's uniform 2px-stroke, 24px-grid
+outline style is a large part of why the reference reads the way it does, and
+because it is what upstream shadcn ships (so pasted-in components need no icon
+rewriting). Phosphor's duotone two-tone fills are a visibly different idiom
+that fought the flat neutral surfaces.
+
+The migration was complete and mechanical: `@phosphor-icons/react` is removed
+from `package.json`. **Do not reintroduce it** — two icon families in one UI is
+a visible craft failure. Phosphor's `weight` prop has no lucide equivalent and
+was stripped everywhere; use `strokeWidth` if a weight difference is genuinely
+needed.
 
 ## Components (`src/components/ui/`) — shadcn/ui on Radix
 
-This layer is **shadcn/ui**. `src/components/ui/primitives/` holds canonical
-shadcn components (button, input, label, dialog, select, switch, tooltip,
-popover, dropdown-menu, tabs, scroll-area, separator, skeleton) on Radix UI,
-`class-variance-authority` and `tailwind-merge`. The PascalCase files beside
-it — `Button`, `IconButton`, `Card`, `Input`, `Select`, `Badge`, `Modal`,
-`Switch`, `EmptyState`, `ThemeToggle` — are this project's branded API on top
-of them, and are what screens import. Reach for these first on any screen
-before inventing a new component.
+`src/components/ui/primitives/` holds canonical shadcn components on Radix,
+`class-variance-authority` and `tailwind-merge`. **Read
+`primitives/README.md` before pasting anything in from upstream** — three
+substitutions are required, and one of them is the brown active rule.
 
-`components.json` points `aliases.ui` at `primitives/`, so
-`npx shadcn@latest add <component>` works normally. Read
-`src/components/ui/primitives/README.md` before pasting anything in from
-upstream: two substitutions are required (shadcn's `accent` role → our
-`surface-hover`/`fg`, and `lucide-react` → `@phosphor-icons/react`).
+The PascalCase files beside it are this project's branded API and are what
+screens import. Reach for these before inventing anything:
 
-The CLI's `init` was deliberately not run. It writes lowercase `button.tsx`,
-which collides with `Button.tsx` on a case-insensitive Windows filesystem,
-and it rewrites the Tailwind entry CSS with shadcn's default gray OKLCH ramp
-— which would have destroyed the coffee palette this project is built on.
+| Component | What it is |
+|---|---|
+| `PageHero` | The gradient banner that opens a screen. Five `tone`s; optional `stats` or a rotating disc ornament. |
+| `Section` / `StaggerGrid` / `PageBody` | Page rhythm. `Section` is a titled block; `StaggerGrid` cascades its children in; `PageBody` is the scrolling body with the shared gutters and 8-unit stack. |
+| `Card` + `CardHeader/Title/Description/Body/Footer` | 24px surface. `interactive` adds the hover outline. |
+| `MotionCard` | `Card` that lifts and presses. `interactive` = pointer affordance; `lift` = motion only. Split on purpose: a card that merely *contains* buttons should press but must not promise a click it does not handle. |
+| `StatTile` | Icon plate + label + large tabular figure. |
+| `IconTile` | The rounded square an icon sits in. Tones include `gradient` (brand moments) and `active` (brown). |
+| `Button` / `IconButton` / `Badge` | `variant="active"` / `tone="active"` / the `active` prop are the brown states. |
+| `Input` / `Select` / `Switch` / `Modal` / `EmptyState` / `ThemeToggle` | As before, re-geometried. |
 
-### Colour roles
+`Button`'s `nav` and `footer` variants (and `IconButton`'s) survive as
+**deprecated aliases** of `ghost`/`default` so no call site broke during the
+palette swap. No screen uses them any more; new code should not.
 
-`tokens.css` carries a shadcn role block where every role aliases an existing
-coffee token: `--primary` is the burnt terracotta `--accent`, `--secondary`
-is `--surface-hover`, `--muted` is `--surface-sunken`, `--ring` is `--accent`,
-`--card`/`--popover` are `--surface-raised`, and the `--sidebar-*` family
-points at the fixed kraft-rail chrome. Because each role is `var(--token)`
-rather than a copied value, the roles follow the light/dark swap for free and
-are declared exactly once.
+### Retired: the two-tone chrome
 
-shadcn's `--accent` role is **not** aliased. In shadcn `accent` means "subtle
-hover tint"; here `--accent` is the brand hue and the whole app depends on
-that meaning.
+The previous system gave the sidebar rail a light kraft surface (`--nav-bg`)
+and the sidebar foot / mobile tab bar a solid black one (`--footer-bg`), both
+at the client's request ("el footer debe ser negro"), and both deliberately
+frozen against the light/dark toggle.
 
-### Notes that outlive this pass
-
-- `Modal` is a header / scrolling-body / footer shell over Radix `Dialog`.
-  Radix owns focus, the focus trap, focus restore, Escape, outside-press and
-  the body scroll lock, which is why the old hand-rolled focus effect (and
-  the ref it needed so typing in a modal input did not steal focus back to
-  the close button) is gone rather than restyled.
-- `IconButton` shows its `label` as a Radix tooltip instead of the `title`
-  attribute. `title` renders in OS chrome with the OS font and never appears
-  for keyboard or touch users.
-- `Select` stays a native `<select>` on purpose: the app runs on tablets at a
-  host stand, where the OS picker beats any popup we could draw. The trigger
-  matches `Input` exactly. The full Radix select lives in
-  `primitives/select.tsx` for options needing rich content.
-- Dark-mode `--fg-muted`/`--fg-subtle` each sit one rung lighter than they
-  used to (`--n-200`/`--n-300`). At `--n-500`, `--fg-subtle` measured ~2.0:1
-  on `--surface`, and that token draws input placeholders and field hints.
-- Modal and sheet scrims use `--overlay`, a warm espresso rgba. A neutral
-  `black/45` desaturates the whole cream palette for as long as it is up.
+**Both were retired with the coffee identity.** The reference draws its whole
+chrome on one continuous background with hairline borders, and a black strip
+inside an otherwise light minimal sidebar is precisely the "one dark section
+pasted into a light page" tell this redesign existed to remove. Every
+`--nav-*` / `--footer-*` token and its Tailwind utility is gone. The mobile tab
+bar still reads clearly because the active tab now carries the brown pill,
+which is a stronger signal on a light bar than the old text-colour change was
+on black. If the client asks for the black footer back, it belongs as a new
+explicit surface pair, not as a revival of those aliases.
 
 ## Floor plan editor (`src/components/floor-plan/`)
 
-- `geometry.ts` — canvas dimensions (1200x700 units) and seat-position math
-  for both table shapes.
-- `statusMeta.ts` — the single source of truth mapping a `TableStatus` to
-  its label and its **two separate class sets**: `svgFillClass`/
-  `svgStrokeClass` for canvas shapes (SVG `fill`/`stroke`) and `dotClass`/
-  `bgSoftClass`/`borderClass`/`textClass` for ordinary HTML elements
-  (`background-color`/`border-color`/`color`). Do not cross the two: Tailwind's
-  `fill-*`/`stroke-*` utilities only affect SVG elements and silently do
-  nothing on a `<div>` or `<button>` — this was caught and fixed once
-  already during this build.
-- `TableShape.tsx` — one table: pointer-capture drag (`setPointerCapture`,
-  no window listeners), keyboard-reachable (arrow keys nudge position,
-  Enter/Space selects), optional grid-snap, seats drawn geometrically around
-  the shape, status tint + selection ring kept visually distinct.
-- `FloorPlanCanvas.tsx` — SVG canvas, dot-grid background, screen-to-canvas
-  coordinate transform via `getScreenCTM()`.
-- `BottomToolbar.tsx` — docked bar under the canvas (add circle/add square,
-  grid-snap switch), grouped horizontally with a vertical divider; wraps to
-  two rows on narrow/tablet widths instead of crowding.
-- `TableInspectorPanel.tsx`, `TemplateSwitcher.tsx` — the remaining
-  surrounding chrome. The former left tool rail (`Toolbar.tsx`) and its
-  `StatusLegend.tsx` were removed in favor of the bottom toolbar and the top
-  bar's existing live counts.
+Unchanged in behaviour; restyled only. The notes that still matter:
 
-## State (`src/lib/useFloorPlanStore.ts`)
+- `statusMeta.ts` is the single source of truth mapping a `TableStatus` to its
+  label and its **two separate class sets**: `svgFillClass`/`svgStrokeClass`
+  for canvas shapes and `dotClass`/`bgSoftClass`/`borderClass`/`textClass` for
+  ordinary HTML. Do not cross the two — Tailwind's `fill-*`/`stroke-*` only
+  affect SVG and silently do nothing on a `<div>`.
+- `TableShape.tsx` — pointer-capture drag (no window listeners),
+  keyboard-reachable (arrows nudge, Enter/Space selects), optional grid-snap.
+  Its selection ring is now `stroke-active` (brown) and its selected seats
+  `fill-active-soft`.
+- `FloorPlanCanvas.tsx` floors the plan at `minWidth: 600` inside an
+  `overflow-auto` wrapper: below that the plan would shrink to an unusable size
+  on a phone, so it pans instead of scaling. This is the one intentional
+  horizontal-scroll surface in the product.
+- `TableInspectorPanel` (≥ md) and `MobileTableSheet` (< md) share one
+  `TableInspectorForm`, so both stay in sync.
 
-Zustand store, the seam for a future API integration: `moveTable`,
-`addTable`, `removeTable`, `renameTable`, `setSeats`, `setShape`,
-`setStatus`, plus template CRUD (`selectTemplate`, `addTemplate`,
-`renameTemplate`, `removeTemplate`) and selection/grid UX state. Mock seed
-data lives in `src/lib/mockData.ts` (three templates: Salón principal,
-Evento boda, Terraza) — replace this file's contents, not its shape, once
-the real API lands. Domain types are in `src/lib/types.ts`.
+## Responsive
+
+Verified at ~400px: page gutters are `px-4` everywhere, grids stack to one
+column, and the two wide tables (Productos 640px, Reservaciones 720px) each sit
+in their own `overflow-x-auto` container so the page body itself never scrolls
+sideways. The fixed-width sidebar (240px) and inspector column (300px) are both
+`hidden … md:flex`.
 
 ## Known gaps for the next pass
 
-- No pan/zoom on the canvas (out of the brief's scope; fixed-viewBox with
-  responsive scaling only).
-- No automated visual regression; no browser/screenshot tool was available
-  in this session, so verification was static analysis plus a full manual
-  code read against the craft floor, not a rendered screenshot diff.
-- Comandas/Ventas/Reservaciones are intentionally empty states, not stubs
-  with fake data.
+- **No rendered visual verification.** No browser or screenshot tool was
+  available; verification was a numeric contrast audit, a dev-server smoke
+  test, a build, and a full manual code read. A real screenshot pass on a
+  tablet is the obvious next step.
+- No pan/zoom on the floor-plan canvas (fixed-viewBox with responsive scaling
+  only).
+- The JS bundle is 554 kB / 173.5 kB gzipped and trips Vite's 500 kB warning.
+  Acceptable for a single-load tablet SPA, but `manualChunks` or route-level
+  code splitting is the cheap win if it ever matters.
+- Ventas' "histórico de comandas" still only shows comandas cobradas in the
+  current session; the backend does not yet expose a closed-comanda listing.
+  The stat tiles above it are real full-day figures from the report endpoint.

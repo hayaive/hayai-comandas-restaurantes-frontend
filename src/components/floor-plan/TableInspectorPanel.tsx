@@ -1,7 +1,7 @@
-import { Users } from "@phosphor-icons/react";
 import { EmptyState } from "@/components/ui/EmptyState";
 import type { RestaurantTable, TableShape as TableShapeKind, TableStatus } from "@/lib/types";
 import { TableInspectorForm } from "./TableInspectorForm";
+import { Users } from "lucide-react";
 
 interface TableInspectorPanelProps {
   table: RestaurantTable | null;
@@ -19,14 +19,14 @@ interface TableInspectorPanelProps {
  */
 export function TableInspectorPanel({ table, ...formProps }: TableInspectorPanelProps) {
   return (
-    <aside className="hidden w-[280px] shrink-0 flex-col border-l border-border bg-surface md:flex">
+    <aside className="hidden w-[300px] shrink-0 flex-col border-l border-border bg-surface md:flex">
       {table ? (
-        <div className="flex-1 overflow-y-auto px-4 py-4">
+        <div className="flex-1 overflow-y-auto px-5 py-5">
           <TableInspectorForm table={table} {...formProps} />
         </div>
       ) : (
         <EmptyState
-          icon={<Users size={24} weight="duotone" />}
+          icon={<Users size={24} />}
           title="Ninguna mesa seleccionada"
           description="Toca una mesa en el plano para editar su número, sillas y estado."
         />

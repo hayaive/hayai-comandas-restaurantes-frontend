@@ -1,5 +1,5 @@
-import { Image } from "@phosphor-icons/react";
 import { cn } from "@/lib/cn";
+import { ImageIcon } from "lucide-react";
 
 export interface ProductThumbnailProps {
   imagenUrl?: string;
@@ -14,14 +14,14 @@ export function ProductThumbnail({ imagenUrl, alt, size = "sm", className }: Pro
     <div
       className={cn(
         "flex shrink-0 items-center justify-center overflow-hidden rounded-[var(--radius-sm)] border border-border bg-surface-hover text-fg-subtle",
-        size === "md" ? "h-11 w-11" : "h-9 w-9",
+        size === "md" ? "size-11" : "size-10",
         className,
       )}
     >
       {imagenUrl ? (
         <img src={imagenUrl} alt={alt} className="h-full w-full object-cover" />
       ) : (
-        <Image size={size === "md" ? 18 : 16} weight="duotone" />
+        <ImageIcon size={size === "md" ? 18 : 16} />
       )}
     </div>
   );

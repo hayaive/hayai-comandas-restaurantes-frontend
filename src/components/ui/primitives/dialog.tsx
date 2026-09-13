@@ -1,6 +1,6 @@
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { X } from "@phosphor-icons/react";
+import { X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -18,8 +18,6 @@ const DialogOverlay = React.forwardRef<
       ref={ref}
       data-slot="dialog-overlay"
       className={cn(
-        // Warm espresso scrim rather than a neutral `black/55` — a pure-black
-        // veil over a cream UI grays the whole palette for the moment it is up.
         "fixed inset-0 z-50 bg-[var(--overlay)] backdrop-blur-[3px]",
         "data-[state=open]:animate-in data-[state=open]:fade-in-0",
         "data-[state=closed]:animate-out data-[state=closed]:fade-out-0",
@@ -61,14 +59,14 @@ const DialogContent = React.forwardRef<
           <DialogPrimitive.Close
             data-slot="dialog-close"
             className={cn(
-              "absolute right-4 top-4 inline-flex size-8 items-center justify-center rounded-[var(--radius-sm)]",
+              "absolute right-4 top-4 inline-flex size-9 items-center justify-center rounded-[var(--radius-md)]",
               "text-fg-subtle transition-colors duration-150 outline-none",
               "hover:bg-surface-hover hover:text-fg",
               "focus-visible:ring-[3px] focus-visible:ring-ring/45",
               "disabled:pointer-events-none",
             )}
           >
-            <X size={16} weight="bold" />
+            <X size={16} />
             <span className="sr-only">Cerrar</span>
           </DialogPrimitive.Close>
         )}
@@ -108,10 +106,7 @@ const DialogTitle = React.forwardRef<
     <DialogPrimitive.Title
       ref={ref}
       data-slot="dialog-title"
-      className={cn(
-        "text-[15px] font-semibold leading-tight tracking-[-0.01em] text-fg",
-        className,
-      )}
+      className={cn("text-lg font-semibold leading-tight text-fg", className)}
       {...props}
     />
   );
@@ -125,7 +120,7 @@ const DialogDescription = React.forwardRef<
     <DialogPrimitive.Description
       ref={ref}
       data-slot="dialog-description"
-      className={cn("text-[13px] leading-relaxed text-fg-muted", className)}
+      className={cn("text-sm leading-relaxed text-fg-muted", className)}
       {...props}
     />
   );

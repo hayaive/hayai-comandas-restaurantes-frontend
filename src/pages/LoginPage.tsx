@@ -1,12 +1,16 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { m } from "framer-motion";
+
 import { Card, CardBody } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { BrandMark } from "@/components/layout/BrandMark";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { useAuthStore } from "@/lib/useAuthStore";
+import { useAppMotion } from "@/lib/useAppMotion";
+import { cn } from "@/lib/cn";
 
 type Mode = "clave" | "pin";
 
@@ -16,10 +20,18 @@ type Mode = "clave" | "pin";
  * both return `{ token, usuario }`. Mounted outside `ProtectedRoute`; once
  * signed in, `ProtectedRoute` sends the user back to wherever they were
  * headed (`location.state.from`), defaulting to `/mesas`.
+ *
+ * Visually this is the first thing anyone sees, so it carries the full
+ * treatment: the ambient gradient field behind, the brand mark on its
+ * gradient tile, and a 24px card floating on top. The clave/PIN switch is a
+ * real segmented control now rather than a text link — two modes of equal
+ * standing deserve a visible pair, and its selected segment is the brown the
+ * client asked for, which also introduces the rule on the very first screen.
  */
 export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const motionPrefs = useAppMotion();
 
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const status = useAuthStore((s) => s.status);
@@ -50,68 +62,106 @@ export function LoginPage() {
     }
   }
 
+  function switchMode(next: Mode) {
+    if (next === mode) return;
+    setMode(next);
+    setSecreto("");
+  }
+
   return (
-    <div className="flex min-h-dvh w-full flex-col items-center justify-center bg-bg px-4 py-8 text-fg">
-      <div className="mb-8 flex flex-col items-center gap-2">
-        <div className="flex items-center gap-2.5">
-          <BrandMark size={40} />
-          <span className="text-[20px] font-semibold uppercase tracking-wide text-fg">
-            Coffee &amp; Cake
-          </span>
-        </div>
-        <p className="text-[12px] text-fg-muted">para amantes del café</p>
-      </div>
+    <div className="relative flex min-h-dvh w-full flex-col items-center justify-center overflow-hidden bg-bg px-4 py-10 text-fg">
+      <div className="ambient-field" aria-hidden="true" />
 
-      <Card className="w-full max-w-sm">
-        <CardBody className="flex flex-col gap-4 py-6">
+      <m.div
+        variants={motionPrefs.rise}
+        initial="hidden"
+        animate="visible"
+        className="relative z-10 flex w-full max-w-sm flex-col items-center"
+      >
+        <div className="mb-8 flex flex-col items-center gap-3 text-center">
+          <BrandMark size={64} className="rounded-full shadow-[var(--shadow-token-md)]" />
           <div>
-            <h1 className="text-[16px] font-semibold text-fg">Iniciar sesión</h1>
-            <p className="text-[13px] text-fg-muted">
-              Ingresa con tu usuario y {mode === "clave" ? "clave" : "PIN"}.
-            </p>
+            <h1 className="text-2xl font-semibold leading-tight text-fg">Coffee &amp; Cake</h1>
+            <p className="text-sm text-fg-muted">para amantes del café</p>
           </div>
+        </div>
 
-          <form className="flex flex-col gap-3" onSubmit={(e) => void handleSubmit(e)}>
-            <Input
-              label="Usuario"
-              autoComplete="username"
-              value={usuario}
-              onChange={(e) => setUsuario(e.target.value)}
-              required
-              autoFocus
-            />
-            <Input
-              label={mode === "clave" ? "Clave" : "PIN"}
-              type="password"
-              autoComplete="current-password"
-              value={secreto}
-              onChange={(e) => setSecreto(e.target.value)}
-              required
-            />
+        <Card className="w-full shadow-[var(--shadow-token-lg)]">
+          <CardBody className="flex flex-col gap-5">
+            <div>
+              <h2 className="text-lg font-semibold text-fg">Iniciar sesión</h2>
+              <p className="text-sm text-fg-muted">
+                Ingresa con tu usuario y {mode === "clave" ? "clave" : "PIN"}.
+              </p>
+            </div>
 
-            {error && <p className="text-[12px] text-danger">{error}</p>}
+            {/* Segmented control. `role="tablist"` would be wrong — these do not
+                reveal panels; they change what the second field means. A plain
+                pair of buttons with `aria-pressed` says exactly that. */}
+            <div className="flex gap-1 rounded-[var(--radius-md)] bg-surface-sunken p-1">
+              {(["clave", "pin"] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={mode === value}
+                  onClick={() => switchMode(value)}
+                  className={cn(
+                    "flex-1 rounded-[var(--radius-sm)] px-3 py-1.5 text-[13px] font-medium",
+                    "transition-colors duration-150",
+                    mode === value
+                      ? "bg-active text-active-fg shadow-[var(--shadow-token-sm)]"
+                      : "text-fg-muted hover:text-fg",
+                  )}
+                >
+                  {value === "clave" ? "Con clave" : "Con PIN"}
+                </button>
+              ))}
+            </div>
 
-            <Button type="submit" variant="primary" disabled={status === "loading"}>
-              {status === "loading" ? "Ingresando…" : "Ingresar"}
-            </Button>
+            <form className="flex flex-col gap-3" onSubmit={(e) => void handleSubmit(e)}>
+              <Input
+                label="Usuario"
+                autoComplete="username"
+                value={usuario}
+                onChange={(e) => setUsuario(e.target.value)}
+                required
+                autoFocus
+              />
+              <Input
+                label={mode === "clave" ? "Clave" : "PIN"}
+                type="password"
+                inputMode={mode === "pin" ? "numeric" : undefined}
+                autoComplete="current-password"
+                value={secreto}
+                onChange={(e) => setSecreto(e.target.value)}
+                required
+              />
 
-            <button
-              type="button"
-              className="text-[12px] text-fg-muted transition-colors duration-150 hover:text-fg"
-              onClick={() => {
-                setMode((m) => (m === "clave" ? "pin" : "clave"));
-                setSecreto("");
-              }}
-            >
-              {mode === "clave" ? "Ingresar con PIN en su lugar" : "Ingresar con clave en su lugar"}
-            </button>
-          </form>
-        </CardBody>
-      </Card>
+              {error && (
+                <p
+                  role="alert"
+                  className="rounded-[var(--radius-md)] border border-danger/30 bg-danger-soft px-3 py-2 text-[12px] font-medium text-danger"
+                >
+                  {error}
+                </p>
+              )}
 
-      <div className="mt-6">
-        <ThemeToggle />
-      </div>
+              <Button
+                type="submit"
+                variant="primary"
+                className="mt-1 w-full"
+                disabled={status === "loading"}
+              >
+                {status === "loading" ? "Ingresando…" : "Ingresar"}
+              </Button>
+            </form>
+          </CardBody>
+        </Card>
+
+        <div className="mt-6">
+          <ThemeToggle />
+        </div>
+      </m.div>
     </div>
   );
 }

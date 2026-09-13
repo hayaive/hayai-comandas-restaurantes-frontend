@@ -1,5 +1,5 @@
 import * as React from "react";
-import { CaretDown } from "@phosphor-icons/react";
+import { ChevronDown } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Label } from "./primitives/label";
@@ -45,7 +45,7 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? errorId : hint ? hintId : undefined}
             className={cn(
-              "flex h-9 w-full appearance-none rounded-[var(--radius-sm)] border border-input bg-surface py-1 pl-3 pr-9 text-sm text-fg shadow-[var(--shadow-token-sm)]",
+              "flex h-10 w-full appearance-none rounded-[var(--radius-md)] border border-input bg-surface py-1 pl-3.5 pr-9 text-sm text-fg shadow-[var(--shadow-token-sm)]",
               "transition-[color,box-shadow,border-color] duration-150 outline-none",
               "hover:border-border-strong",
               "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/45",
@@ -57,9 +57,8 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
           >
             {children}
           </select>
-          <CaretDown
+          <ChevronDown
             size={14}
-            weight="bold"
             aria-hidden="true"
             className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-fg-subtle"
           />

@@ -1,21 +1,20 @@
 import { Link } from "react-router-dom";
-import { Compass } from "@phosphor-icons/react";
+import { Compass } from "lucide-react";
+
+import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 
 export function NotFoundPage() {
   return (
     <div className="flex flex-1 flex-col">
       <EmptyState
-        icon={<Compass size={26} weight="duotone" />}
+        icon={<Compass size={26} />}
         title="Página no encontrada"
-        description="La ruta que buscas no existe en Hayai Comandas."
+        description="La ruta que buscas no existe en Hayai Comandas. Volvamos al plano del salón."
         action={
-          <Link
-            to="/mesas"
-            className="mt-1 inline-flex h-9 items-center justify-center rounded-[var(--radius-sm)] bg-accent px-4 text-sm font-medium text-fg-on-accent transition-colors duration-150 hover:bg-accent-strong"
-          >
-            Ir al plano de mesas
-          </Link>
+          <Button variant="primary" asChild>
+            <Link to="/mesas">Ir al plano de mesas</Link>
+          </Button>
         }
       />
     </div>

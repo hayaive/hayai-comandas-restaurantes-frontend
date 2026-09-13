@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { MagnifyingGlass, Plus } from "@phosphor-icons/react";
+import { Plus, Search } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
+import { IconTile } from "@/components/ui/IconTile";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
 import { useActiveProducts, useProductStore } from "@/lib/useProductStore";
@@ -63,35 +64,37 @@ export function AddItemModal({ open, onClose, mesaLabel, onAdd }: AddItemModalPr
         />
         <div className="-mx-1 max-h-[50vh] overflow-y-auto px-1">
           {status === "loading" && (
-            <p className="py-6 text-center text-[13px] text-fg-muted">Cargando catálogo…</p>
+            <p className="py-8 text-center text-sm text-fg-muted">Cargando catálogo…</p>
           )}
           {status === "ready" && query.trim() === "" && (
-            <p className="flex flex-col items-center gap-2 py-8 text-center text-[13px] text-fg-subtle">
-              <MagnifyingGlass size={22} />
-              Escribe para buscar un producto.
-            </p>
+            <div className="flex flex-col items-center gap-3 py-10 text-center">
+              <IconTile tone="neutral" size="lg">
+                <Search size={22} />
+              </IconTile>
+              <p className="text-sm text-fg-subtle">Escribe para buscar un producto.</p>
+            </div>
           )}
           {status === "ready" && query.trim() !== "" && resultados.length === 0 && (
-            <p className="py-8 text-center text-[13px] text-fg-muted">
+            <p className="py-10 text-center text-sm text-fg-muted">
               No se encontraron productos con ese nombre.
             </p>
           )}
           {resultados.length > 0 && (
-            <ul className="flex flex-col gap-1">
+            <ul className="flex flex-col gap-1.5">
               {resultados.map((producto) => (
                 <li key={producto.id}>
                   <button
                     type="button"
                     disabled={addingId === producto.id}
                     onClick={() => void handleAdd(producto.id)}
-                    className="flex w-full items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-border bg-surface-raised px-3 py-2 text-left transition-colors duration-150 hover:bg-surface-hover disabled:pointer-events-none disabled:opacity-60"
+                    className="flex w-full items-center justify-between gap-3 rounded-[var(--radius-md)] border border-border bg-surface-raised px-3.5 py-2.5 text-left transition-colors duration-150 hover:border-border-strong hover:bg-surface-hover disabled:pointer-events-none disabled:opacity-60"
                   >
                     <span className="flex flex-col">
-                      <span className="text-[13px] font-medium text-fg">{producto.nombre}</span>
-                      <DualPrice usd={producto.precio} className="font-mono text-[12px] text-fg-muted" />
+                      <span className="text-sm font-medium text-fg">{producto.nombre}</span>
+                      <DualPrice usd={producto.precio} className="font-mono text-[12px] tabular-nums text-fg-muted" />
                     </span>
                     <Badge tone="accent" className="shrink-0">
-                      <Plus size={12} weight="bold" />
+                      <Plus size={12} />
                       Agregar
                     </Badge>
                   </button>

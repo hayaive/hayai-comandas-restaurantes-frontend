@@ -1,18 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  CheckCircle,
-  MagnifyingGlass,
+  AlertTriangle,
+  CheckCircle2,
   Minus,
   Plus,
   Receipt,
-  Trash,
-  Warning,
-} from "@phosphor-icons/react";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+  Search,
+  Trash2,
+} from "lucide-react";
+
+import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { IconButton } from "@/components/ui/IconButton";
+import { IconTile } from "@/components/ui/IconTile";
 import { Input } from "@/components/ui/Input";
+import { PageHero } from "@/components/ui/PageHero";
+import { PageBody, Section } from "@/components/ui/Section";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { ProductThumbnail } from "@/components/productos/ProductThumbnail";
 import { useActiveTemplate, useFloorPlanStore } from "@/lib/useFloorPlanStore";
@@ -29,6 +33,14 @@ import type { Producto } from "@/api";
  * to the kitchen/bar via the comanda for that table. Simpler than the full
  * Comandas panel (which is for managing/serving already-open comandas):
  * this one only creates/feeds a comanda and hands off to it.
+ *
+ * The three steps are numbered in the card headers because a new waiter runs
+ * this screen under pressure on their first shift, and the order matters —
+ * you cannot add a product before you have a table.
+ *
+ * SELECTED TABLE: brown fill, white text. This is the clearest place in the
+ * product where the client's override earns its keep — a waiter glancing down
+ * mid-service sees which table they are ordering for without reading.
  */
 
 interface CartLine {
@@ -97,6 +109,14 @@ export function MeseroPage() {
   const cartTotal = useMemo(
     () => cart.reduce((sum, line) => sum + Number(line.precio) * line.cantidad, 0),
     [cart],
+  );
+  const cartUnidades = useMemo(
+    () => cart.reduce((sum, line) => sum + line.cantidad, 0),
+    [cart],
+  );
+  const mesasLibres = useMemo(
+    () => sortedTables.filter((t) => t.status === "free").length,
+    [sortedTables],
   );
 
   function selectTable(table: RestaurantTable) {
@@ -190,217 +210,272 @@ export function MeseroPage() {
         subtitle="Toma el pedido y envíalo directo a la comanda de la mesa"
       />
 
-      <div className="flex-1 overflow-y-auto px-6 py-5">
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="flex flex-col gap-5">
-            <Card>
-              <CardHeader>
-                <span className="text-[13px] font-semibold text-fg">1. Elige una mesa</span>
-                <span className="text-[12px] text-fg-subtle">{activeTemplate.name}</span>
-              </CardHeader>
-              <CardBody>
-                {sortedTables.length === 0 ? (
-                  <p className="py-6 text-center text-[13px] text-fg-muted">
-                    {floorStatus === "loading" || floorStatus === "idle"
-                      ? "Cargando el plano…"
-                      : floorStatus === "error"
-                        ? (floorError ?? "No se pudo cargar el plano del salón.")
-                        : "No hay mesas en esta plantilla."}
-                  </p>
-                ) : (
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
-                    {sortedTables.map((table) => {
-                      const meta = STATUS_META[table.status];
-                      const isSelected = table.id === selectedTableId;
-                      return (
-                        <button
-                          key={table.id}
-                          type="button"
-                          onClick={() => selectTable(table)}
-                          className={cn(
-                            "flex flex-col items-start gap-1 rounded-[var(--radius-sm)] border px-3 py-2.5 text-left transition-colors duration-150",
-                            isSelected
-                              ? "border-accent bg-accent-soft"
-                              : "border-border bg-surface-raised hover:bg-surface-hover",
-                          )}
-                        >
-                          <div className="flex w-full items-center justify-between gap-2">
-                            <span className="font-mono text-[13px] font-semibold text-fg">{table.label}</span>
-                            <span className={cn("h-2 w-2 rounded-full", meta.dotClass)} />
-                          </div>
-                          <span className="truncate text-[11px] text-fg-subtle">
-                            {meta.label}
-                            {table.occupantName ? ` · ${table.occupantName}` : ""}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </CardBody>
-            </Card>
+      <PageBody>
+        <PageHero
+          tone="warm"
+          eyebrow={activeTemplate.name}
+          title="Tomar un pedido"
+          description="Elige la mesa, busca los productos y envía. Si la mesa estaba libre, se marca como ocupada y se le abre su comanda automáticamente."
+          stats={[
+            { label: "Mesas libres", value: mesasLibres },
+            { label: "En el pedido", value: cartUnidades },
+          ]}
+        />
 
-            <Card>
-              <CardHeader>
-                <span className="text-[13px] font-semibold text-fg">2. Agrega productos</span>
-                {selectedTable && <Badge tone="accent">Mesa {selectedTable.label}</Badge>}
-              </CardHeader>
-              <CardBody className="flex flex-col gap-3">
-                {!selectedTable && (
-                  <p className="py-6 text-center text-[13px] text-fg-muted">
-                    Elige una mesa para empezar a agregar productos.
-                  </p>
-                )}
-                {selectedTable && (
-                  <>
-                    <Input
-                      label="Buscar producto"
-                      placeholder="Ej. Tequeños"
-                      value={productQuery}
-                      onChange={(e) => setProductQuery(e.target.value)}
-                    />
-                    {productStatus === "loading" && productos.length === 0 && (
-                      <p className="py-6 text-center text-[13px] text-fg-muted">Cargando catálogo…</p>
-                    )}
-                    {productStatus === "ready" && productQuery.trim() === "" && (
-                      <p className="flex flex-col items-center gap-2 py-8 text-center text-[13px] text-fg-subtle">
-                        <MagnifyingGlass size={22} />
-                        Escribe para buscar un producto.
-                      </p>
-                    )}
-                    {productStatus === "ready" &&
-                      productQuery.trim() !== "" &&
-                      filteredProductos.length === 0 && (
-                        <p className="py-8 text-center text-[13px] text-fg-muted">
-                          No se encontraron productos con ese nombre.
-                        </p>
-                      )}
-                    {filteredProductos.length > 0 && (
-                      <ul className="flex max-h-[360px] flex-col gap-1 overflow-y-auto">
-                        {filteredProductos.map((producto) => (
-                          <li key={producto.id}>
-                            <button
-                              type="button"
-                              onClick={() => addToCart(producto)}
-                              className="flex w-full items-center gap-3 rounded-[var(--radius-sm)] border border-border bg-surface-raised px-3 py-2 text-left transition-colors duration-150 hover:bg-surface-hover"
-                            >
-                              <ProductThumbnail imagenUrl={producto.imagenUrl} alt={producto.nombre} />
-                              <span className="flex flex-1 flex-col">
-                                <span className="text-[13px] font-medium text-fg">{producto.nombre}</span>
-                                <DualPrice usd={producto.precio} className="font-mono text-[12px] text-fg-muted" />
+        <Section>
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
+            <div className="flex flex-col gap-5">
+              <Card>
+                <CardHeader>
+                  <CardTitle>1. Elige una mesa</CardTitle>
+                  {selectedTable && <Badge tone="active">Mesa {selectedTable.label}</Badge>}
+                </CardHeader>
+                <CardBody>
+                  {sortedTables.length === 0 ? (
+                    <p className="py-8 text-center text-sm text-fg-muted">
+                      {floorStatus === "loading" || floorStatus === "idle"
+                        ? "Cargando el plano…"
+                        : floorStatus === "error"
+                          ? (floorError ?? "No se pudo cargar el plano del salón.")
+                          : "No hay mesas en esta plantilla."}
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4">
+                      {sortedTables.map((table) => {
+                        const meta = STATUS_META[table.status];
+                        const isSelected = table.id === selectedTableId;
+                        return (
+                          <button
+                            key={table.id}
+                            type="button"
+                            aria-pressed={isSelected}
+                            onClick={() => selectTable(table)}
+                            className={cn(
+                              "flex flex-col items-start gap-1 rounded-[var(--radius-md)] border px-3.5 py-3 text-left",
+                              "transition-colors duration-150",
+                              isSelected
+                                ? "border-transparent bg-active"
+                                : "border-border bg-surface-raised hover:border-border-strong hover:bg-surface-hover",
+                            )}
+                          >
+                            <div className="flex w-full items-center justify-between gap-2">
+                              <span
+                                className={cn(
+                                  "font-mono text-sm font-semibold tabular-nums",
+                                  isSelected ? "text-active-fg" : "text-fg",
+                                )}
+                              >
+                                {table.label}
                               </span>
-                              <Badge tone="accent" className="shrink-0">
-                                <Plus size={12} weight="bold" />
-                                Agregar
-                              </Badge>
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </>
-                )}
-              </CardBody>
-            </Card>
-          </div>
+                              <span
+                                className={cn(
+                                  "size-2 shrink-0 rounded-full",
+                                  isSelected ? "bg-white/80" : meta.dotClass,
+                                )}
+                              />
+                            </div>
+                            <span
+                              className={cn(
+                                "w-full truncate text-[11px]",
+                                isSelected ? "text-active-fg/80" : "text-fg-subtle",
+                              )}
+                            >
+                              {meta.label}
+                              {table.occupantName ? ` · ${table.occupantName}` : ""}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardBody>
+              </Card>
 
-          <div className="flex flex-col gap-5">
-            <Card>
-              <CardHeader>
-                <span className="text-[13px] font-semibold text-fg">Pedido</span>
-                {selectedTable && (
-                  <span className="font-mono text-[12px] text-fg-subtle">{selectedTable.label}</span>
-                )}
-              </CardHeader>
-              <CardBody className="flex flex-col gap-3">
-                {cart.length === 0 ? (
-                  <p className="rounded-[var(--radius-sm)] border border-dashed border-border px-3 py-4 text-center text-[13px] text-fg-subtle">
-                    Todavía no agregaste productos
-                  </p>
-                ) : (
-                  <ul className="flex flex-col divide-y divide-border">
-                    {cart.map((line) => (
-                      <li key={line.productoId} className="flex items-center gap-2 py-2">
-                        <ProductThumbnail imagenUrl={line.imagenUrl} alt={line.nombre} />
-                        <div className="flex-1">
-                          <p className="text-[13px] font-medium text-fg">{line.nombre}</p>
-                          <DualPrice
-                            usd={Number(line.precio) * line.cantidad}
-                            className="font-mono text-[11px] text-fg-subtle"
-                          />
+              <Card>
+                <CardHeader>
+                  <CardTitle>2. Agrega productos</CardTitle>
+                  {filteredProductos.length > 0 && (
+                    <span className="font-mono text-[12px] tabular-nums text-fg-subtle">
+                      {filteredProductos.length} resultados
+                    </span>
+                  )}
+                </CardHeader>
+                <CardBody className="flex flex-col gap-4">
+                  {!selectedTable && (
+                    <p className="rounded-[var(--radius-md)] border border-dashed border-border px-4 py-8 text-center text-sm text-fg-muted">
+                      Elige una mesa para empezar a agregar productos.
+                    </p>
+                  )}
+                  {selectedTable && (
+                    <>
+                      <Input
+                        label="Buscar producto"
+                        placeholder="Ej. Tequeños"
+                        value={productQuery}
+                        onChange={(e) => setProductQuery(e.target.value)}
+                      />
+                      {productStatus === "loading" && productos.length === 0 && (
+                        <p className="py-8 text-center text-sm text-fg-muted">Cargando catálogo…</p>
+                      )}
+                      {productStatus === "ready" && productQuery.trim() === "" && (
+                        <div className="flex flex-col items-center gap-3 py-8 text-center">
+                          <IconTile tone="neutral" size="lg">
+                            <Search size={22} />
+                          </IconTile>
+                          <p className="text-sm text-fg-subtle">Escribe para buscar un producto.</p>
                         </div>
-                        <div className="flex items-center gap-1">
+                      )}
+                      {productStatus === "ready" &&
+                        productQuery.trim() !== "" &&
+                        filteredProductos.length === 0 && (
+                          <p className="py-8 text-center text-sm text-fg-muted">
+                            No se encontraron productos con ese nombre.
+                          </p>
+                        )}
+                      {filteredProductos.length > 0 && (
+                        <ul className="flex max-h-[380px] flex-col gap-1.5 overflow-y-auto">
+                          {filteredProductos.map((producto) => (
+                            <li key={producto.id}>
+                              <button
+                                type="button"
+                                onClick={() => addToCart(producto)}
+                                className="flex w-full items-center gap-3 rounded-[var(--radius-md)] border border-border bg-surface-raised px-3.5 py-2.5 text-left transition-colors duration-150 hover:border-border-strong hover:bg-surface-hover"
+                              >
+                                <ProductThumbnail imagenUrl={producto.imagenUrl} alt={producto.nombre} />
+                                <span className="flex min-w-0 flex-1 flex-col">
+                                  <span className="truncate text-sm font-medium text-fg">
+                                    {producto.nombre}
+                                  </span>
+                                  <DualPrice
+                                    usd={producto.precio}
+                                    className="font-mono text-[12px] tabular-nums text-fg-muted"
+                                  />
+                                </span>
+                                <Badge tone="accent" className="shrink-0">
+                                  <Plus size={12} />
+                                  Agregar
+                                </Badge>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </>
+                  )}
+                </CardBody>
+              </Card>
+            </div>
+
+            {/* La columna del pedido se pega arriba en desktop: el mesero
+                agrega productos con el pulgar mientras el total queda a la
+                vista sin hacer scroll de vuelta. */}
+            <div className="flex flex-col gap-5 lg:sticky lg:top-4 lg:self-start">
+              <Card>
+                <CardHeader>
+                  <CardTitle>3. Pedido</CardTitle>
+                  {selectedTable && (
+                    <span className="font-mono text-[12px] tabular-nums text-fg-subtle">
+                      {selectedTable.label}
+                    </span>
+                  )}
+                </CardHeader>
+                <CardBody className="flex flex-col gap-4">
+                  {cart.length === 0 ? (
+                    <p className="rounded-[var(--radius-md)] border border-dashed border-border px-3 py-6 text-center text-sm text-fg-subtle">
+                      Todavía no agregaste productos
+                    </p>
+                  ) : (
+                    <ul className="flex flex-col divide-y divide-border">
+                      {cart.map((line) => (
+                        <li key={line.productoId} className="flex items-center gap-2 py-2.5">
+                          <ProductThumbnail imagenUrl={line.imagenUrl} alt={line.nombre} />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium text-fg">{line.nombre}</p>
+                            <DualPrice
+                              usd={Number(line.precio) * line.cantidad}
+                              className="font-mono text-[11px] tabular-nums text-fg-subtle"
+                            />
+                          </div>
+                          <div className="flex shrink-0 items-center gap-0.5">
+                            <IconButton
+                              icon={<Minus size={13} />}
+                              label={`Quitar una unidad de ${line.nombre}`}
+                              size="sm"
+                              onClick={() => changeQuantity(line.productoId, -1)}
+                            />
+                            <span className="w-6 text-center font-mono text-sm tabular-nums font-semibold text-fg">
+                              {line.cantidad}
+                            </span>
+                            <IconButton
+                              icon={<Plus size={13} />}
+                              label={`Agregar una unidad de ${line.nombre}`}
+                              size="sm"
+                              onClick={() => changeQuantity(line.productoId, 1)}
+                            />
+                          </div>
                           <IconButton
-                            icon={<Minus size={12} />}
-                            label={`Quitar una unidad de ${line.nombre}`}
+                            icon={<Trash2 size={13} />}
+                            label={`Quitar ${line.nombre} del pedido`}
+                            variant="danger"
                             size="sm"
-                            onClick={() => changeQuantity(line.productoId, -1)}
+                            onClick={() => removeLine(line.productoId)}
                           />
-                          <span className="w-5 text-center font-mono text-[13px] text-fg">{line.cantidad}</span>
-                          <IconButton
-                            icon={<Plus size={12} />}
-                            label={`Agregar una unidad de ${line.nombre}`}
-                            size="sm"
-                            onClick={() => changeQuantity(line.productoId, 1)}
-                          />
-                        </div>
-                        <IconButton
-                          icon={<Trash size={13} />}
-                          label={`Quitar ${line.nombre} del pedido`}
-                          variant="danger"
-                          size="sm"
-                          onClick={() => removeLine(line.productoId)}
-                        />
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
 
-                <div className="flex items-center justify-between border-t border-border pt-3">
-                  <span className="text-[13px] font-medium text-fg-muted">Total</span>
-                  <DualPrice usd={cartTotal} className="font-mono text-[16px] font-semibold text-fg" />
-                </div>
-
-                {showClienteInput && (
-                  <Input
-                    label="Nombre del cliente (opcional)"
-                    value={clienteNombre}
-                    onChange={(e) => setClienteNombre(e.target.value)}
-                    placeholder="Ej. Familia Restrepo"
-                  />
-                )}
-
-                {feedback && (
-                  <div
-                    className={cn(
-                      "flex items-start gap-2 rounded-[var(--radius-sm)] border px-3 py-2.5 text-[13px]",
-                      feedback.type === "success"
-                        ? "border-status-free bg-status-free-soft text-status-free-fg"
-                        : "border-danger/30 bg-danger-soft text-danger",
-                    )}
-                  >
-                    {feedback.type === "success" ? (
-                      <CheckCircle size={16} className="mt-0.5 shrink-0" weight="fill" />
-                    ) : (
-                      <Warning size={16} className="mt-0.5 shrink-0" />
-                    )}
-                    {feedback.message}
+                  <div className="flex items-center justify-between border-t border-border pt-4">
+                    <span className="text-sm font-medium text-fg-muted">Total</span>
+                    <DualPrice
+                      usd={cartTotal}
+                      className="font-mono text-lg font-semibold tabular-nums text-fg"
+                    />
                   </div>
-                )}
 
-                <Button
-                  variant="primary"
-                  className="w-full"
-                  onClick={() => void handleSubmit()}
-                  disabled={!selectedTableId || cart.length === 0 || submitting}
-                >
-                  <Receipt size={14} /> {submitting ? "Enviando…" : "Enviar a comanda"}
-                </Button>
-              </CardBody>
-            </Card>
+                  {showClienteInput && (
+                    <Input
+                      label="Nombre del cliente (opcional)"
+                      value={clienteNombre}
+                      onChange={(e) => setClienteNombre(e.target.value)}
+                      placeholder="Ej. Familia Restrepo"
+                    />
+                  )}
+
+                  {feedback && (
+                    <div
+                      role="status"
+                      className={cn(
+                        "flex items-start gap-2 rounded-[var(--radius-md)] border px-3.5 py-3 text-sm",
+                        feedback.type === "success"
+                          ? "border-status-free/40 bg-status-free-soft text-status-free-fg"
+                          : "border-danger/30 bg-danger-soft text-danger",
+                      )}
+                    >
+                      {feedback.type === "success" ? (
+                        <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
+                      ) : (
+                        <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                      )}
+                      {feedback.message}
+                    </div>
+                  )}
+
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    className="w-full"
+                    onClick={() => void handleSubmit()}
+                    disabled={!selectedTableId || cart.length === 0 || submitting}
+                  >
+                    <Receipt size={16} /> {submitting ? "Enviando…" : "Enviar a comanda"}
+                  </Button>
+                </CardBody>
+              </Card>
+            </div>
           </div>
-        </div>
-      </div>
+        </Section>
+      </PageBody>
     </div>
   );
 }

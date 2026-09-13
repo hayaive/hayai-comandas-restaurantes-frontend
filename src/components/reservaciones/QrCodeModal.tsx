@@ -1,6 +1,6 @@
 import { useRef } from "react";
+import { Download } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
-import { Download } from "@phosphor-icons/react";
 import { Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -36,19 +36,19 @@ export function QrCodeModal({ reservacion, onClose }: QrCodeModalProps) {
     >
       {reservacion && (
         <div className="flex flex-col items-center gap-4">
-          <div className="rounded-[var(--radius-md)] border border-border bg-white p-4">
+          <div className="rounded-[var(--radius-lg)] border border-border bg-white p-5 shadow-[var(--shadow-token-sm)]">
             <QRCodeCanvas ref={canvasRef} value={selfSeatUrl(reservacion.codigoPublico)} size={196} level="M" />
           </div>
           <div className="flex flex-col items-center gap-1">
             <span className="text-[12px] text-fg-muted">Código para la puerta</span>
-            <Badge tone="accent" className="font-mono text-[14px]">
+            <Badge tone="active" className="font-mono text-base tracking-widest">
               {reservacion.codigoCorto}
             </Badge>
           </div>
-          <Button variant="secondary" size="sm" onClick={handleDownload}>
+          <Button onClick={handleDownload}>
             <Download size={14} /> Descargar QR
           </Button>
-          <p className="max-w-xs text-center text-[12px] text-fg-subtle">
+          <p className="max-w-sm text-center text-[12px] leading-relaxed text-fg-subtle">
             Al escanearlo, el cliente abre el enlace para elegir su mesa (si aún no tiene una) o
             confirmar la suya. El mostrador usa el mismo código en{" "}
             <span className="font-mono text-fg-muted">/checkin</span> para sentarlo.

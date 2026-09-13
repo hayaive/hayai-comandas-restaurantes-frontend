@@ -59,7 +59,7 @@ export function FloorPlanCanvas({
               <circle cx={1} cy={1} r={1} className="fill-[var(--canvas-dot)]" />
             </pattern>
           </defs>
-          <rect width={CANVAS_WIDTH} height={CANVAS_HEIGHT} rx={16} fill="url(#floor-grid-dots)" />
+          <rect width={CANVAS_WIDTH} height={CANVAS_HEIGHT} rx={24} fill="url(#floor-grid-dots)" />
 
           {tables.map((table) => (
             <TableShape

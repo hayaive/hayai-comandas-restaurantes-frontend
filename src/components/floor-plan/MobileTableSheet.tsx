@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
+import { X } from "lucide-react";
 import { createPortal } from "react-dom";
-import { X } from "@phosphor-icons/react";
 import { IconButton } from "@/components/ui/IconButton";
 import { cn } from "@/lib/cn";
 import type { RestaurantTable, TableShape as TableShapeKind, TableStatus } from "@/lib/types";
@@ -52,7 +52,7 @@ export function MobileTableSheet({ table, onClose, ...formProps }: MobileTableSh
     <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true" aria-label={`Editar mesa ${table.label}`}>
       <div
         className={cn(
-          "absolute inset-0 bg-black/45 backdrop-blur-[2px] transition-opacity duration-200",
+          "absolute inset-0 bg-[var(--overlay)] backdrop-blur-[3px] transition-opacity duration-200",
           entered ? "opacity-100" : "opacity-0",
         )}
         onClick={onClose}
@@ -64,14 +64,14 @@ export function MobileTableSheet({ table, onClose, ...formProps }: MobileTableSh
           entered ? "translate-y-0" : "translate-y-full",
         )}
       >
-        <div className="flex justify-center pt-2" aria-hidden="true">
+        <div className="flex justify-center pt-2.5" aria-hidden="true">
           <div className="h-1 w-10 rounded-full bg-border-strong" />
         </div>
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-3">
-          <span className="text-[15px] font-semibold text-fg">Mesa {table.label}</span>
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-4">
+          <span className="text-lg font-semibold text-fg">Mesa {table.label}</span>
           <IconButton icon={<X size={16} />} label="Cerrar" size="sm" onClick={onClose} />
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
           <TableInspectorForm table={table} {...formProps} />
         </div>
       </div>

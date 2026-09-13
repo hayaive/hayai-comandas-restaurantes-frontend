@@ -1,7 +1,7 @@
-import { Moon, Sun } from "@phosphor-icons/react";
 import { useTheme } from "@/lib/useTheme";
 import { IconButton } from "./IconButton";
 import type { IconButtonProps } from "./IconButton";
+import { Moon, Sun } from "lucide-react";
 
 export interface ThemeToggleProps {
   variant?: IconButtonProps["variant"];
@@ -14,7 +14,7 @@ export function ThemeToggle({ variant }: ThemeToggleProps) {
   return (
     <IconButton
       variant={variant}
-      icon={isDark ? <Sun size={17} weight="bold" /> : <Moon size={17} weight="bold" />}
+      icon={isDark ? <Sun size={17} /> : <Moon size={17} />}
       label={isDark ? "Cambiar a tema claro" : "Cambiar a tema oscuro"}
       onClick={toggleTheme}
     />

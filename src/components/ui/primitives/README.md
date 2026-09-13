@@ -13,34 +13,54 @@ reasons, both concrete:
 1. **Case collision on Windows.** shadcn writes `button.tsx`; this repo already
    has `Button.tsx`. NTFS is case-insensitive, so the CLI would have silently
    overwritten the component every screen imports.
-2. **It would have destroyed the palette.** `init` rewrites the Tailwind entry
-   CSS with its own gray OKLCH ramp. `src/styles/tokens.css` is a mature
-   coffee-brand system (cream / kraft / espresso + terracotta) and is the thing
-   the client asked us to *keep*.
+2. **It would have overwritten the token file.** `init` rewrites the Tailwind
+   entry CSS with its own OKLCH ramp. `src/styles/tokens.css` is hand-authored
+   and carries the client's non-negotiable active-state rule (see below), which
+   `init` knows nothing about.
 
-So the components were ported by hand and `components.json` points `aliases.ui`
-here. `npx shadcn@latest add <component>` works normally and lands in this
-folder.
+So the components were ported by hand and `components.json` points
+`aliases.ui` here. `npx shadcn@latest add <component>` works normally and lands
+in this folder.
 
-## Two deliberate deviations from upstream
+## Three deliberate deviations from upstream
 
-Anything pasted in from the shadcn site needs these two substitutions:
+Anything pasted in from the shadcn site needs these substitutions:
 
 | Upstream shadcn | Here | Why |
 |---|---|---|
-| `bg-accent` / `text-accent-foreground` | `bg-surface-hover` / `text-fg` | In shadcn, `accent` means "subtle hover tint". In this codebase `--accent` is the **brand terracotta** and the whole app already depends on that meaning, so the role is intentionally not aliased in `tokens.css`. |
-| `lucide-react` icons | `@phosphor-icons/react` | Phosphor is already the project's icon system. Two icon libraries in one UI is a visible craft failure — one stroke weight, one family. |
+| `bg-accent` / `text-accent-foreground` | `bg-surface-hover` / `text-fg` | In shadcn, `accent` means "subtle hover tint". In this codebase `--accent` is the **brand indigo** and the whole app depends on that meaning, so the role is intentionally not aliased in `tokens.css`. |
+| `data-[state=active]:bg-background`, `bg-primary` **used to mean "selected"** | `bg-active text-active-fg` | **The client override.** Every active / selected / currently-chosen control in this product is BROWN with WHITE text. `--primary` means "this is the main action here" and must not be used to mean "this one is selected". See `tokens.css`. |
+| `rounded-md` / `rounded-lg` | `rounded-[var(--radius-sm\|md\|lg)]` | The radius scale (12 / 16 / 24px) is the product's strongest visual signature, and it is driven entirely from four token values. Nothing in `src/` may write a literal Tailwind radius class — changing the four tokens must re-shape the whole product. |
+
+Icons are **`lucide-react`**, which is also what upstream shadcn uses, so icon
+imports can now be pasted in unchanged. (This reversed a previous decision:
+the project ran on `@phosphor-icons/react` under the old visual system. Phosphor
+was dropped from `package.json` — do not reintroduce it, since two icon
+families in one UI is a visible craft failure.)
 
 Everything else (`bg-primary`, `text-muted-foreground`, `border-input`,
-`ring-ring`, `bg-card`, `bg-popover`, `bg-destructive`, `bg-sidebar-*`) resolves
-through the shadcn role-token block in `src/styles/tokens.css`, so upstream
-classes render in the coffee palette untouched. `--primary` is the burnt
-terracotta `#a8501f`.
+`ring-ring`, `bg-card`, `bg-popover`, `bg-destructive`, `bg-sidebar-*`)
+resolves through the shadcn role-token block in `src/styles/tokens.css`, so
+upstream classes render correctly with no rewriting.
+
+Note that `--danger`/`--destructive` and `--accent`/`--primary` are each split
+into a **text hue** and a **fill hue** in dark mode. A single value cannot both
+be legible as text on a near-black surface and hold white text as a fill; the
+comments in `tokens.css` carry the measured numbers.
 
 ## Motion
 
-`tw-animate-css` (imported in `src/styles/global.css`) provides `animate-in` /
-`animate-out` / `fade-in-0` / `zoom-in-95` / `slide-in-from-*` for Tailwind v4 —
-it replaces the v3-only `tailwindcss-animate` plugin, which needs a JS config
-this project does not have. `prefers-reduced-motion` is already neutralised
-globally in `global.css`, so no component needs to guard it individually.
+Two systems, and they do not overlap:
+
+- **CSS** — `tw-animate-css` (imported in `src/styles/global.css`) provides
+  `animate-in` / `animate-out` / `fade-in-0` / `zoom-in-95` / `slide-in-from-*`
+  for every Radix `data-[state]` transition. It replaces the v3-only
+  `tailwindcss-animate` plugin, which needs a JS config this project does not
+  have. `prefers-reduced-motion` is neutralised globally in `global.css`, so no
+  component guards it individually.
+- **Framer Motion** — used only in the branded layer above this folder, never
+  in `primitives/`. It animates inline styles and therefore *escapes* the CSS
+  reduced-motion guard, so every animated component takes its variants from
+  `src/lib/useAppMotion.ts`, which honours the preference in JS. The app is
+  wrapped in `<LazyMotion features={domAnimation} strict>`; `strict` makes
+  `motion.div` throw, so use `m.div`.

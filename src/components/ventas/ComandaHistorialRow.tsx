@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CaretDown, CaretRight } from "@phosphor-icons/react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/lib/cn";
 import type { Comanda, MetodoPago } from "@/api";
@@ -33,15 +33,15 @@ export function ComandaHistorialRow({ comanda }: { comanda: Comanda }) {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-controls={detalleId}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors duration-150 hover:bg-surface-hover"
+        className="flex w-full items-center gap-3 px-5 py-3.5 text-left transition-colors duration-150 hover:bg-surface-hover"
       >
         <span className="text-fg-subtle">
-          {open ? <CaretDown size={14} weight="bold" /> : <CaretRight size={14} weight="bold" />}
+          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </span>
-        <span className="font-mono text-[13px] font-semibold text-fg">
+        <span className="font-mono text-[13px] tabular-nums font-semibold text-fg">
           {comanda.numeroDia != null ? `#${comanda.numeroDia}` : "—"}
         </span>
-        <span className="flex-1 truncate text-[13px] text-fg">
+        <span className="flex-1 truncate text-sm text-fg">
           Mesa {comanda.mesaEtiqueta || "—"}
           {comanda.clienteNombre ? (
             <span className="text-fg-muted"> · {comanda.clienteNombre}</span>
@@ -54,13 +54,13 @@ export function ComandaHistorialRow({ comanda }: { comanda: Comanda }) {
         <span className="hidden text-[12px] text-fg-muted md:inline">
           {items.length} {items.length === 1 ? "ítem" : "ítems"}
         </span>
-        <span className="font-mono text-[14px] font-semibold text-fg">
+        <span className="font-mono text-sm tabular-nums font-semibold text-fg">
           {formatUsd(comanda.total)}
         </span>
       </button>
 
       {open && (
-        <div id={detalleId} className="bg-surface px-4 pb-4 pl-11">
+        <div id={detalleId} className="bg-surface-sunken px-5 pb-5 pl-12">
           <dl className="mb-3 grid grid-cols-2 gap-x-4 gap-y-1 text-[12px] sm:grid-cols-4">
             <div>
               <dt className="text-fg-subtle">Comensales</dt>
@@ -85,20 +85,20 @@ export function ComandaHistorialRow({ comanda }: { comanda: Comanda }) {
           {items.length === 0 ? (
             <p className="text-[13px] text-fg-muted">Esta comanda se cerró sin ítems.</p>
           ) : (
-            <ul className="flex flex-col divide-y divide-border rounded-[var(--radius-sm)] border border-border">
+            <ul className="flex flex-col divide-y divide-border rounded-[var(--radius-md)] border border-border bg-surface">
               {items.map((item) => (
                 <li key={item.id} className="flex items-center gap-3 px-3 py-2">
-                  <span className="w-8 shrink-0 font-mono text-[13px] text-fg-muted">
+                  <span className="w-8 shrink-0 font-mono text-[13px] tabular-nums text-fg-muted">
                     {item.cantidad}×
                   </span>
-                  <span className="flex-1 text-[13px] text-fg">
+                  <span className="flex-1 text-sm text-fg">
                     {item.nombreSnap}
                     {item.nota ? <span className="text-fg-subtle"> · {item.nota}</span> : null}
                   </span>
                   <span className="font-mono text-[12px] text-fg-subtle">
                     {formatUsd(item.precioUnitarioSnap)} c/u
                   </span>
-                  <span className="w-16 shrink-0 text-right font-mono text-[13px] text-fg">
+                  <span className="w-16 shrink-0 text-right font-mono text-[13px] tabular-nums text-fg">
                     {formatUsd(item.totalLinea)}
                   </span>
                 </li>
@@ -127,7 +127,7 @@ export function ComandaHistorialRow({ comanda }: { comanda: Comanda }) {
                 <span className="text-[12px] text-fg-muted">sin detalle de pago</span>
               )}
             </div>
-            <span className={cn("font-mono text-[15px] font-semibold text-fg")}>
+            <span className={cn("font-mono text-base tabular-nums font-semibold text-fg")}>
               {formatUsd(comanda.total)}
             </span>
           </div>

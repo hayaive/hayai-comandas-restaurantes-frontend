@@ -128,7 +128,7 @@ export function TableShape({
           r={SEAT_RADIUS}
           className={cn(
             "stroke-border-strong transition-colors duration-150",
-            selected ? "fill-accent-soft" : "fill-surface",
+            selected ? "fill-active-soft" : "fill-surface",
           )}
           strokeWidth={1.5}
         />
@@ -147,7 +147,7 @@ export function TableShape({
           y={-half}
           width={table.size}
           height={table.size}
-          rx={10}
+          rx={12}
           className={cn(status.svgFillClass, status.svgStrokeClass)}
           strokeWidth={selected ? 3 : 2}
         />
@@ -159,8 +159,8 @@ export function TableShape({
           {table.shape === "circle" ? (
             <circle
               r={half + 7}
-              className="fill-none stroke-accent"
-              strokeWidth={2}
+              className="fill-none stroke-active"
+              strokeWidth={2.5}
               strokeDasharray={isFocused && !selected ? "4 4" : undefined}
             />
           ) : (
@@ -169,9 +169,9 @@ export function TableShape({
               y={-half - 7}
               width={table.size + 14}
               height={table.size + 14}
-              rx={14}
-              className="fill-none stroke-accent"
-              strokeWidth={2}
+              rx={16}
+              className="fill-none stroke-active"
+              strokeWidth={2.5}
               strokeDasharray={isFocused && !selected ? "4 4" : undefined}
             />
           )}

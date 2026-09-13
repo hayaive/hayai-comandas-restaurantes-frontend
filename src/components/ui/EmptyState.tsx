@@ -1,7 +1,16 @@
 import type { ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
+import { IconTile } from "./IconTile";
 
+/**
+ * The "nothing here yet" state.
+ *
+ * An empty screen is the one moment the interface has nothing else to say, so
+ * it is worth spending a little brand on: the icon sits on the brand-gradient
+ * tile rather than a gray square. Measure is capped at ~38ch so the
+ * description stays a readable two or three lines rather than one long band.
+ */
 export interface EmptyStateProps {
   icon: ReactNode;
   title: string;
@@ -10,14 +19,6 @@ export interface EmptyStateProps {
   className?: string;
 }
 
-/**
- * The "nothing here yet" state.
- *
- * The icon plate is a soft brand-tinted disc rather than a gray square: an
- * empty screen is the one moment the interface has nothing else to say, so it
- * is worth spending a little brand on. Measure is capped at ~34ch so the
- * description stays a readable two or three lines.
- */
 export function EmptyState({
   icon,
   title,
@@ -28,20 +29,16 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex flex-1 flex-col items-center justify-center gap-4 px-6 py-12 text-center",
+        "flex flex-1 flex-col items-center justify-center gap-4 px-6 py-14 text-center",
         className,
       )}
     >
-      <div className="flex size-14 items-center justify-center rounded-[var(--radius-lg)] border border-accent/15 bg-accent-soft text-accent">
+      <IconTile tone="gradient" size="xl">
         {icon}
-      </div>
-      <div className="max-w-[34ch]">
-        <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-fg">
-          {title}
-        </h2>
-        <p className="mt-1.5 text-[13px] leading-relaxed text-fg-muted">
-          {description}
-        </p>
+      </IconTile>
+      <div className="max-w-[38ch]">
+        <h2 className="text-lg font-semibold text-fg">{title}</h2>
+        <p className="mt-1.5 text-sm leading-relaxed text-fg-muted">{description}</p>
       </div>
       {action}
     </div>

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowLeft, Users } from "@phosphor-icons/react";
+import { ArrowLeft, Users } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -121,7 +121,7 @@ export function ReservationFormModal({ open, onClose }: ReservationFormModalProp
       footer={
         enMesa ? (
           <>
-            <Button variant="secondary" size="sm" onClick={close}>
+            <Button size="sm" onClick={close}>
               Cancelar
             </Button>
             <Button variant="primary" size="sm" onClick={skipTable}>
@@ -149,10 +149,10 @@ export function ReservationFormModal({ open, onClose }: ReservationFormModalProp
         <TablePickerStep template={activeTemplate} onPick={pickTable} />
       ) : (
         <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-border bg-surface px-3 py-2.5">
+          <div className="flex items-center justify-between gap-3 rounded-[var(--radius-md)] border border-border bg-surface-sunken px-3.5 py-3">
             {mesa ? (
               <>
-                <span className="flex items-center gap-2 text-[13px] text-fg-muted">
+                <span className="flex items-center gap-2 text-sm text-fg-muted">
                   <Users size={15} /> Mesa asignada
                 </span>
                 <Badge tone="free">
@@ -161,7 +161,7 @@ export function ReservationFormModal({ open, onClose }: ReservationFormModalProp
               </>
             ) : (
               <>
-                <span className="text-[13px] text-fg-muted">Sin mesa asignada</span>
+                <span className="text-sm text-fg-muted">Sin mesa asignada</span>
                 <Badge tone="reserved">La elige el cliente</Badge>
               </>
             )}

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import { Circle, MinusCircle, PlusCircle, Square, Trash } from "@phosphor-icons/react";
+import { Circle, MinusCircle, PlusCircle, Square, Trash2 } from "lucide-react";
+
 import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
 import type { RestaurantTable, TableShape as TableShapeKind, TableStatus } from "@/lib/types";
 import { STATUS_META, STATUS_ORDER } from "./statusMeta";
@@ -18,6 +20,19 @@ export interface TableInspectorFormProps {
  * The actual "edit this table" form — shared by the desktop/tablet side
  * column (`TableInspectorPanel`) and the mobile bottom sheet
  * (`MobileTableSheet`), so both stay in sync with a single implementation.
+ *
+ * Two different kinds of "active" live on this form, and they are styled
+ * differently on purpose:
+ *
+ * - **Shape** (round / square) is a *choice the user made*, so the selected
+ *   one takes the brown active fill like every other selected control in the
+ *   product.
+ * - **Status** (libre / reservada / ocupada) is a *fact about the world*. It
+ *   keeps its own semantic colour, because a host scanning the panel has to
+ *   read "this table is occupied" as occupied-red, not as selected-brown.
+ *   Overriding it would make the three states indistinguishable at a glance,
+ *   which is the one thing the status palette exists to prevent. The selected
+ *   status is marked by its ring instead.
  */
 export function TableInspectorForm({
   table,
@@ -36,11 +51,9 @@ export function TableInspectorForm({
   const occupantVisible = table.status !== "free";
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-6">
       <div>
-        <span className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-fg-subtle">
-          Mesa seleccionada
-        </span>
+        <FieldLabel>Mesa seleccionada</FieldLabel>
         <Input
           label="Número / etiqueta"
           value={table.label}
@@ -50,52 +63,49 @@ export function TableInspectorForm({
       </div>
 
       <div>
-        <span className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-fg-subtle">
-          Forma
-        </span>
+        <FieldLabel>Forma</FieldLabel>
         <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => onSetShape("circle")}
-            className={cn(
-              "flex items-center justify-center gap-2 rounded-[var(--radius-sm)] border py-2 text-[13px] font-medium transition-colors duration-150",
-              table.shape === "circle"
-                ? "border-accent bg-accent-soft text-accent"
-                : "border-border bg-surface-raised text-fg-muted hover:bg-surface-hover",
-            )}
-          >
-            <Circle size={16} weight="bold" /> Redonda
-          </button>
-          <button
-            type="button"
-            onClick={() => onSetShape("square")}
-            className={cn(
-              "flex items-center justify-center gap-2 rounded-[var(--radius-sm)] border py-2 text-[13px] font-medium transition-colors duration-150",
-              table.shape === "square"
-                ? "border-accent bg-accent-soft text-accent"
-                : "border-border bg-surface-raised text-fg-muted hover:bg-surface-hover",
-            )}
-          >
-            <Square size={16} weight="bold" /> Cuadrada
-          </button>
+          {(
+            [
+              { value: "circle", label: "Redonda", Icon: Circle },
+              { value: "square", label: "Cuadrada", Icon: Square },
+            ] as const
+          ).map(({ value, label, Icon }) => {
+            const active = table.shape === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={active}
+                onClick={() => onSetShape(value)}
+                className={cn(
+                  "flex items-center justify-center gap-2 rounded-[var(--radius-md)] border py-2.5 text-[13px] font-medium",
+                  "transition-colors duration-150",
+                  active
+                    ? "border-transparent bg-active text-active-fg"
+                    : "border-border bg-surface-raised text-fg-muted hover:border-border-strong hover:bg-surface-hover",
+                )}
+              >
+                <Icon size={16} /> {label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
       <div>
-        <span className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-fg-subtle">
-          Capacidad
-        </span>
-        <div className="flex items-center gap-3 rounded-[var(--radius-sm)] border border-border bg-surface-raised px-2 py-1.5">
+        <FieldLabel>Capacidad</FieldLabel>
+        <div className="flex items-center gap-3 rounded-[var(--radius-md)] border border-border bg-surface-raised px-2 py-1.5">
           <button
             type="button"
             aria-label="Quitar silla"
             disabled={table.seats <= 1}
             onClick={() => onSetSeats(table.seats - 1)}
-            className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] text-fg-muted transition-colors hover:bg-surface-hover disabled:pointer-events-none disabled:opacity-30"
+            className="flex size-9 items-center justify-center rounded-[var(--radius-sm)] text-fg-muted transition-colors hover:bg-surface-hover hover:text-fg disabled:pointer-events-none disabled:opacity-30"
           >
             <MinusCircle size={20} />
           </button>
-          <span className="flex-1 text-center font-mono text-[15px] font-semibold text-fg">
+          <span className="flex-1 text-center font-mono text-base font-semibold tabular-nums text-fg">
             {table.seats}
           </span>
           <button
@@ -103,7 +113,7 @@ export function TableInspectorForm({
             aria-label="Agregar silla"
             disabled={table.seats >= 20}
             onClick={() => onSetSeats(table.seats + 1)}
-            className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] text-fg-muted transition-colors hover:bg-surface-hover disabled:pointer-events-none disabled:opacity-30"
+            className="flex size-9 items-center justify-center rounded-[var(--radius-sm)] text-fg-muted transition-colors hover:bg-surface-hover hover:text-fg disabled:pointer-events-none disabled:opacity-30"
           >
             <PlusCircle size={20} />
           </button>
@@ -111,9 +121,7 @@ export function TableInspectorForm({
       </div>
 
       <div>
-        <span className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-fg-subtle">
-          Estado
-        </span>
+        <FieldLabel>Estado</FieldLabel>
         <div className="flex flex-col gap-1.5">
           {STATUS_ORDER.map((status) => {
             const meta = STATUS_META[status];
@@ -122,15 +130,17 @@ export function TableInspectorForm({
               <button
                 key={status}
                 type="button"
+                aria-pressed={active}
                 onClick={() => onSetStatus(status, table.occupantName)}
                 className={cn(
-                  "flex items-center gap-2 rounded-[var(--radius-sm)] border px-3 py-2 text-left text-[13px] font-medium transition-colors duration-150",
+                  "flex items-center gap-2.5 rounded-[var(--radius-md)] border px-3.5 py-2.5 text-left text-[13px] font-medium",
+                  "transition-colors duration-150",
                   active
-                    ? cn(meta.bgSoftClass, meta.borderClass, meta.textClass)
-                    : "border-border bg-surface-raised text-fg-muted hover:bg-surface-hover",
+                    ? cn(meta.bgSoftClass, meta.borderClass, meta.textClass, "ring-2 ring-active")
+                    : "border-border bg-surface-raised text-fg-muted hover:border-border-strong hover:bg-surface-hover",
                 )}
               >
-                <span className={cn("h-2 w-2 rounded-full", meta.dotClass)} />
+                <span className={cn("size-2 shrink-0 rounded-full", meta.dotClass)} />
                 {meta.label}
               </button>
             );
@@ -150,39 +160,40 @@ export function TableInspectorForm({
         )}
       </div>
 
-      <div className="border-t border-border pt-4">
+      <div className="border-t border-border pt-5">
         {confirmingDelete ? (
-          <div className="flex flex-col gap-2">
-            <p className="text-[13px] text-fg-muted">
+          <div className="flex flex-col gap-2.5">
+            <p className="text-sm text-fg-muted">
               ¿Eliminar la mesa <span className="font-medium text-fg">{table.label}</span>?
             </p>
             <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setConfirmingDelete(false)}
-                className="flex-1 rounded-[var(--radius-sm)] border border-border bg-surface-raised py-2 text-[13px] font-medium text-fg-muted hover:bg-surface-hover"
-              >
+              <Button className="flex-1" onClick={() => setConfirmingDelete(false)}>
                 Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={onDelete}
-                className="flex-1 rounded-[var(--radius-sm)] bg-danger py-2 text-[13px] font-medium text-white hover:brightness-110"
-              >
+              </Button>
+              <Button variant="danger" className="flex-1" onClick={onDelete}>
                 Eliminar
-              </button>
+              </Button>
             </div>
           </div>
         ) : (
           <button
             type="button"
             onClick={() => setConfirmingDelete(true)}
-            className="flex w-full items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-danger/30 bg-danger-soft py-2 text-[13px] font-medium text-danger transition-colors hover:bg-danger hover:text-white"
+            className="flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-danger/30 bg-danger-soft py-2.5 text-[13px] font-medium text-danger transition-colors hover:bg-destructive hover:text-destructive-foreground"
           >
-            <Trash size={15} /> Eliminar mesa
+            <Trash2 size={15} /> Eliminar mesa
           </button>
         )}
       </div>
     </div>
+  );
+}
+
+/** The small caps label above each control group. */
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-fg-subtle">
+      {children}
+    </span>
   );
 }
