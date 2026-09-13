@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CalendarCheck, Plus, QrCode } from "lucide-react";
 
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -20,7 +20,14 @@ export function ReservacionesPage() {
   const load = useReservationStore((s) => s.load);
   const cancel = useReservationStore((s) => s.cancel);
   const confirm = useReservationStore((s) => s.confirm);
-  const reservations = useTodaysReservations();
+  const todaysReservations = useTodaysReservations();
+  // Una reserva cancelada de hoy sigue siendo del mismo día, pero ya no es
+  // parte de la agenda accionable — mostrarla junto a las pendientes/
+  // confirmadas es ruido, no información útil para el host.
+  const reservations = useMemo(
+    () => todaysReservations.filter((r) => r.estado !== "cancelada"),
+    [todaysReservations],
+  );
 
   const [formOpen, setFormOpen] = useState(false);
   const [qrTarget, setQrTarget] = useState<Reservacion | null>(null);
