@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { create } from "zustand";
 import { api, ApiError } from "@/api";
 import type { CreateReservacionInput, Reservacion } from "@/api";
@@ -98,16 +99,24 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
 }));
 
 export function useTodaysReservations(): Reservacion[] {
-  return useReservationStore((state) => {
+  // OJO: el selector de un store de Zustand debe devolver una referencia
+  // estable cuando el dato no cambió. Antes este selector hacía
+  // `filter().sort()` inline, devolviendo un arreglo NUEVO en cada render;
+  // con `useSyncExternalStore` (lo que usa Zustand v5) eso dispara un loop
+  // infinito de renders (React error #185). Por eso se selecciona el
+  // arreglo crudo (referencia estable entre renders si no cambió) y el
+  // filtrado/orden se memoiza aparte.
+  const reservaciones = useReservationStore((state) => state.reservaciones);
+  return useMemo(() => {
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date();
     endOfDay.setHours(23, 59, 59, 999);
-    return state.reservaciones
+    return reservaciones
       .filter((r) => {
         const start = new Date(r.iniciaEn);
         return start >= startOfDay && start <= endOfDay;
       })
       .sort((a, b) => a.iniciaEn.localeCompare(b.iniciaEn));
-  });
+  }, [reservaciones]);
 }
