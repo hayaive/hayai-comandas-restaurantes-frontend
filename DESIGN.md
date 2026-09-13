@@ -2,24 +2,27 @@
 
 <!-- impeccable:design-schema 1 -->
 
-Direction: **service rail**. An operational dashboard for a restaurant floor,
-built to be scanned in a glance under service pressure, not admired. One
-brand accent is reserved for selection and primary actions; three semantic
-colors carry table state and never borrow the brand hue so the two can never
-be confused.
+Direction: **specialty coffee house**. An operational dashboard for a
+restaurant floor, built to be scanned in a glance under service pressure,
+not admired — now carrying the "HAYAI Coffee" brand identity (warm
+brown/cream/kraft, not a generic SaaS dashboard palette). One brand accent
+is reserved for selection and primary actions; three semantic colors carry
+table state and never borrow the brand hue so the two can never be confused.
 
 ## Direction contract
 
 - **THESIS.** The floor plan is an instrument staff read at a glance, not a
   generic canvas app; every table communicates its state before its shape
-  does.
-- **OWN-WORLD.** Deep graphite dark theme (default, matches host-stand/back-
-  of-house lighting) with a warm-neutral light theme as an equal citizen;
-  one rail-cyan brand accent (`--accent`) for selection and primary actions;
-  three semantic colors (emerald free, amber reserved, rose occupied) kept
-  separate from the brand hue; JetBrains Mono for every numeral (table
-  labels, seat counts), Inter for all other UI text; hairline dot-grid
-  canvas; locked 6/10/16px radius scale; pill-shaped template tabs.
+  does. The palette reads as a specialty coffee shop (roasted beans, cream,
+  kraft paper), not an operational SaaS dashboard.
+- **OWN-WORLD.** Deep espresso-brown dark theme (default, matches host-
+  stand/back-of-house lighting) with a warm cream/kraft light theme as an
+  equal citizen; one burnt-terracotta brand accent (`--accent`) for
+  selection and primary actions; three semantic colors (moss-green free,
+  caramel-gold reserved, wine-red occupied) kept separate from the brand
+  hue; JetBrains Mono for every numeral (table labels, seat counts), Inter
+  for all other UI text; hairline dot-grid canvas; locked 6/10/16px radius
+  scale; pill-shaped template tabs.
 - **STORY.** A host scans the floor, taps a table to relabel or resize it in
   a docked inspector (never a modal for routine edits), drags it to a new
   spot with optional grid-snap, and switches or creates plan templates
@@ -53,16 +56,20 @@ value in a component; always reach for a token class.
 
 | Role | Token | Light | Dark |
 |---|---|---|---|
-| Brand accent | `--accent` | `#17a8e0` | `#17a8e0` |
-| Free | `--status-free` | `#2fae6b` | `#2fae6b` |
-| Reserved | `--status-reserved` | `#d69a1f` | `#d69a1f` |
-| Occupied | `--status-occupied` | `#e1495a` | `#e1495a` |
-| Surface | `--surface` | `#ffffff` | `#2a2724` |
-| Background | `--bg` | `#faf9f8` | `#0d0c0b` |
+| Brand accent | `--accent` | `#a8501f` (deep terracotta) | `#dd8a4a` (copper — lightened for text-on-dark contrast) |
+| Free | `--status-free` | `#5b8a4f` (moss green) | `#5b8a4f` |
+| Reserved | `--status-reserved` | `#c98a2e` (caramel gold) | `#c98a2e` |
+| Occupied | `--status-occupied` | `#a8354a` (wine red) | `#a8354a` |
+| Surface | `--surface` | `#ffffff` | `#24170e` |
+| Background | `--bg` | `#fdfaf5` (warm cream) | `#100a06` (coffee bean) |
 
-Both themes are fully defined (no color lives only inside a media query);
-`[data-theme]` on `<html>` overrides system preference, toggled from
-`src/lib/useTheme.ts` and persisted to `localStorage`.
+Note: `--accent` itself is redefined per theme (not just its `-soft`
+variant) because the light-mode terracotta is too dark to read as text at
+4.5:1 against a dark soft-fill background — dark mode uses a lighter step
+of the same hue instead. Both themes are fully defined (no color lives
+only inside a media query); `[data-theme]` on `<html>` overrides system
+preference, toggled from `src/lib/useTheme.ts` and persisted to
+`localStorage`.
 
 ## Typography
 
