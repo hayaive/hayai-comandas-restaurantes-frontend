@@ -3,21 +3,28 @@ import { useFloorPlanStore } from "./useFloorPlanStore";
 import { useComandaStore } from "./useComandaStore";
 
 /**
- * The seam between the floor plan editor and the comandas panel.
+ * La costura entre el editor de plano y el panel de comandas.
  *
- * `useFloorPlanStore` (untouched, owned by the floor plan editor) stays the
- * single source of truth for table status. This hook watches every
- * template's tables — not just the one currently shown in the editor, so
- * switching the visible template does not cancel comandas open elsewhere —
- * and keeps `useComandaStore` in sync: a table that turns "occupied" (from
- * the editor's inspector, from a walk-in, or from a check-in) gets a comanda
- * opened for it if it doesn't have one yet; a table that stops being
- * occupied without going through "cobrar" (e.g. a host resets it to free by
- * hand) gets its dangling comanda cancelled. Both ends are idempotent, so
- * mounting this in more than one screen is harmless.
+ * Desde que el plano está conectado al backend, la ocupación real la calcula el
+ * servidor (`v_mesa_estado`): una mesa está ocupada si y sólo si tiene una
+ * comanda viva. Este hook ya no *define* ese estado, sólo cierra el círculo de
+ * las acciones que el usuario hace desde el editor:
+ *
+ * - marcar una mesa como ocupada en el inspector abre su comanda (`POST /comandas`);
+ * - devolverla a libre a mano anula la comanda que había quedado colgando.
+ *
+ * Dos guardas importantes, que antes no hacían falta porque todo era local:
+ *
+ * 1. Una comanda `para_llevar` no tiene `mesaId`; nunca debe anularse por no
+ *    encontrar su mesa en el plano.
+ * 2. Sólo se anulan comandas de mesas que están **en las plantillas cargadas**.
+ *    Si una comanda apunta a una mesa que no está en este plano (otro salón,
+ *    otra distribución, o el plano aún no terminó de cargar), se deja en paz:
+ *    anularla sería destruir una comanda real por un dato incompleto.
  */
 export function useSyncComandasWithFloorPlan() {
   const templates = useFloorPlanStore((state) => state.templates);
+  const floorStatus = useFloorPlanStore((state) => state.status);
   const status = useComandaStore((state) => state.status);
   const comandas = useComandaStore((state) => state.comandas);
   const ensureComandaForTable = useComandaStore((state) => state.ensureComandaForTable);
@@ -26,8 +33,9 @@ export function useSyncComandasWithFloorPlan() {
   const allTables = useMemo(() => templates.flatMap((tpl) => tpl.tables), [templates]);
 
   useEffect(() => {
-    if (status !== "ready") return;
+    if (status !== "ready" || floorStatus !== "ready") return;
 
+    const knownTableIds = new Set(allTables.map((t) => t.id));
     const occupiedTableIds = new Set(
       allTables.filter((t) => t.status === "occupied").map((t) => t.id),
     );
@@ -39,9 +47,11 @@ export function useSyncComandasWithFloorPlan() {
     }
 
     for (const comanda of comandas) {
+      if (!comanda.mesaId) continue;
+      if (!knownTableIds.has(comanda.mesaId)) continue;
       if (!occupiedTableIds.has(comanda.mesaId)) {
         void releaseComandaForTable(comanda.mesaId);
       }
     }
-  }, [allTables, status, comandas, ensureComandaForTable, releaseComandaForTable]);
+  }, [allTables, status, floorStatus, comandas, ensureComandaForTable, releaseComandaForTable]);
 }
