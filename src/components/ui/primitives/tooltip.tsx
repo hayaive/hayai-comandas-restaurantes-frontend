@@ -53,7 +53,10 @@ const TooltipContent = React.forwardRef<
         {...props}
       >
         {children}
-        <TooltipPrimitive.Arrow className="z-50 size-2 translate-y-[calc(-50%_-_1px)] rotate-45 rounded-[2px] fill-fg" />
+        {/* Radix already draws a correctly-pointed SVG triangle. shadcn's
+            `rotate-45` square trick assumes a `<span>` arrow and skews this
+            one, so tint the real polygon instead of rotating it. */}
+        <TooltipPrimitive.Arrow width={11} height={5} className="fill-fg" />
       </TooltipPrimitive.Content>
     </TooltipPrimitive.Portal>
   );

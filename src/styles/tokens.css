@@ -204,8 +204,10 @@
     --border-strong: var(--n-600);
 
     --fg: var(--n-50);
-    --fg-muted: var(--n-300);
-    --fg-subtle: var(--n-500);
+    /* Kept in step with the `[data-theme="dark"]` block below — see the note
+       there on why dark secondary text moved up one rung. */
+    --fg-muted: var(--n-200);
+    --fg-subtle: var(--n-300);
     --fg-on-accent: var(--n-900);
     --fg-on-dark-fill: var(--n-50);
 
@@ -251,8 +253,13 @@
   --border-strong: var(--n-600);
 
   --fg: var(--n-50);
-  --fg-muted: var(--n-300);
-  --fg-subtle: var(--n-500);
+  /* Dark secondary text was too dark to read. `--fg-subtle` at `--n-500`
+     measures ~2.0:1 on `--surface`, and that token draws the input
+     placeholder and the hint line under a field — exactly the text a user
+     squints at. Both steps move up one rung on the same warm scale:
+     `--fg-muted` now clears 8:1 and `--fg-subtle` 5.6:1 on `--surface`. */
+  --fg-muted: var(--n-200);
+  --fg-subtle: var(--n-300);
   --fg-on-accent: var(--n-900);
   --fg-on-dark-fill: var(--n-50);
 

@@ -88,20 +88,61 @@ Locked radius scale: `--radius-sm` (6px, controls/buttons/inputs),
 canvas frame/modal), `--radius-pill` (template tabs, switches). Shadows are
 hue-tinted, never pure black (`--shadow-sm/md/lg`).
 
-## Components (`src/components/ui/`)
+## Components (`src/components/ui/`) — shadcn/ui on Radix
 
-`Button`, `IconButton`, `Card` (+ `CardHeader`/`CardBody`), `Input`,
-`Badge`, `Modal` (portal, focus trap, ESC/backdrop close), `Switch`,
-`EmptyState`, `ThemeToggle`. All theme-aware by construction (they only use
-token utility classes), all keyboard-reachable, all have hover/focus/active/
-disabled states where applicable. These are the pieces D.A.N.I should reach
-for first on Comandas/Ventas/Reservaciones before inventing new ones.
+This layer is **shadcn/ui**. `src/components/ui/primitives/` holds canonical
+shadcn components (button, input, label, dialog, select, switch, tooltip,
+popover, dropdown-menu, tabs, scroll-area, separator, skeleton) on Radix UI,
+`class-variance-authority` and `tailwind-merge`. The PascalCase files beside
+it — `Button`, `IconButton`, `Card`, `Input`, `Select`, `Badge`, `Modal`,
+`Switch`, `EmptyState`, `ThemeToggle` — are this project's branded API on top
+of them, and are what screens import. Reach for these first on any screen
+before inventing a new component.
 
-`Switch`'s knob is a normal flex child inside a padded track (`p-0.5`), not
-an absolutely-positioned span with hand-computed `translateX` pixels — the
-knob's max travel is exactly `track content-box width − knob width`
-(30px − 14px = 16px), so containment holds by construction in both states
-and both themes, regardless of border width.
+`components.json` points `aliases.ui` at `primitives/`, so
+`npx shadcn@latest add <component>` works normally. Read
+`src/components/ui/primitives/README.md` before pasting anything in from
+upstream: two substitutions are required (shadcn's `accent` role → our
+`surface-hover`/`fg`, and `lucide-react` → `@phosphor-icons/react`).
+
+The CLI's `init` was deliberately not run. It writes lowercase `button.tsx`,
+which collides with `Button.tsx` on a case-insensitive Windows filesystem,
+and it rewrites the Tailwind entry CSS with shadcn's default gray OKLCH ramp
+— which would have destroyed the coffee palette this project is built on.
+
+### Colour roles
+
+`tokens.css` carries a shadcn role block where every role aliases an existing
+coffee token: `--primary` is the burnt terracotta `--accent`, `--secondary`
+is `--surface-hover`, `--muted` is `--surface-sunken`, `--ring` is `--accent`,
+`--card`/`--popover` are `--surface-raised`, and the `--sidebar-*` family
+points at the fixed kraft-rail chrome. Because each role is `var(--token)`
+rather than a copied value, the roles follow the light/dark swap for free and
+are declared exactly once.
+
+shadcn's `--accent` role is **not** aliased. In shadcn `accent` means "subtle
+hover tint"; here `--accent` is the brand hue and the whole app depends on
+that meaning.
+
+### Notes that outlive this pass
+
+- `Modal` is a header / scrolling-body / footer shell over Radix `Dialog`.
+  Radix owns focus, the focus trap, focus restore, Escape, outside-press and
+  the body scroll lock, which is why the old hand-rolled focus effect (and
+  the ref it needed so typing in a modal input did not steal focus back to
+  the close button) is gone rather than restyled.
+- `IconButton` shows its `label` as a Radix tooltip instead of the `title`
+  attribute. `title` renders in OS chrome with the OS font and never appears
+  for keyboard or touch users.
+- `Select` stays a native `<select>` on purpose: the app runs on tablets at a
+  host stand, where the OS picker beats any popup we could draw. The trigger
+  matches `Input` exactly. The full Radix select lives in
+  `primitives/select.tsx` for options needing rich content.
+- Dark-mode `--fg-muted`/`--fg-subtle` each sit one rung lighter than they
+  used to (`--n-200`/`--n-300`). At `--n-500`, `--fg-subtle` measured ~2.0:1
+  on `--surface`, and that token draws input placeholders and field hints.
+- Modal and sheet scrims use `--overlay`, a warm espresso rgba. A neutral
+  `black/45` desaturates the whole cream palette for as long as it is up.
 
 ## Floor plan editor (`src/components/floor-plan/`)
 
