@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Package, Pencil, Plus, Trash2 } from "lucide-react";
+import { Eye, EyeOff, MoreVertical, Package, Pencil, Plus, Trash2 } from "lucide-react";
 
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/Button";
@@ -8,6 +8,14 @@ import { IconButton } from "@/components/ui/IconButton";
 import { Switch } from "@/components/ui/Switch";
 import { PageBody, Section } from "@/components/ui/Section";
 import { PageHeader } from "@/components/layout/PageHeader";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/primitives/dropdown-menu";
 import { useProductStore } from "@/lib/useProductStore";
 import { ProductFormModal } from "@/components/productos/ProductFormModal";
 import { ProductThumbnail } from "@/components/productos/ProductThumbnail";
@@ -137,10 +145,70 @@ export function ProductosPage() {
               </div>
             )}
 
-            <div className="overflow-hidden rounded-[var(--radius-lg)] border border-border bg-surface">
-              {/* La tabla desborda horizontalmente en su propio contenedor, no
-                  en el body de la página: a ~400px las cinco columnas no caben
-                  y forzarlas rompería el gutter lateral del layout. */}
+            {/* Mobile (< md): tarjetas apiladas, sin scroll horizontal —
+                nombre, miniatura y precio quedan visibles de una vez, y
+                categoría / disponibilidad / editar / eliminar viven detrás
+                del botón "más opciones" de cada fila, mismo patrón de fila
+                que la búsqueda de productos en MeseroPage. */}
+            <ul className="flex flex-col gap-2 md:hidden">
+              {visibles.map((producto) => (
+                <li
+                  key={producto.id}
+                  className="flex items-center gap-3 rounded-[var(--radius-lg)] border border-border bg-surface px-3.5 py-3"
+                >
+                  <ProductThumbnail imagenUrl={producto.imagenUrl} alt={producto.nombre} size="md" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-fg">{producto.nombre}</p>
+                    <div className="flex items-center gap-2">
+                      <DualPrice
+                        usd={producto.precio}
+                        className="font-mono text-[12px] tabular-nums text-fg-muted"
+                      />
+                      {!producto.disponible && (
+                        <Badge tone="danger" className="shrink-0">
+                          No disponible
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <IconButton
+                        icon={<MoreVertical size={16} />}
+                        label={`Más opciones de ${producto.nombre}`}
+                        variant="outline"
+                        size="sm"
+                        tooltip={false}
+                      />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuLabel>{producto.categoriaNombre}</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onSelect={() =>
+                          void toggleDisponibilidad(producto.id, !producto.disponible)
+                        }
+                      >
+                        {producto.disponible ? <EyeOff size={14} /> : <Eye size={14} />}
+                        {producto.disponible ? "Marcar no disponible" : "Marcar disponible"}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => openEdit(producto)}>
+                        <Pencil size={14} /> Editar
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onSelect={() => void deleteProducto(producto.id)}
+                      >
+                        <Trash2 size={14} /> Quitar del menú
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </li>
+              ))}
+            </ul>
+
+            {/* Desktop (md+): tabla intacta. */}
+            <div className="hidden overflow-hidden rounded-[var(--radius-lg)] border border-border bg-surface md:block">
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[640px] text-left text-sm">
                   <thead className="border-b border-border bg-surface-sunken text-[11px] uppercase tracking-wide text-fg-subtle">

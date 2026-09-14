@@ -19,6 +19,22 @@ export function ComandasPage() {
     void load();
   }, [load]);
 
+  // El pedido del cliente es que las comandas lleguen solas: sin este
+  // intervalo, un mesero que deja la pantalla abierta nunca vería una mesa
+  // nueva sin refrescar a mano. 15s es razonable para el ritmo de un piso de
+  // restaurante — ni tan agresivo como para saturar al backend, ni tan lento
+  // como para sentirse "atascado". Se salta el tick si ya hay un `load()` en
+  // curso (`getState()` en vez de suscribirse a `status`, para no tener que
+  // recrear el intervalo en cada cambio de estado).
+  useEffect(() => {
+    const POLL_INTERVAL_MS = 15_000;
+    const interval = setInterval(() => {
+      if (useComandaStore.getState().status === "loading") return;
+      void load();
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [load]);
+
   // Keeps this panel in lockstep with table status changes made in the
   // floor plan editor (occupied → comanda opened, freed manually → cancelled).
   useSyncComandasWithFloorPlan();
