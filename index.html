@@ -3,9 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/favicon.png" />
-    <link rel="apple-touch-icon" href="/logo.jpg" />
+    <link rel="apple-touch-icon" href="/pwa/apple-touch-icon.png" />
+    <!-- vite-plugin-pwa injects <link rel="manifest"> into the built
+         index.html automatically (BuildPlugin, vite.config.ts) — not added
+         here by hand to avoid a duplicate tag in dist/. It only runs on
+         `vite build`/`preview`, not `vite dev` (devOptions.enabled: false). -->
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
+    <!-- Brand brown (--accent-500, tokens.css) — colors the mobile browser
+         chrome / task switcher card once installed. -->
+    <meta name="theme-color" content="#6f4a2e" />
+    <!-- iOS ignores the manifest's `display: standalone`; these are what
+         actually make "Agregar a inicio" open without Safari's UI. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Hayai" />
     <title>Hayai Comandas</title>
   </head>
   <body>
