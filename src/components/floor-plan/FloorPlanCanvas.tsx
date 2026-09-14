@@ -35,14 +35,18 @@ export function FloorPlanCanvas({
   return (
     <div className="relative flex-1 overflow-auto bg-bg-canvas p-3 sm:p-6">
       <div
-        className="mx-auto rounded-[var(--radius-lg)] border border-border bg-surface shadow-[var(--shadow-token-sm)]"
+        // Below `md` the client explicitly wants the whole plan to fit the
+        // phone's screen with no horizontal pan/scroll, so nothing floors the
+        // width there: it shrinks with the viewport and `aspectRatio` scales
+        // height (and, via the shared `viewBox`, every table/chair/label)
+        // proportionally down to whatever the screen allows.
+        // `md:min-w-[600px]` restores the old floor at tablet/desktop widths,
+        // where the wrapper's `overflow-auto` still lets a wide 1200-unit
+        // plan pan horizontally inside a narrower window instead of shrinking
+        // into illegibility — see the touch-action note on the `<svg>` below.
+        className="mx-auto w-full rounded-[var(--radius-lg)] border border-border bg-surface shadow-[var(--shadow-token-sm)] md:min-w-[600px]"
         style={{
-          width: "100%",
           maxWidth: CANVAS_WIDTH + 48,
-          // Below this width the plan would shrink to an unusable, illegible
-          // size on a phone — floor it here and let the wrapper's
-          // `overflow-auto` handle panning instead (see touch-action below).
-          minWidth: 600,
           aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`,
         }}
       >

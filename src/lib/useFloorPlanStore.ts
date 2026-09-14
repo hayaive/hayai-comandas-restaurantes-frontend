@@ -415,6 +415,9 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
       });
       return;
     }
+    const index = state.templates.findIndex((tpl) => tpl.id === templateId);
+    const removed = state.templates[index];
+    if (!removed) return;
     const remaining = state.templates.filter((tpl) => tpl.id !== templateId);
     const wasEditing = state.editingTemplateId === templateId;
     set({
@@ -426,8 +429,19 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
     try {
       await api.deletePlantilla(templateId);
     } catch (error) {
-      set({ error: messageOf(error) });
-      await get().load();
+      // Revert locally instead of a full `load()`: `load()` starts by setting
+      // `error: null` itself, which — since nothing here awaits a render in
+      // between — wiped this exact error out before React ever painted it,
+      // so a rejected delete (e.g. a plantilla with reservaciones/comandas
+      // history, which the backend refuses with 422) silently reappeared
+      // with no visible explanation. Put it back where it was instead.
+      set((current) => ({
+        error: messageOf(error),
+        templates: current.templates.some((tpl) => tpl.id === templateId)
+          ? current.templates
+          : [...current.templates.slice(0, index), removed, ...current.templates.slice(index)],
+        editingTemplateId: wasEditing ? templateId : current.editingTemplateId,
+      }));
     }
   },
 

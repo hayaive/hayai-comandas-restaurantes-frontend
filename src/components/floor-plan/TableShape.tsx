@@ -54,6 +54,21 @@ export function TableShape({
 
   function handlePointerDown(event: ReactPointerEvent<SVGGElement>) {
     event.stopPropagation();
+    // Defensive against mobile browsers stealing the gesture as a scroll/pan
+    // of an ancestor (the canvas wrapper's `overflow-auto`, or the `<svg>`'s
+    // own `touch-pan-x touch-pan-y`) before `pointermove` below gets a chance
+    // to cross `DRAG_THRESHOLD`. `touch-none` on this `<g>` should already
+    // stop that per the touch-action spec, but historically WebKit/Safari on
+    // iOS has been inconsistent about honouring `touch-action` on SVG child
+    // elements — `preventDefault()` inside a non-passive React pointer
+    // handler is the mechanism the spec defines for suppressing default touch
+    // behaviour, and it does not depend on that support, so keep both.
+    event.preventDefault();
+    // `preventDefault()` on pointerdown also suppresses the browser's default
+    // "focus the target" behaviour, so restore it explicitly — otherwise a
+    // tap/click on a table would stop moving focus there, breaking the
+    // keyboard focus-visible ring below.
+    event.currentTarget.focus();
     // Selection is decided on release, not here — see DRAG_THRESHOLD above.
     pointerStart.current = { x: event.clientX, y: event.clientY };
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -61,6 +76,10 @@ export function TableShape({
 
   function handlePointerMove(event: ReactPointerEvent<SVGGElement>) {
     if (!pointerStart.current) return;
+    // Same defensive preventDefault as pointerdown, for the same reason —
+    // keeps a live drag from being aborted mid-gesture by a browser that
+    // decides midway through to start scrolling instead.
+    event.preventDefault();
 
     if (!isDragging) {
       const dx = event.clientX - pointerStart.current.x;
@@ -255,12 +274,21 @@ export function TableShape({
         </>
       )}
 
-      {/* Label + seat count */}
+      {/* Label + seat count.
+          Font size is a `viewBox` unit like everything else here, so it
+          shrinks with the canvas exactly as the tables and chairs do (see
+          `FloorPlanCanvas.tsx`'s note on removing `minWidth` below `md`).
+          Below `md` the canvas can now go all the way down to a phone's full
+          width instead of the old 600px floor, which would otherwise make
+          this text render far smaller on screen than before — bumped here as
+          a legibility floor for that case specifically (viewport-breakpoint
+          based, not actual-container-width based, since the SVG has no
+          container queries to key off; unverified on a real device). */}
       <text
         textAnchor="middle"
         dominantBaseline="central"
         y={table.seats > 0 ? -7 : 0}
-        className="select-none fill-fg font-mono text-[15px] font-semibold"
+        className="select-none fill-fg font-mono text-[19px] font-semibold md:text-[15px]"
       >
         {table.label}
       </text>
@@ -268,7 +296,7 @@ export function TableShape({
         textAnchor="middle"
         dominantBaseline="central"
         y={11}
-        className="select-none fill-fg-muted font-mono text-[10.5px]"
+        className="select-none fill-fg-muted font-mono text-[13px] md:text-[10.5px]"
       >
         {"×"}
         {table.seats}
@@ -280,7 +308,7 @@ export function TableShape({
           textAnchor="middle"
           y={half + 20}
           className={cn(
-            "select-none text-[11px] font-medium",
+            "select-none text-[13.5px] font-medium md:text-[11px]",
             table.status === "reserved" ? "fill-status-reserved-fg" : "fill-status-occupied-fg",
           )}
         >

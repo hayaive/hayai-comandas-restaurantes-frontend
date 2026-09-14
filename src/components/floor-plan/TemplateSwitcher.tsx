@@ -4,6 +4,9 @@ import type { KeyboardEvent } from "react";
 import { cn } from "@/lib/cn";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
+import { IconButton } from "@/components/ui/IconButton";
+import { Select } from "@/components/ui/Select";
+import { MobileNewTemplateSheet } from "./MobileNewTemplateSheet";
 import type { FloorPlanTemplate } from "@/lib/types";
 
 interface TemplateSwitcherProps {
@@ -24,7 +27,9 @@ export function TemplateSwitcher({
   const [creating, setCreating] = useState(false);
   const [draftName, setDraftName] = useState("");
   const [pendingDelete, setPendingDelete] = useState<FloorPlanTemplate | null>(null);
+  const [mobileCreateOpen, setMobileCreateOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const activeTemplate = templates.find((template) => template.id === activeTemplateId) ?? null;
 
   function startCreating() {
     setCreating(true);
@@ -55,7 +60,13 @@ export function TemplateSwitcher({
   }
 
   return (
-    <div className="flex items-center gap-1 overflow-x-auto">
+    <>
+    {/* Desktop / tablet (≥ md): the pill row, unchanged — horizontal scroll
+        here is fine on a pointer-driven wide surface. Below `md` this whole
+        row would scroll sideways with enough plantillas, which the client
+        explicitly does not want on a phone — see the `md:hidden` select
+        below instead. */}
+    <div className="hidden items-center gap-1 overflow-x-auto md:flex">
       {templates.map((template) => {
         const active = template.id === activeTemplateId;
         return (
@@ -115,27 +126,71 @@ export function TemplateSwitcher({
           <Plus size={15} />
         </button>
       )}
-
-      <Modal
-        open={pendingDelete !== null}
-        onClose={() => setPendingDelete(null)}
-        title={`Eliminar "${pendingDelete?.name ?? ""}"`}
-        description={`Se perderán sus ${pendingDelete?.tables.length ?? 0} mesas y no se puede deshacer.`}
-        footer={
-          <>
-            <Button size="sm" onClick={() => setPendingDelete(null)}>
-              Cancelar
-            </Button>
-            <Button variant="danger" size="sm" onClick={confirmDelete}>
-              Eliminar plantilla
-            </Button>
-          </>
-        }
-      >
-        <p className="text-sm text-fg-muted">
-          Esta acción no afecta a las demás plantillas guardadas.
-        </p>
-      </Modal>
     </div>
+
+    {/* Mobile (< md): a select to switch between organizaciones de mesas
+        instead of a row of pills that would scroll sideways, plus a separate
+        "nueva" button that opens `MobileNewTemplateSheet` — same bottom-sheet
+        language as `MobileMoreSheet`/`MobileTableSheet`. Deleting stays the
+        icon + confirmation `Modal` from the desktop row, acting on whichever
+        plantilla the select currently shows. */}
+    <div className="flex min-w-0 flex-1 items-center gap-1.5 md:hidden">
+      <Select
+        value={activeTemplateId}
+        onChange={(event) => onSelect(event.target.value)}
+        aria-label="Organización de mesas"
+        fieldClassName="min-w-0 flex-1"
+      >
+        {templates.map((template) => (
+          <option key={template.id} value={template.id}>
+            {template.name} ({template.tables.length})
+          </option>
+        ))}
+      </Select>
+      <IconButton
+        icon={<Plus size={15} />}
+        label="Nueva organización de mesas"
+        title="Nueva organización de mesas"
+        variant="outline"
+        onClick={() => setMobileCreateOpen(true)}
+      />
+      {templates.length > 1 && activeTemplate && (
+        <IconButton
+          icon={<Trash2 size={14} />}
+          label={`Eliminar organización ${activeTemplate.name}`}
+          title={`Eliminar organización ${activeTemplate.name}`}
+          variant="outline"
+          onClick={() => setPendingDelete(activeTemplate)}
+        />
+      )}
+    </div>
+
+    <Modal
+      open={pendingDelete !== null}
+      onClose={() => setPendingDelete(null)}
+      title={`Eliminar "${pendingDelete?.name ?? ""}"`}
+      description={`Se perderán sus ${pendingDelete?.tables.length ?? 0} mesas y no se puede deshacer.`}
+      footer={
+        <>
+          <Button size="sm" onClick={() => setPendingDelete(null)}>
+            Cancelar
+          </Button>
+          <Button variant="danger" size="sm" onClick={confirmDelete}>
+            Eliminar plantilla
+          </Button>
+        </>
+      }
+    >
+      <p className="text-sm text-fg-muted">
+        Esta acción no afecta a las demás plantillas guardadas.
+      </p>
+    </Modal>
+
+    <MobileNewTemplateSheet
+      open={mobileCreateOpen}
+      onClose={() => setMobileCreateOpen(false)}
+      onCreate={onCreate}
+    />
+    </>
   );
 }
