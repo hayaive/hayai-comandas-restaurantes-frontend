@@ -1,11 +1,12 @@
 import { NavLink, useNavigate } from "react-router-dom";
-import { LogOut } from "lucide-react";
+import { Download, LogOut } from "lucide-react";
 
 import { cn } from "@/lib/cn";
 import { BrandMark } from "./BrandMark";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { IconButton } from "@/components/ui/IconButton";
 import { useAuthStore } from "@/lib/useAuthStore";
+import { useInstallPrompt } from "@/lib/useInstallPrompt";
 import { navItems } from "./navItems";
 
 /**
@@ -30,6 +31,7 @@ import { navItems } from "./navItems";
 export function Sidebar() {
   const navigate = useNavigate();
   const logout = useAuthStore((s) => s.logout);
+  const { canInstall, promptInstall } = useInstallPrompt();
 
   function handleLogout() {
     logout();
@@ -70,6 +72,13 @@ export function Sidebar() {
 
       <div className="mt-4 flex items-center justify-center gap-1 border-t border-border px-2 py-3 lg:justify-start lg:px-3">
         <ThemeToggle />
+        {canInstall && (
+          <IconButton
+            icon={<Download size={17} />}
+            label="Instalar app"
+            onClick={promptInstall}
+          />
+        )}
         <IconButton
           icon={<LogOut size={17} />}
           label="Cerrar sesión"

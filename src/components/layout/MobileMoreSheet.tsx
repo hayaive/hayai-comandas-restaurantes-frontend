@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { NavLink, useNavigate } from "react-router-dom";
-import { LogOut, Moon, Sun, X } from "lucide-react";
+import { Download, LogOut, Moon, Sun, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/cn";
 import { IconButton } from "@/components/ui/IconButton";
 import { useAuthStore } from "@/lib/useAuthStore";
+import { useInstallPrompt } from "@/lib/useInstallPrompt";
 import { useTheme } from "@/lib/useTheme";
 
 interface MoreItem {
@@ -37,6 +38,7 @@ export function MobileMoreSheet({ open, onClose, items }: MobileMoreSheetProps) 
   const logout = useAuthStore((s) => s.logout);
   const { theme, toggleTheme } = useTheme();
   const isDark = theme === "dark";
+  const { canInstall, promptInstall } = useInstallPrompt();
 
   useEffect(() => {
     if (!open) {
@@ -67,6 +69,11 @@ export function MobileMoreSheet({ open, onClose, items }: MobileMoreSheetProps) 
     onClose();
     logout();
     navigate("/login", { replace: true });
+  }
+
+  function handleInstall() {
+    onClose();
+    void promptInstall();
   }
 
   return createPortal(
@@ -127,6 +134,16 @@ export function MobileMoreSheet({ open, onClose, items }: MobileMoreSheetProps) 
             {isDark ? <Sun size={20} /> : <Moon size={20} />}
             {isDark ? "Tema claro" : "Tema oscuro"}
           </button>
+          {canInstall && (
+            <button
+              type="button"
+              onClick={handleInstall}
+              className="flex items-center gap-2 rounded-[var(--radius-md)] px-3 py-3 text-sm font-medium text-fg-muted transition-colors duration-150 hover:bg-surface-hover hover:text-fg"
+            >
+              <Download size={20} />
+              Instalar
+            </button>
+          )}
           <button
             type="button"
             onClick={handleLogout}
