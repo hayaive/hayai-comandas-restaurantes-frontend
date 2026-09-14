@@ -35,6 +35,12 @@ used both for primary actions and for everything that is currently selected.
 >    reusable SVG gradient/pattern in `TableShape.tsx`/`FloorPlanCanvas.tsx`;
 >    see *Colour* and *Floor plan editor* below.
 >
+> 4. **Four mobile bugs found by the client on a real phone** (Sep 2026,
+>    D.A.N.I): dragging a table didn't work on touch at all, deleting a
+>    plantilla silently reappeared, the plantilla-tab row scrolled sideways,
+>    and the plan didn't fit the screen. See *Floor plan editor* below for all
+>    four; none of them touch the wood finish or the status colours.
+>
 > Decisions that were reversed are recorded below with their reasoning rather
 > than deleted, so nobody re-litigates them by accident.
 
@@ -424,8 +430,9 @@ explicit surface pair, not as a revival of those aliases.
 
 ## Floor plan editor (`src/components/floor-plan/`)
 
-Restyled from the original clone, plus two follow-up fixes to table dragging.
-The notes that still matter:
+Restyled from the original clone, plus three follow-up fixes to table dragging
+(the third being the real-phone pass below) and a mobile layout pass on the
+template switcher and the canvas itself. The notes that still matter:
 
 - `statusMeta.ts` is the single source of truth mapping a `TableStatus` to its
   label and its **two separate class sets**: `svgFillClass`/`svgStrokeClass`
@@ -451,10 +458,54 @@ The notes that still matter:
   fires for that gesture. The selection ring shows during a drag via local
   `isDragging` state regardless of global selection, so there is still visual
   feedback while repositioning an unselected table.
-- `FloorPlanCanvas.tsx` floors the plan at `minWidth: 600` inside an
-  `overflow-auto` wrapper: below that the plan would shrink to an unusable size
-  on a phone, so it pans instead of scaling. This is the one intentional
-  horizontal-scroll surface in the product.
+  **Real-phone follow-up (Sep 2026): dragging didn't work on touch at all.**
+  The tap/drag split above was only ever verified with typecheck/lint/build,
+  never on an actual touchscreen, and the client reported tables could not be
+  dragged on mobile after it shipped. `touch-none` on the table `<g>` should
+  stop a touch gesture from being reinterpreted as a scroll/pan of an ancestor
+  (the canvas wrapper's `overflow-auto`, or the `<svg>`'s own
+  `touch-pan-x touch-pan-y`) per the `touch-action` spec, but WebKit/Safari on
+  iOS has a documented history of inconsistent `touch-action` support on SVG
+  child elements — plausibly (not confirmed on a device this session) the
+  browser was taking the gesture as a scroll before `pointermove` ever crossed
+  `DRAG_THRESHOLD`. `handlePointerDown`/`handlePointerMove` now also call
+  `event.preventDefault()` — the actual mechanism the Pointer Events spec
+  defines for suppressing default touch behaviour from a non-passive handler,
+  independent of `touch-action` support for the element type — which is why
+  React's pointer handlers work here at all (native `touchstart`/`touchmove`
+  listeners are passive by default in Chrome and can't `preventDefault()`).
+  One side effect had to be corrected: `preventDefault()` on `pointerdown`
+  also suppresses the browser's default "focus the target" behaviour, so
+  `handlePointerDown` now calls `event.currentTarget.focus()` itself —
+  otherwise tapping/clicking a table would stop moving focus there, breaking
+  the keyboard `isFocused` ring. The tap-vs-drag decision logic itself
+  (`DRAG_THRESHOLD`, deciding on release) was not changed — only reinforced.
+  **Not verified on a real touchscreen this session** — no browser/device tool
+  was available; this is reasoned from documented `touch-action`/Pointer
+  Events behaviour, not confirmed by testing.
+- `FloorPlanCanvas.tsx` no longer floors the plan at `minWidth: 600` on a
+  phone. **Real-phone follow-up (Sep 2026):** the client asked explicitly for
+  the whole plan to fit a phone's screen with no horizontal pan, which the old
+  fixed floor prevented below ~600px wide. The floor now only applies from
+  `md` up (`md:min-w-[600px]`) — tablet/desktop keeps the exact old behaviour
+  (pan a wide 1200-unit plan inside a narrower window via the wrapper's
+  `overflow-auto`, "the one intentional horizontal-scroll surface in the
+  product" still holds there); below `md` the box is `w-full` and shrinks with
+  the viewport, so `aspectRatio` and the shared `viewBox` scale every table,
+  chair and label down proportionally instead. That proportional shrink makes
+  labels noticeably smaller on a narrow phone than they were before (a ~360px
+  phone now renders the plan at roughly half the scale factor the old 600px
+  floor guaranteed), so `TableShape.tsx`'s label/seat-count/occupant text gets
+  a mobile-only size bump (`text-[19px] md:text-[15px]` and similarly for the
+  other two) as a legibility floor — a viewport-breakpoint heuristic, not a
+  true container-size measurement (SVG has no container queries to key off),
+  chosen deliberately over reintroducing any horizontal scroll on mobile.
+  `TablePickerStep.tsx` (reservation flow's "elegir mesa" step) reuses this
+  same canvas and gets the same behaviour for free. **Not verified visually on
+  a real phone this session** — verified by reading the resulting scale math
+  and the build output only; whether the bumped text still looks proportionate
+  against the smallest tables at ~360px is the obvious thing to check first on
+  a device.
 - `TableInspectorPanel` (≥ md) and `MobileTableSheet` (< md) share one
   `TableInspectorForm`, so both stay in sync.
 - **Wood finish** (follow-up request, "necesito que las mesas parezcan mesas
@@ -478,6 +529,78 @@ The notes that still matter:
     `<g>`, which were not touched by this pass).
   - No SVG filter is used (no `feTurbulence`, no blur) — gradients and a
     reusable pattern only, per the host-stand-tablet performance note.
+- **`TemplateSwitcher.tsx` — mobile no longer scrolls sideways (Sep 2026).**
+  The pill row (`overflow-x-auto`) is unchanged but now `hidden md:flex`;
+  below `md` it's replaced by the project's own `Select` (`components/ui/`,
+  a styled native `<select>` chosen precisely because it opens the OS's
+  thumb-sized picker on a phone) plus a separate "nueva" `IconButton` that
+  opens `MobileNewTemplateSheet.tsx` — a third bottom sheet in the same
+  portal/backdrop-blur/rounded-top/drag-handle language as
+  `MobileMoreSheet.tsx` and `MobileTableSheet.tsx`, reused rather than
+  inventing a fourth overlay pattern. Deleting stays the existing icon +
+  confirmation `Modal`, now acting on whichever plantilla the mobile select
+  currently shows. Desktop's inline pill create-input and delete button are
+  untouched.
+- **`useFloorPlanStore.ts`'s `removeTemplate` — deleting a plantilla could
+  silently reappear (Sep 2026).** The backend legitimately refuses to delete
+  a plantilla that still has reservaciones/comandas history (FK `RESTRICT` →
+  422, see the backend's `PlantillasService.eliminar` comment and
+  `PgErrorFilter`). The frontend already removed it optimistically and
+  reverted on failure, but the revert called the store's own `load()`, whose
+  very first line is `set({ status: "loading", error: null })` — since
+  nothing awaited a render in between, that overwrote the just-set error
+  before React ever painted it, so a failed delete looked like nothing
+  happened except the plantilla coming back with no explanation. `removeTemplate`
+  now reverts locally (puts the removed template back at its original index,
+  restores `editingTemplateId` if it was the one open) instead of reloading
+  everything, so the existing `error` banner in `FloorPlanPage.tsx` actually
+  shows. **Not independently confirmed against the live backend this
+  session** — confirmed by reading `PlantillasService.eliminar` and
+  `PgErrorFilter`'s `23503` mapping, not by triggering a real 422.
+
+## PWA / instalación
+
+The app is installable — "Agregar a pantalla de inicio" on phones, "Instalar
+app" in Chrome/Edge on desktop — via `vite-plugin-pwa` (`vite.config.ts`),
+added Sep 2026 per the client's request to make the app installable from a
+phone or a computer. This is technical installability, not a redesign; no new
+visual language was introduced.
+
+- **Icons.** Generated once from the existing `public/logo.jpg` (a temporary
+  `sharp` devDependency ran a one-off resize script, then was removed —
+  `public/pwa/` holds the static PNG output, nothing regenerates them at
+  build time): `pwa-192x192.png` / `pwa-512x512.png` (`purpose: "any"`,
+  cropped straight from the logo) and `maskable-192x192.png` /
+  `maskable-512x512.png` (the logo padded ~16% onto a brand-brown `#6f4a2e`
+  background so Android's circular/squircle mask never clips it), plus a
+  180×180 `apple-touch-icon.png` for iOS. `favicon.png` is unchanged.
+- **Manifest colours.** `theme_color` (`#6f4a2e`) and `background_color`
+  (`#fafafa`) are `--accent-500` and `--bg`/`--n-25` from `tokens.css` — the
+  product's one real brand hue and its lightest neutral, not invented values.
+- **Service worker scope — operational data is never cached.** This app is
+  used live during service, so `workbox.generateSW` only precaches the built
+  app shell (JS/CSS/fonts/static images via `globPatterns`) and answers
+  offline deep links with `navigateFallback: "index.html"`. There is an
+  explicit `NetworkOnly` `runtimeCaching` rule matching `/api/` so mesas,
+  comandas, productos, reservaciones and ventas requests always hit the
+  network — see `src/api/httpClient.ts`'s `VITE_API_URL`, which can point at
+  a same-origin `/api/...` path or a different origin depending on
+  deployment; the pattern covers both rather than relying on "nothing else
+  matches it."
+- **Updates — explicit prompt, not silent `autoUpdate`.** `registerType:
+  "prompt"` plus `PwaUpdateBanner.tsx` (mounted in `App.tsx` via
+  `virtual:pwa-register/react`'s `useRegisterSW`) surfaces a small "hay una
+  actualización disponible" banner that only reloads when staff tap it. A
+  restaurant floor is exactly the environment where a background deploy
+  should not silently swap the running app shell out from under a host or
+  waiter mid-order; the banner also never self-dismisses, so nobody stays
+  stuck on a stale build indefinitely either — full reasoning is in both
+  files' comments.
+- **Not verified live.** No browser/Lighthouse tool was available this
+  session — confirmed: `manifest.webmanifest`, `sw.js` and the icons build
+  correctly into `dist/` and are referenced from `dist/index.html`. Not
+  confirmed: that Chrome/Edge/Android/iOS actually show the install
+  affordance in practice.
 
 ## Responsive
 
@@ -485,16 +608,23 @@ Verified at ~400px: page gutters are `px-4` everywhere, grids stack to one
 column, and the two wide tables (Productos 640px, Reservaciones 720px) each sit
 in their own `overflow-x-auto` container so the page body itself never scrolls
 sideways. The fixed-width sidebar (240px) and inspector column (300px) are both
-`hidden … md:flex`.
+`hidden … md:flex`. As of the Sep 2026 real-phone pass (see *Floor plan
+editor*), the floor-plan canvas itself is in this list too: below `md` it is
+no longer a fixed-floor horizontal-scroll surface, it shrinks to the viewport
+like everything else.
 
 ## Known gaps for the next pass
 
 - **No rendered visual verification.** No browser or screenshot tool was
   available; verification was a numeric contrast audit, a dev-server smoke
   test, a build, and a full manual code read. A real screenshot pass on a
-  tablet is the obvious next step.
+  tablet is the obvious next step. This also covers the Sep 2026 floor-plan
+  mobile pass specifically: the touch-drag `preventDefault()` fix, the mobile
+  template switcher/bottom sheet, and the canvas-fits-the-phone + text-size
+  compensation are all reasoned from code and spec behaviour, not confirmed
+  on a real touchscreen.
 - No pan/zoom on the floor-plan canvas (fixed-viewBox with responsive scaling
-  only).
+  only, down to whatever width `md` and below allow).
 - The JS bundle is 554 kB / 173.5 kB gzipped and trips Vite's 500 kB warning.
   Acceptable for a single-load tablet SPA, but `manualChunks` or route-level
   code splitting is the cheap win if it ever matters.
