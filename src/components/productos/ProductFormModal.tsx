@@ -1,11 +1,24 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
+import { ProductThumbnail } from "@/components/productos/ProductThumbnail";
 import { useProductStore } from "@/lib/useProductStore";
-import { ApiError } from "@/api";
+import { api, ApiError } from "@/api";
 import type { DestinoPreparacion, Producto } from "@/api";
+
+const TIPOS_IMAGEN_ACEPTADOS = "image/jpeg,image/png,image/webp";
+
+/**
+ * `imagenUrl` already loaded is treated as "pasted externally" (and the
+ * advanced URL field opens by default) when it isn't something our own
+ * upload endpoint produced — i.e. not `/uploads/...` and not a local
+ * `blob:` preview URL from the mock client.
+ */
+function isExternalImagenUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url) && !url.includes("/uploads/");
+}
 
 export interface ProductFormModalProps {
   open: boolean;
@@ -34,6 +47,10 @@ export function ProductFormModal({ open, onClose, producto }: ProductFormModalPr
   const [precio, setPrecio] = useState("");
   const [destino, setDestino] = useState<DestinoPreparacion>("cocina");
   const [imagenUrl, setImagenUrl] = useState("");
+  const [imagenUploading, setImagenUploading] = useState(false);
+  const [imagenError, setImagenError] = useState<string | null>(null);
+  const [showImagenUrlField, setShowImagenUrlField] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,16 +61,37 @@ export function ProductFormModal({ open, onClose, producto }: ProductFormModalPr
 
   useEffect(() => {
     if (!open) return;
+    const initialImagenUrl = producto?.imagenUrl ?? "";
     setNombre(producto?.nombre ?? "");
     setCategoriaId(producto?.categoriaId ?? categorias[0]?.id ?? "");
     setPrecio(producto?.precio ?? "");
     setDestino(producto?.destino ?? "cocina");
-    setImagenUrl(producto?.imagenUrl ?? "");
+    setImagenUrl(initialImagenUrl);
+    setImagenUploading(false);
+    setImagenError(null);
+    setShowImagenUrlField(isExternalImagenUrl(initialImagenUrl));
     setError(null);
     setNewCategoriaOpen(false);
     setNewCategoriaNombre("");
     setNewCategoriaError(null);
   }, [open, producto, categorias]);
+
+  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    // Reset the input so picking the same file again still fires `onChange`.
+    e.target.value = "";
+    if (!file) return;
+    setImagenError(null);
+    setImagenUploading(true);
+    try {
+      const { url } = await api.uploadProductoImagen(file);
+      setImagenUrl(url);
+    } catch (err) {
+      setImagenError(err instanceof ApiError ? err.message : "No se pudo subir la imagen");
+    } finally {
+      setImagenUploading(false);
+    }
+  }
 
   function handleCategoriaChange(value: string) {
     if (value === NEW_CATEGORIA_VALUE) {
@@ -107,6 +145,10 @@ export function ProductFormModal({ open, onClose, producto }: ProductFormModalPr
       setError("El precio debe ser un número mayor a cero");
       return;
     }
+    if (imagenUploading) {
+      setError("Espera a que termine de subirse la imagen");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -146,7 +188,12 @@ export function ProductFormModal({ open, onClose, producto }: ProductFormModalPr
           <Button size="sm" onClick={onClose} disabled={submitting}>
             Cancelar
           </Button>
-          <Button variant="primary" size="sm" onClick={() => void handleSubmit()} disabled={submitting}>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => void handleSubmit()}
+            disabled={submitting || imagenUploading}
+          >
             {submitting ? "Guardando…" : "Guardar"}
           </Button>
         </>
@@ -222,12 +269,53 @@ export function ProductFormModal({ open, onClose, producto }: ProductFormModalPr
             ))}
           </Select>
         </div>
-        <Input
-          label="URL de imagen (opcional)"
-          value={imagenUrl}
-          onChange={(e) => setImagenUrl(e.target.value)}
-          placeholder="https://…"
-        />
+        <div className="flex flex-col gap-2">
+          <span className="text-[13px] font-medium text-fg">Foto del producto (opcional)</span>
+          <div className="flex items-center gap-3">
+            <ProductThumbnail imagenUrl={imagenUrl || undefined} alt={nombre || "Producto"} size="lg" />
+            <div className="flex flex-1 flex-col gap-1.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={imagenUploading}
+                >
+                  {imagenUploading ? "Subiendo…" : imagenUrl ? "Cambiar foto" : "Elegir foto"}
+                </Button>
+                {imagenUrl && !imagenUploading && (
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setImagenUrl("")}>
+                    Quitar
+                  </Button>
+                )}
+                <button
+                  type="button"
+                  className="text-[12px] text-fg-subtle underline underline-offset-2 hover:text-fg"
+                  onClick={() => setShowImagenUrlField((v) => !v)}
+                >
+                  {showImagenUrlField ? "Ocultar URL manual" : "Pegar una URL en su lugar"}
+                </button>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={TIPOS_IMAGEN_ACEPTADOS}
+                className="hidden"
+                onChange={(e) => void handleFileSelected(e)}
+              />
+              <p className="text-[12px] text-fg-subtle">JPG, PNG o WEBP, hasta 5MB.</p>
+              {imagenError && <p className="text-[12px] text-danger">{imagenError}</p>}
+            </div>
+          </div>
+          {showImagenUrlField && (
+            <Input
+              label="URL de imagen"
+              value={imagenUrl}
+              onChange={(e) => setImagenUrl(e.target.value)}
+              placeholder="https://…"
+            />
+          )}
+        </div>
         {error && <p className="text-[12px] text-danger">{error}</p>}
       </div>
     </Modal>

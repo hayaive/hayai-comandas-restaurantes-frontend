@@ -17,18 +17,23 @@ import type {
   Mesa,
   MesaEstado,
   OrdenReporteProducto,
+  PeriodoReporte,
   Plantilla,
   PlantillaMesa,
   Producto,
   ProductoVendido,
+  ReporteVentas,
   Reservacion,
   Salon,
   DivisaTasa,
   TasaDivisa,
   UpdateMesaInput,
+  VentaPunto,
+  VentaResumen,
   UpdatePlantillaInput,
   UpdatePlantillaMesaInput,
   UpdateProductoInput,
+  UploadImagenResult,
 } from "./types";
 import { ApiError } from "./types";
 import { seedTemplates } from "@/lib/mockData";
@@ -57,10 +62,220 @@ function money(value: number): string {
   return value.toFixed(2);
 }
 
+// Mirrors the backend's real validation (CONTRACT.md, sección de uploads) so
+// the mock rejects the same files the real API would.
+const TIPOS_IMAGEN_PERMITIDOS = new Set(["image/jpeg", "image/png", "image/webp"]);
+const TAMANO_MAXIMO_IMAGEN_BYTES = 5 * 1024 * 1024;
+
 function todayAt(hours: number, minutes = 0): string {
   const d = new Date();
   d.setHours(hours, minutes, 0, 0);
   return d.toISOString();
+}
+
+// --- Mock de `GET /reportes/ventas` -------------------------------------
+// El mock sólo tiene datos fabricados para "hoy" (`comandasCobradasHoy`), así
+// que cualquier otro día operativo del tramo pedido viene en cero — es lo que
+// una `serie` "densa" real haría de todos modos si ese día no tuvo ventas.
+
+const ZERO_RESUMEN: VentaResumen = {
+  comandas: 0,
+  comensales: 0,
+  totalUsd: "0.00",
+  ventasUsd: "0.00",
+  propinasUsd: "0.00",
+  descuentosUsd: "0.00",
+  impuestosUsd: "0.00",
+  ticketPromedioUsd: "0.0000",
+};
+
+function sumResumen(comandas: Comanda[]): VentaResumen {
+  const total = comandas.length;
+  const comensales = comandas.reduce((sum, c) => sum + c.comensales, 0);
+  const ventasUsd = comandas.reduce((sum, c) => sum + Number(c.subtotal), 0);
+  const propinasUsd = comandas.reduce((sum, c) => sum + Number(c.propina ?? 0), 0);
+  const totalUsd = ventasUsd + propinasUsd;
+  return {
+    comandas: total,
+    comensales,
+    totalUsd: money(totalUsd),
+    ventasUsd: money(ventasUsd),
+    propinasUsd: money(propinasUsd),
+    descuentosUsd: "0.00",
+    impuestosUsd: "0.00",
+    ticketPromedioUsd: total === 0 ? "0.0000" : (totalUsd / total).toFixed(4),
+  };
+}
+
+/** Suma varios `VentaResumen` (p. ej. una `serie`) en uno solo. */
+function reduceResumenes(resumenes: VentaResumen[]): VentaResumen {
+  const comandas = resumenes.reduce((sum, r) => sum + r.comandas, 0);
+  const comensales = resumenes.reduce((sum, r) => sum + r.comensales, 0);
+  const sumField = (key: keyof Omit<VentaResumen, "comandas" | "comensales" | "ticketPromedioUsd">) =>
+    resumenes.reduce((sum, r) => sum + Number(r[key]), 0);
+  const totalUsd = sumField("totalUsd");
+  return {
+    comandas,
+    comensales,
+    totalUsd: money(totalUsd),
+    ventasUsd: money(sumField("ventasUsd")),
+    propinasUsd: money(sumField("propinasUsd")),
+    descuentosUsd: money(sumField("descuentosUsd")),
+    impuestosUsd: money(sumField("impuestosUsd")),
+    ticketPromedioUsd: comandas === 0 ? "0.0000" : (totalUsd / comandas).toFixed(4),
+  };
+}
+
+/** Escala un resumen por un factor (para fabricar una comparación creíble). */
+function scaleResumen(base: VentaResumen, factor: number): VentaResumen {
+  if (base.comandas === 0) return ZERO_RESUMEN;
+  const comandas = Math.max(1, Math.round(base.comandas * factor));
+  const totalUsd = Number(base.totalUsd) * factor;
+  return {
+    comandas,
+    comensales: Math.max(1, Math.round(base.comensales * factor)),
+    totalUsd: money(totalUsd),
+    ventasUsd: money(Number(base.ventasUsd) * factor),
+    propinasUsd: money(Number(base.propinasUsd) * factor),
+    descuentosUsd: money(Number(base.descuentosUsd) * factor),
+    impuestosUsd: money(Number(base.impuestosUsd) * factor),
+    ticketPromedioUsd: (totalUsd / comandas).toFixed(4),
+  };
+}
+
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+function isoDate(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function shiftIsoDate(fecha: string, days: number): string {
+  const d = new Date(`${fecha}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  return isoDate(d);
+}
+
+function turnoDe(hour: number): VentaPunto["clave"] {
+  if (hour >= 5 && hour < 11) return "desayuno";
+  if (hour >= 11 && hour < 17) return "almuerzo";
+  if (hour >= 17 && hour < 23) return "cena";
+  return "madrugada";
+}
+
+/**
+ * Reporte de ventas por período fabricado a partir de `comandasCobradasHoy` —
+ * el mock no tiene histórico real, así que sólo el día operativo actual trae
+ * datos y el resto del tramo (días/meses anteriores) queda en cero. Suficiente
+ * para probar la UI (selector, comparación, serie) sin backend real corriendo.
+ */
+function buildReporteVentas(periodo: PeriodoReporte, fechaInput: string | undefined): ReporteVentas {
+  const now = new Date();
+  const hoy = isoDate(now);
+  const ancla = fechaInput ?? hoy;
+  const esHoyElAncla = ancla === hoy;
+
+  if (periodo === "dia") {
+    const totalHoy = sumResumen(comandasCobradasHoy);
+    const turnos: VentaPunto["clave"][] = ["desayuno", "almuerzo", "cena", "madrugada"];
+    const porTurno = new Map<string, Comanda[]>(turnos.map((t) => [t, []]));
+    if (esHoyElAncla) {
+      for (const comanda of comandasCobradasHoy) {
+        const hour = new Date(comanda.cerradaEn ?? comanda.abiertaEn).getHours();
+        porTurno.get(turnoDe(hour))?.push(comanda);
+      }
+    }
+    const serie: VentaPunto[] = turnos.map((clave) => ({
+      clave,
+      ...sumResumen(porTurno.get(clave) ?? []),
+    }));
+    const diaAnterior = shiftIsoDate(ancla, -1);
+    return {
+      periodo,
+      fecha: ancla,
+      desde: ancla,
+      hasta: ancla,
+      enCurso: esHoyElAncla,
+      total: reduceResumenes(serie),
+      granularidad: "turno",
+      serie,
+      comparacion: {
+        desde: diaAnterior,
+        hasta: diaAnterior,
+        total: scaleResumen(esHoyElAncla ? totalHoy : ZERO_RESUMEN, 0.82),
+      },
+    };
+  }
+
+  const anclaDate = new Date(`${ancla}T00:00:00`);
+
+  if (periodo === "mes") {
+    const year = anclaDate.getFullYear();
+    const month = anclaDate.getMonth();
+    const esMesActual = year === now.getFullYear() && month === now.getMonth();
+    const ultimoDiaMes = new Date(year, month + 1, 0).getDate();
+    const hastaDiaNum = esMesActual ? now.getDate() : ultimoDiaMes;
+    const mesStr = `${year}-${pad2(month + 1)}`;
+    const serie: VentaPunto[] = [];
+    for (let dia = 1; dia <= hastaDiaNum; dia += 1) {
+      const clave = `${mesStr}-${pad2(dia)}`;
+      const esHoyBucket = esHoyElAncla && dia === now.getDate();
+      serie.push({ clave, ...(esHoyBucket ? sumResumen(comandasCobradasHoy) : ZERO_RESUMEN) });
+    }
+    const total = reduceResumenes(serie);
+    const mesAnteriorDate = new Date(year, month - 1, 1);
+    const diasMesAnterior = new Date(year, month, 0).getDate();
+    const enCurso = esMesActual;
+    return {
+      periodo,
+      fecha: ancla,
+      desde: `${mesStr}-01`,
+      hasta: `${mesStr}-${pad2(hastaDiaNum)}`,
+      enCurso,
+      total,
+      granularidad: "dia",
+      serie,
+      comparacion: {
+        desde: isoDate(mesAnteriorDate),
+        hasta: isoDate(new Date(mesAnteriorDate.getFullYear(), mesAnteriorDate.getMonth(), enCurso ? Math.min(hastaDiaNum, diasMesAnterior) : diasMesAnterior)),
+        total: scaleResumen(total, 0.85),
+      },
+    };
+  }
+
+  // periodo === "anio"
+  const year = anclaDate.getFullYear();
+  const esAnioActual = year === now.getFullYear();
+  const ultimoMes = esAnioActual ? now.getMonth() : 11;
+  const serie: VentaPunto[] = [];
+  for (let month = 0; month <= ultimoMes; month += 1) {
+    const clave = `${year}-${pad2(month + 1)}`;
+    const esMesBucket = esAnioActual && month === now.getMonth();
+    serie.push({
+      clave,
+      ...(esMesBucket ? sumResumen(comandasCobradasHoy) : ZERO_RESUMEN),
+    });
+  }
+  const total = reduceResumenes(serie);
+  const enCurso = esAnioActual;
+  return {
+    periodo,
+    fecha: ancla,
+    desde: `${year}-01-01`,
+    hasta: `${year}-${pad2(ultimoMes + 1)}-${pad2(new Date(year, ultimoMes + 1, 0).getDate())}`,
+    enCurso,
+    total,
+    granularidad: "mes",
+    serie,
+    comparacion: {
+      desde: `${year - 1}-01-01`,
+      hasta: enCurso
+        ? `${year - 1}-${pad2(ultimoMes + 1)}-${pad2(new Date(year - 1, ultimoMes + 1, 0).getDate())}`
+        : `${year - 1}-12-31`,
+      total: scaleResumen(total, 0.85),
+    },
+  };
 }
 
 function shortCode(): string {
@@ -664,6 +879,20 @@ export const mockApi: ApiClient = {
     return delay([...productos]);
   },
 
+  async uploadProductoImagen(archivo: File): Promise<UploadImagenResult> {
+    if (!TIPOS_IMAGEN_PERMITIDOS.has(archivo.type)) {
+      throw new ApiError("Solo se permiten imágenes JPG, PNG o WEBP", 400);
+    }
+    if (archivo.size > TAMANO_MAXIMO_IMAGEN_BYTES) {
+      throw new ApiError("La imagen no puede pesar más de 5MB", 413);
+    }
+    // No hay backend real que persista el archivo: se crea una URL de blob
+    // local para que la previsualización funcione igual que con el upload
+    // real. Vive sólo en memoria de esta pestaña — se pierde al recargar.
+    const url = URL.createObjectURL(archivo);
+    return delay({ url }, 400);
+  },
+
   async createProducto(input: CreateProductoInput) {
     const nombre = input.nombre.trim();
     if (!nombre) throw new ApiError("El nombre del producto es obligatorio", 422);
@@ -1067,5 +1296,9 @@ export const mockApi: ApiClient = {
       orden === "cantidad" ? b.cantidad - a.cantidad : Number(b.ingresoUsd) - Number(a.ingresoUsd),
     );
     return delay(list.slice(0, limite));
+  },
+
+  async getReporteVentas(periodo: PeriodoReporte = "dia", fecha?: string) {
+    return delay(buildReporteVentas(periodo, fecha));
   },
 };

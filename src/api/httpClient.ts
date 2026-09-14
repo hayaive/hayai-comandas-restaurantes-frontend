@@ -18,12 +18,14 @@ import type {
   Mesa,
   MesaEstado,
   OrdenReporteProducto,
+  PeriodoReporte,
   Plantilla,
   PlantillaDetalle,
   PlantillaMesa,
   Producto,
   ProductoVendido,
   ReporteDia,
+  ReporteVentas,
   Reservacion,
   Salon,
   DivisaTasa,
@@ -33,6 +35,7 @@ import type {
   UpdatePlantillaInput,
   UpdatePlantillaMesaInput,
   UpdateProductoInput,
+  UploadImagenResult,
 } from "./types";
 import { ApiError } from "./types";
 import { getToken, handleUnauthorized } from "./auth";
@@ -57,13 +60,18 @@ function baseUrl(): string {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getToken();
 
+  // `FormData` bodies (file uploads) must NOT get a manual `Content-Type`:
+  // the browser sets `multipart/form-data; boundary=...` itself, and
+  // overriding it here would drop the boundary and break the upload.
+  const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
+
   let response: Response;
   try {
     response = await fetch(`${baseUrl()}${path}`, {
       ...init,
       credentials: "include",
       headers: {
-        "Content-Type": "application/json",
+        ...(isFormData ? {} : { "Content-Type": "application/json" }),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...init?.headers,
       },
@@ -335,6 +343,11 @@ export const httpApi: ApiClient = {
   createCategoria: (nombre) =>
     request<Categoria>("/categorias", { method: "POST", ...json({ nombre }) }),
   listProductos: () => request<Producto[]>("/productos"),
+  uploadProductoImagen: (archivo: File) => {
+    const formData = new FormData();
+    formData.append("archivo", archivo);
+    return request<UploadImagenResult>("/uploads/productos", { method: "POST", body: formData });
+  },
   createProducto: (input: CreateProductoInput) =>
     request<Producto>("/productos", { method: "POST", ...json(input) }),
   updateProducto: (id, input: UpdateProductoInput) =>
@@ -494,5 +507,12 @@ export const httpApi: ApiClient = {
     }
     const rows = await request<ProductoVendidoRow[]>(`/reportes/productos?${params.toString()}`);
     return rows.map(toProductoVendido);
+  },
+  // `/reportes/ventas` sí responde en camelCase tal cual el contrato (a
+  // diferencia de los dos de arriba) — no necesita ningún mapeo en el borde.
+  getReporteVentas: (periodo: PeriodoReporte = "dia", fecha) => {
+    const params = new URLSearchParams({ periodo });
+    if (fecha) params.set("fecha", fecha);
+    return request<ReporteVentas>(`/reportes/ventas?${params.toString()}`);
   },
 };

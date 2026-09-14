@@ -258,8 +258,17 @@ export interface Producto {
   /** Whether it's on the menu at all. */
   activo: boolean;
   orden: number;
-  /** Optional link to a product photo — pasted by staff, no upload flow yet. */
+  /**
+   * Public URL of the product photo, e.g. `/uploads/productos/<uuid>.jpg`.
+   * Populated by uploading a file via `uploadProductoImagen` first — the
+   * backend stores it on local disk (see CONTRACT.md) and returns this URL.
+   */
   imagenUrl?: string;
+}
+
+/** Response of `uploadProductoImagen` — the URL to save as `Producto.imagenUrl`. */
+export interface UploadImagenResult {
+  url: string;
 }
 
 export interface Reservacion {
@@ -331,6 +340,65 @@ export interface ReporteDia {
 }
 
 export type OrdenReporteProducto = "cantidad" | "ingreso";
+
+/** Período consultable en `GET /reportes/ventas`. Sin eñe: va tal cual en la URL. */
+export type PeriodoReporte = "dia" | "mes" | "anio";
+
+/** Cómo viene desglosada `ReporteVentas.serie` según el período pedido. */
+export type GranularidadSerie = "turno" | "dia" | "mes";
+
+/**
+ * Totales monetarios de un tramo de ventas. Todos los campos de dinero son
+ * `string` — `numeric(14,4)` de Postgres serializado tal cual, nunca hagas
+ * aritmética con ellos como `number` sin convertir explícitamente primero.
+ */
+export interface VentaResumen {
+  comandas: number;
+  comensales: number;
+  totalUsd: string;
+  /** Ventas SIN propina. */
+  ventasUsd: string;
+  propinasUsd: string;
+  descuentosUsd: string;
+  impuestosUsd: string;
+  /** `'0.0000'` cuando el tramo no tuvo ventas. */
+  ticketPromedioUsd: string;
+}
+
+export interface VentaPunto extends VentaResumen {
+  /**
+   * `'desayuno'|'almuerzo'|'cena'|'madrugada'` cuando `periodo` es `dia`,
+   * `'YYYY-MM-DD'` cuando es `mes`, `'YYYY-MM'` cuando es `anio`.
+   */
+  clave: string;
+}
+
+/**
+ * Respuesta de `GET /reportes/ventas?periodo=&fecha=`, ya en camelCase (a
+ * diferencia de `/reportes/dia` y `/reportes/productos`, que siguen en
+ * snake_case con filas crudas de vista).
+ */
+export interface ReporteVentas {
+  periodo: PeriodoReporte;
+  /** Día operativo ancla de la consulta, `'YYYY-MM-DD'`. */
+  fecha: string;
+  /** Primer día operativo incluido en el tramo. */
+  desde: string;
+  /** Último día operativo incluido — ya recortado a hoy si el tramo está en curso. */
+  hasta: string;
+  /** `true` si `hasta` es hoy: la cifra todavía se está moviendo. */
+  enCurso: boolean;
+  total: VentaResumen;
+  granularidad: GranularidadSerie;
+  /** Densa: los buckets sin venta vienen en cero, no faltan. */
+  serie: VentaPunto[];
+  /**
+   * Período anterior completo si el consultado ya cerró, o el mismo tramo
+   * transcurrido si `enCurso` es `true` — no asumir que siempre es "el mes
+   * anterior completo".
+   */
+  comparacion: { desde: string; hasta: string; total: VentaResumen };
+}
 
 export interface CreateProductoInput {
   categoriaId: string;
@@ -414,6 +482,13 @@ export interface ApiClient {
   listCategorias(): Promise<Categoria[]>;
   createCategoria(nombre: string): Promise<Categoria>;
   listProductos(): Promise<Producto[]>;
+  /**
+   * Uploads a product photo (jpg/png/webp, 5MB max) to the backend's local
+   * disk storage and returns its public URL — save it as `imagenUrl` in the
+   * `createProducto`/`updateProducto` call that follows. Not coupled to
+   * either: the file can be uploaded before the product exists yet.
+   */
+  uploadProductoImagen(archivo: File): Promise<UploadImagenResult>;
   createProducto(input: CreateProductoInput): Promise<Producto>;
   updateProducto(id: string, input: UpdateProductoInput): Promise<Producto>;
   setProductoDisponibilidad(id: string, disponible: boolean): Promise<Producto>;
@@ -471,4 +546,10 @@ export interface ApiClient {
     limite?: number,
     fecha?: string,
   ): Promise<ProductoVendido[]>;
+  /**
+   * Reporte de ventas por período, resuelto del lado del backend. `periodo`
+   * default `'dia'`; `fecha` ausente = día operativo actual (el backend
+   * decide hora de corte y zona horaria, ya no hace falta calcularlo aquí).
+   */
+  getReporteVentas(periodo?: PeriodoReporte, fecha?: string): Promise<ReporteVentas>;
 }
