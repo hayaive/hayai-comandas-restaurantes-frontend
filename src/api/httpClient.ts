@@ -331,6 +331,8 @@ export const httpApi: ApiClient = {
     ),
   updateMesa: (mesaId, input: UpdateMesaInput) =>
     request<Mesa>(`/mesas/${encodeURIComponent(mesaId)}`, { method: "PATCH", ...json(input) }),
+  deleteMesa: (mesaId) =>
+    request<void>(`/mesas/${encodeURIComponent(mesaId)}`, { method: "DELETE" }),
   getPlano: async (salonId, plantillaId) => {
     const params = new URLSearchParams({ salonId });
     if (plantillaId) params.set("plantillaId", plantillaId);

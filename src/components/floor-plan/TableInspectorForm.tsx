@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Circle, MinusCircle, PlusCircle, Square, Trash2 } from "lucide-react";
+import { Circle, LogOut, MinusCircle, PlusCircle, Square, Trash2 } from "lucide-react";
 
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -13,7 +13,15 @@ export interface TableInspectorFormProps {
   onSetSeats: (seats: number) => void;
   onSetShape: (shape: TableShapeKind) => void;
   onSetStatus: (status: TableStatus, occupantName?: string) => void;
+  /** Saca la mesa de ESTA distribución. Su identidad y su histórico sobreviven. */
   onDelete: () => void;
+  /**
+   * Borra la IDENTIDAD de la mesa (CONTRACT.md §3.6): desaparece de TODAS
+   * las distribuciones y libera su número para que una mesa nueva pueda
+   * usarlo. Irreversible — a diferencia de `onDelete`, no hay forma de volver
+   * a dibujarla igual.
+   */
+  onDeleteForever: () => void;
 }
 
 /**
@@ -41,11 +49,14 @@ export function TableInspectorForm({
   onSetShape,
   onSetStatus,
   onDelete,
+  onDeleteForever,
 }: TableInspectorFormProps) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [confirmingDeleteForever, setConfirmingDeleteForever] = useState(false);
 
   useEffect(() => {
     setConfirmingDelete(false);
+    setConfirmingDeleteForever(false);
   }, [table.id]);
 
   const occupantVisible = table.status !== "free";
@@ -164,14 +175,16 @@ export function TableInspectorForm({
         {confirmingDelete ? (
           <div className="flex flex-col gap-2.5">
             <p className="text-sm text-fg-muted">
-              ¿Eliminar la mesa <span className="font-medium text-fg">{table.label}</span>?
+              ¿Quitar la mesa <span className="font-medium text-fg">{table.label}</span> de esta
+              distribución? Su número y su histórico se conservan; puedes volver a dibujarla en
+              cualquier plano.
             </p>
             <div className="flex gap-2">
               <Button className="flex-1" onClick={() => setConfirmingDelete(false)}>
                 Cancelar
               </Button>
               <Button variant="danger" className="flex-1" onClick={onDelete}>
-                Eliminar
+                Quitar
               </Button>
             </div>
           </div>
@@ -181,7 +194,36 @@ export function TableInspectorForm({
             onClick={() => setConfirmingDelete(true)}
             className="flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-danger/30 bg-danger-soft py-2.5 text-[13px] font-medium text-danger transition-colors hover:bg-destructive hover:text-destructive-foreground"
           >
-            <Trash2 size={15} /> Eliminar mesa
+            <LogOut size={15} /> Quitar del plano
+          </button>
+        )}
+      </div>
+
+      <div className="border-t border-border pt-5">
+        {confirmingDeleteForever ? (
+          <div className="flex flex-col gap-2.5">
+            <p className="text-sm text-fg-muted">
+              ¿Eliminar la mesa <span className="font-medium text-fg">{table.label}</span>{" "}
+              definitivamente? Desaparece de <span className="font-medium text-fg">todas</span>{" "}
+              las distribuciones y su número queda libre para una mesa nueva. No se puede
+              deshacer.
+            </p>
+            <div className="flex gap-2">
+              <Button className="flex-1" onClick={() => setConfirmingDeleteForever(false)}>
+                Cancelar
+              </Button>
+              <Button variant="danger" className="flex-1" onClick={onDeleteForever}>
+                Eliminar definitivamente
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setConfirmingDeleteForever(true)}
+            className="flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] py-2 text-[12px] font-medium text-fg-subtle transition-colors hover:text-danger"
+          >
+            <Trash2 size={13} /> Eliminar mesa definitivamente
           </button>
         )}
       </div>

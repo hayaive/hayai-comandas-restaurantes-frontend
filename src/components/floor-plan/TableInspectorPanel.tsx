@@ -10,6 +10,7 @@ interface TableInspectorPanelProps {
   onSetShape: (shape: TableShapeKind) => void;
   onSetStatus: (status: TableStatus, occupantName?: string) => void;
   onDelete: () => void;
+  onDeleteForever: () => void;
 }
 
 /**

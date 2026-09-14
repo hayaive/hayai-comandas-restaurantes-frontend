@@ -38,6 +38,7 @@ export function FloorPlanPage() {
   const addTable = useFloorPlanStore((state) => state.addTable);
   const moveTable = useFloorPlanStore((state) => state.moveTable);
   const removeTable = useFloorPlanStore((state) => state.removeTable);
+  const deleteTablePermanently = useFloorPlanStore((state) => state.deleteTablePermanently);
   const renameTable = useFloorPlanStore((state) => state.renameTable);
   const setSeats = useFloorPlanStore((state) => state.setSeats);
   const setShape = useFloorPlanStore((state) => state.setShape);
@@ -172,6 +173,9 @@ export function FloorPlanPage() {
           onDelete={() => {
             if (selectedTable) void removeTable(selectedTable.id);
           }}
+          onDeleteForever={() => {
+            if (selectedTable) void deleteTablePermanently(selectedTable.id);
+          }}
         />
       </div>
 
@@ -186,6 +190,9 @@ export function FloorPlanPage() {
         }
         onDelete={() => {
           if (selectedTable) void removeTable(selectedTable.id);
+        }}
+        onDeleteForever={() => {
+          if (selectedTable) void deleteTablePermanently(selectedTable.id);
         }}
       />
     </div>

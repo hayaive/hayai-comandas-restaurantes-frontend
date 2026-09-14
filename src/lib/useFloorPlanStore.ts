@@ -210,6 +210,13 @@ interface FloorPlanState {
   // Mesas
   addTable: (shape: TableShape) => Promise<void>;
   removeTable: (tableId: string) => Promise<void>;
+  /**
+   * "Esta mesa ya no existe": borrado lógico de la IDENTIDAD (CONTRACT.md
+   * §3.6). Distinto de `removeTable`, que sólo la saca del plano en edición.
+   * Esta la quita de TODAS las distribuciones donde apareciera y libera su
+   * etiqueta para que una mesa nueva pueda reusarla.
+   */
+  deleteTablePermanently: (tableId: string) => Promise<void>;
   moveTable: (tableId: string, x: number, y: number) => void;
   renameTable: (tableId: string, label: string) => void;
   setSeats: (tableId: string, seats: number) => void;
@@ -524,6 +531,47 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
     }
   },
 
+  deleteTablePermanently: async (tableId) => {
+    const state = get();
+    // La misma mesa puede estar dibujada en varias plantillas: hay que
+    // recordar dónde estaba (y su fila cruda) para poder revertir si el
+    // backend la rechaza (p. ej. mesa con comandas/reservas que ya no
+    // debería poder pasar, pero por si acaso).
+    const snapshot = state.templates
+      .map((tpl) => ({ tplId: tpl.id, table: tpl.tables.find((t) => t.id === tableId) }))
+      .filter((entry): entry is { tplId: string; table: RestaurantTable } => Boolean(entry.table));
+    if (snapshot.length === 0) return;
+    const rawSnapshot = Object.fromEntries(
+      Object.entries(state.rawByKey).filter(([, row]) => row.mesaId === tableId),
+    );
+
+    set((current) => ({
+      templates: current.templates.map((tpl) => ({
+        ...tpl,
+        tables: tpl.tables.filter((t) => t.id !== tableId),
+      })),
+      rawByKey: Object.fromEntries(
+        Object.entries(current.rawByKey).filter(([, row]) => row.mesaId !== tableId),
+      ),
+      selectedTableId: current.selectedTableId === tableId ? null : current.selectedTableId,
+      error: null,
+    }));
+
+    try {
+      await api.deleteMesa(tableId);
+    } catch (error) {
+      set((current) => ({
+        error: messageOf(error),
+        templates: current.templates.map((tpl) => {
+          const entry = snapshot.find((s) => s.tplId === tpl.id);
+          if (!entry || tpl.tables.some((t) => t.id === tableId)) return tpl;
+          return { ...tpl, tables: [...tpl.tables, entry.table] };
+        }),
+        rawByKey: { ...current.rawByKey, ...rawSnapshot },
+      }));
+    }
+  },
+
   moveTable: (tableId, x, y) => {
     const plantillaId = get().editingTemplateId;
     set((state) => ({
@@ -692,15 +740,33 @@ async function persistPlantillaMesa(
 }
 
 /**
- * Carga el plano una sola vez por sesión. Se monta en cada pantalla de staff
- * que lee mesas (Mesas, Mesero, Reservaciones, Comandas): es idempotente.
+ * Carga el plano una sola vez por sesión. Se monta en `AppShell`, así que
+ * está activo en cada pantalla de staff que lee mesas (Mesas, Mesero,
+ * Reservaciones, Comandas): es idempotente.
  */
 export function useFloorPlanBootstrap(): void {
   const status = useFloorPlanStore((state) => state.status);
   const load = useFloorPlanStore((state) => state.load);
+  const refreshPlano = useFloorPlanStore((state) => state.refreshPlano);
+
   useEffect(() => {
     if (status === "idle") void load();
   }, [status, load]);
+
+  // No hay WebSocket: sin este intervalo, una mesa que otro mesero ocupa
+  // desde OTRO dispositivo (o libera al cobrar/anular) sólo se ve al
+  // refrescar a mano — es exactamente el mismo problema que ya se resolvió
+  // para el panel de Comandas (mismo patrón: 15s, se salta el tick si ya hay
+  // una carga en curso). `refreshPlano()` es liviano: sólo trae `GET /plano`
+  // y reconcilia estado/ocupante, no vuelve a traer plantillas completas.
+  useEffect(() => {
+    const POLL_INTERVAL_MS = 15_000;
+    const interval = setInterval(() => {
+      if (useFloorPlanStore.getState().status === "loading") return;
+      void refreshPlano();
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [refreshPlano]);
 }
 
 /**

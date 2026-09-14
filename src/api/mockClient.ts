@@ -822,6 +822,15 @@ export const mockApi: ApiClient = {
     return delay(next);
   },
 
+  async deleteMesa(mesaId: string) {
+    mesaById(mesaId);
+    // Borrado lógico de la identidad: se quita de todas las plantillas donde
+    // estuviera dibujada y libera su etiqueta, igual que el backend real.
+    mesas = mesas.filter((m) => m.id !== mesaId);
+    plantillaMesas = plantillaMesas.filter((pm) => pm.mesaId !== mesaId);
+    return delay(undefined);
+  },
+
   async getPlano(salonId: string, plantillaId?: string) {
     const relevantes = plantillas.filter(
       (p) => p.salonId === salonId && (!plantillaId || p.id === plantillaId),

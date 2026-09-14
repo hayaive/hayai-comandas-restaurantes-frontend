@@ -475,6 +475,13 @@ export interface ApiClient {
   ): Promise<PlantillaMesa>;
   deletePlantillaMesa(plantillaId: string, mesaId: string): Promise<void>;
   updateMesa(mesaId: string, input: UpdateMesaInput): Promise<Mesa>;
+  /**
+   * "Esta mesa ya no existe" (CONTRACT.md §3.6): borrado lógico de la
+   * IDENTIDAD de la mesa. Distinto de `deletePlantillaMesa`, que sólo la
+   * quita de un plano concreto — esto libera su etiqueta para siempre y la
+   * quita de todas las distribuciones donde estuviera dibujada.
+   */
+  deleteMesa(mesaId: string): Promise<void>;
   /** Operational state of every table, computed server-side by `v_mesa_estado`. */
   getPlano(salonId: string, plantillaId?: string): Promise<MesaEstado[]>;
 
