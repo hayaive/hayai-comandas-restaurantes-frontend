@@ -1,5 +1,5 @@
-import { useEffect, useMemo } from "react";
-import { RefreshCw, DollarSign, Receipt, TrendingUp, Users } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { RefreshCw, DollarSign, Receipt, TrendingDown, TrendingUp, Users } from "lucide-react";
 
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -8,13 +8,16 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { PageBody, Section, StaggerGrid } from "@/components/ui/Section";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/primitives/tabs";
 import { ComandaHistorialRow } from "@/components/ventas/ComandaHistorialRow";
 import { useComandaStore } from "@/lib/useComandaStore";
 import { todayIso, useSalesReport } from "@/lib/useSalesReport";
 import { formatUsd } from "@/lib/format";
+import type { GranularidadSerie, PeriodoReporte, ReporteVentas, VentaPunto } from "@/api";
 
 export function VentasPage() {
-  const { status, error, totales, productosVendidos, reload } = useSalesReport();
+  const [periodo, setPeriodo] = useState<PeriodoReporte>("dia");
+  const { status, error, reporte, productosVendidos, reload } = useSalesReport(periodo);
   const cobradasHoy = useComandaStore((s) => s.cobradasHoy);
   const historicoCompleto = useComandaStore((s) => s.historicoCompleto);
   const loadCobradas = useComandaStore((s) => s.loadCobradas);
@@ -38,17 +41,19 @@ export function VentasPage() {
     [historial],
   );
 
-  /** Ticket promedio — la cifra que un dueño mira después del total. */
-  const ticketPromedio = useMemo(() => {
-    if (!totales || totales.numeroComandas === 0) return null;
-    return Number(totales.totalVentasUsd) / totales.numeroComandas;
-  }, [totales]);
-
   /** Unidades del producto más vendido, para dimensionar las barras. */
   const maxUnidades = useMemo(
     () => productosVendidos.reduce((max, p) => Math.max(max, p.cantidad), 0),
     [productosVendidos],
   );
+
+  /** Punto más alto de la serie del período, para dimensionar sus barras. */
+  const maxSerieUsd = useMemo(
+    () => (reporte ? reporte.serie.reduce((max, p) => Math.max(max, Number(p.totalUsd)), 0) : 0),
+    [reporte],
+  );
+
+  const deltaPct = reporte ? pctDelta(reporte.total.totalUsd, reporte.comparacion.total.totalUsd) : null;
 
   async function handleRefresh() {
     await Promise.all([reload(), loadCobradas(todayIso())]);
@@ -58,7 +63,7 @@ export function VentasPage() {
     <div className="flex flex-1 flex-col overflow-hidden">
       <PageHeader
         title="Ventas"
-        subtitle="Resumen del día operativo actual"
+        subtitle="Resumen del período seleccionado"
         actions={
           <Button
             size="sm"
@@ -72,8 +77,8 @@ export function VentasPage() {
       />
 
       <PageBody>
-        {status === "loading" && !totales && (
-          <p className="py-10 text-center text-sm text-fg-muted">Cargando reporte del día…</p>
+        {status === "loading" && !reporte && (
+          <p className="py-10 text-center text-sm text-fg-muted">Cargando reporte…</p>
         )}
 
         {status === "error" && (
@@ -85,28 +90,51 @@ export function VentasPage() {
           />
         )}
 
-        {status === "ready" && totales && (
+        {status === "ready" && reporte && (
           <>
-            <Section title="Resumen">
-              <StaggerGrid className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <Section
+              title="Resumen"
+              action={
+                <Tabs
+                  value={periodo}
+                  onValueChange={(value) => setPeriodo(value as PeriodoReporte)}
+                >
+                  <TabsList>
+                    <TabsTrigger value="dia">Día</TabsTrigger>
+                    <TabsTrigger value="mes">Mes</TabsTrigger>
+                    <TabsTrigger value="anio">Año</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              }
+            >
+              <StaggerGrid className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <StatTile
                   icon={<DollarSign size={20} />}
                   tone="brand"
-                  label="Ventas de hoy"
-                  value={formatUsd(totales.totalVentasUsd)}
-                  hint={
-                    ticketPromedio === null
-                      ? undefined
-                      : `${formatUsd(ticketPromedio)} por comanda`
+                  label={labelTotal(periodo)}
+                  value={formatUsd(reporte.total.totalUsd)}
+                  hint={`${formatUsd(reporte.total.ticketPromedioUsd)} por comanda`}
+                />
+                <StatTile
+                  icon={
+                    deltaPct !== null && deltaPct < 0 ? (
+                      <TrendingDown size={20} />
+                    ) : (
+                      <TrendingUp size={20} />
+                    )
                   }
+                  tone={deltaPct !== null && deltaPct < 0 ? "danger" : "free"}
+                  label={etiquetaComparacion(reporte)}
+                  value={formatUsd(reporte.comparacion.total.totalUsd)}
+                  hint={deltaPct === null ? undefined : `${deltaPct >= 0 ? "+" : ""}${deltaPct.toFixed(0)}%`}
                 />
                 <StatTile
                   icon={<Receipt size={20} />}
-                  tone="free"
-                  label="Comandas cobradas"
-                  value={totales.numeroComandas}
+                  tone="neutral"
+                  label="Comandas"
+                  value={reporte.total.comandas}
                   hint={
-                    historicoCompleto
+                    periodo !== "dia" || historicoCompleto
                       ? undefined
                       : `${historial.length} visibles en esta sesión`
                   }
@@ -114,10 +142,56 @@ export function VentasPage() {
                 <StatTile
                   icon={<Users size={20} />}
                   tone="reserved"
-                  label="Comensales atendidos"
-                  value={totales.comensales}
+                  label="Comensales"
+                  value={reporte.total.comensales}
                 />
               </StaggerGrid>
+
+              {reporte.enCurso && (
+                <p className="text-[12px] leading-relaxed text-fg-subtle">
+                  {periodo === "dia"
+                    ? "El día operativo sigue en curso — la cifra todavía se está moviendo."
+                    : "Este tramo sigue en curso — se compara contra lo transcurrido del período anterior, no contra su total completo."}
+                </p>
+              )}
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>{tituloSerie(periodo)}</CardTitle>
+                  <Badge tone="accent">{formatUsd(reporte.total.totalUsd)} en total</Badge>
+                </CardHeader>
+                <CardBody className={reporte.serie.length > 8 ? "max-h-[320px] overflow-y-auto" : undefined}>
+                  {reporte.serie.every((p) => Number(p.totalUsd) === 0) ? (
+                    <p className="py-4 text-sm text-fg-muted">
+                      Todavía no hay ventas registradas en este tramo.
+                    </p>
+                  ) : (
+                    <ul className="flex flex-col gap-3">
+                      {reporte.serie.map((punto) => (
+                        <li key={punto.clave} className="flex items-center gap-3">
+                          <span className="w-16 shrink-0 text-[12px] text-fg-muted">
+                            {claveSerieLabel(punto, reporte.granularidad)}
+                          </span>
+                          <div
+                            className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-hover"
+                            role="presentation"
+                          >
+                            <div
+                              className="h-full rounded-full bg-accent transition-[width] duration-500 ease-out"
+                              style={{
+                                width: `${maxSerieUsd === 0 ? 0 : (Number(punto.totalUsd) / maxSerieUsd) * 100}%`,
+                              }}
+                            />
+                          </div>
+                          <span className="w-20 shrink-0 text-right font-mono text-[13px] tabular-nums font-medium text-fg">
+                            {formatUsd(punto.totalUsd)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </CardBody>
+              </Card>
             </Section>
 
             <Section title="Productos más vendidos">
@@ -209,7 +283,7 @@ export function VentasPage() {
                   <code className="rounded bg-surface-hover px-1 py-0.5 font-mono text-[11px]">
                     GET /comandas?estado=cobrada&amp;fecha=
                   </code>
-                  ). Las cifras de arriba sí vienen del reporte del día completo.
+                  ). Las cifras de arriba sí vienen del reporte del período.
                 </p>
               )}
             </Section>
@@ -218,4 +292,96 @@ export function VentasPage() {
       </PageBody>
     </div>
   );
+}
+
+/** Variación porcentual del total actual contra el de la comparación. `null` si no se puede calcular. */
+function pctDelta(actualUsd: string, anteriorUsd: string): number | null {
+  const actual = Number(actualUsd);
+  const anterior = Number(anteriorUsd);
+  if (!Number.isFinite(actual) || !Number.isFinite(anterior) || anterior === 0) return null;
+  return ((actual - anterior) / anterior) * 100;
+}
+
+const MESES = [
+  "enero",
+  "febrero",
+  "marzo",
+  "abril",
+  "mayo",
+  "junio",
+  "julio",
+  "agosto",
+  "septiembre",
+  "octubre",
+  "noviembre",
+  "diciembre",
+];
+
+const MESES_CORTOS = [
+  "ene",
+  "feb",
+  "mar",
+  "abr",
+  "may",
+  "jun",
+  "jul",
+  "ago",
+  "sep",
+  "oct",
+  "nov",
+  "dic",
+];
+
+function mesDe(fechaIso: string): string {
+  const mes = Number(fechaIso.slice(5, 7)) - 1;
+  return MESES[mes] ?? fechaIso;
+}
+
+function anioDe(fechaIso: string): string {
+  return fechaIso.slice(0, 4);
+}
+
+function labelTotal(periodo: PeriodoReporte): string {
+  if (periodo === "dia") return "Ventas de hoy";
+  if (periodo === "mes") return "Ventas del mes";
+  return "Ventas del año";
+}
+
+function tituloSerie(periodo: PeriodoReporte): string {
+  if (periodo === "dia") return "Ventas por turno";
+  if (periodo === "mes") return "Ventas por día";
+  return "Ventas por mes";
+}
+
+/**
+ * Etiqueta de la comparación, en consecuencia de `enCurso`: contra el mismo
+ * tramo transcurrido si el período consultado sigue abierto, contra el
+ * período anterior completo si ya cerró — nunca se asume una cosa fija.
+ */
+function etiquetaComparacion(reporte: ReporteVentas): string {
+  const { periodo, enCurso, comparacion } = reporte;
+  if (periodo === "dia") {
+    const fecha = new Date(`${comparacion.desde}T00:00:00`);
+    return `vs. ${fecha.toLocaleDateString("es-VE", { day: "2-digit", month: "short" })}`;
+  }
+  if (periodo === "mes") {
+    const mes = mesDe(comparacion.desde);
+    return enCurso ? `vs. mismo tramo de ${mes}` : `vs. ${mes} completo`;
+  }
+  const anio = anioDe(comparacion.desde);
+  return enCurso ? `vs. mismo tramo de ${anio}` : `vs. ${anio} completo`;
+}
+
+const NOMBRES_TURNO: Record<string, string> = {
+  desayuno: "Desayuno",
+  almuerzo: "Almuerzo",
+  cena: "Cena",
+  madrugada: "Madrugada",
+};
+
+/** Etiqueta corta de un punto de la serie, según su granularidad. */
+function claveSerieLabel(punto: VentaPunto, granularidad: GranularidadSerie): string {
+  if (granularidad === "turno") return NOMBRES_TURNO[punto.clave] ?? punto.clave;
+  if (granularidad === "dia") return String(Number(punto.clave.slice(-2)));
+  return MESES_CORTOS[Number(punto.clave.slice(5, 7)) - 1] ?? punto.clave;
 }
