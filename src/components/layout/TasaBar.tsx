@@ -3,9 +3,11 @@ import { RefreshCw } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { IconButton } from "@/components/ui/IconButton";
+import { Input } from "@/components/ui/Input";
 import { useTasaStore } from "@/lib/useTasaStore";
 import { formatDateTime, formatTasaValor } from "@/lib/format";
-import type { TasaDivisa } from "@/api";
+import { ApiError } from "@/api";
+import type { DivisaTasa, TasaDivisa } from "@/api";
 
 /**
  * Franja fija con la tasa BCV (USD) y Euro vigentes, visible desde cualquier
@@ -71,8 +73,8 @@ export function TasaBar() {
               {error}
             </p>
           )}
-          <DetalleTasa label="Dólar (BCV)" tasa={vigente?.usd ?? null} />
-          <DetalleTasa label="Euro" tasa={vigente?.eur ?? null} />
+          <DetalleTasa label="Dólar (BCV)" divisa="USD" tasa={vigente?.usd ?? null} />
+          <DetalleTasa label="Euro" divisa="EUR" tasa={vigente?.eur ?? null} />
           <Button
             variant="primary"
             size="sm"
@@ -89,7 +91,7 @@ export function TasaBar() {
   );
 }
 
-function DetalleTasa({ label, tasa }: { label: string; tasa: TasaDivisa | null }) {
+function DetalleTasa({ label, divisa, tasa }: { label: string; divisa: DivisaTasa; tasa: TasaDivisa | null }) {
   return (
     <div className="rounded-[var(--radius-md)] border border-border bg-surface-raised px-4 py-3">
       <p className="text-[12px] font-medium text-fg-muted">{label}</p>
@@ -103,6 +105,61 @@ function DetalleTasa({ label, tasa }: { label: string; tasa: TasaDivisa | null }
       ) : (
         <p className="text-[13px] text-fg-subtle">No hay tasa registrada todavía.</p>
       )}
+      <div className="mt-3 border-t border-border pt-3">
+        <EditarTasaManual divisa={divisa} tasaActual={tasa} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Corrección manual al lado del sync: el dueño a veces necesita digitar el
+ * valor a mano (el BCV no publicó todavía, o el sync trajo algo que no
+ * cuadra) sin esperar al `RefreshCw` de arriba, que sólo sabe traer el valor
+ * de la API externa. `registrarTasa(valor, "manual", divisa)` hace el mismo
+ * upsert que `POST /tasa` — no crea un endpoint nuevo.
+ */
+function EditarTasaManual({ divisa, tasaActual }: { divisa: DivisaTasa; tasaActual: TasaDivisa | null }) {
+  const guardarManual = useTasaStore((s) => s.guardarManual);
+  const [valor, setValor] = useState(tasaActual?.valor ?? "");
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleGuardar() {
+    const num = Number(valor);
+    if (!Number.isFinite(num) || num <= 0) {
+      setError("Ingresa un valor mayor a cero");
+      return;
+    }
+    setGuardando(true);
+    setError(null);
+    try {
+      await guardarManual(num, divisa);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No se pudo guardar la tasa");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <div className="flex items-end gap-2">
+      <Input
+        label={`Corregir ${divisa} manualmente`}
+        type="number"
+        min={0}
+        step="0.0001"
+        inputMode="decimal"
+        value={valor}
+        onChange={(e) => setValor(e.target.value)}
+        placeholder="0.0000"
+        error={error ?? undefined}
+        fieldClassName="flex-1"
+        disabled={guardando}
+      />
+      <Button size="sm" onClick={() => void handleGuardar()} disabled={guardando}>
+        {guardando ? "Guardando…" : "Guardar"}
+      </Button>
     </div>
   );
 }
