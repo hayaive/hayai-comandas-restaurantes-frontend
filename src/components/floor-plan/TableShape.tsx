@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import type { RestaurantTable } from "@/lib/types";
 import { cn } from "@/lib/cn";
@@ -40,11 +40,45 @@ export function TableShape({
   const dragOffset = useRef<Point | null>(null);
   /** Client-space coords where this pointer gesture started; null when none is in progress. */
   const pointerStart = useRef<Point | null>(null);
+  const gRef = useRef<SVGGElement | null>(null);
   const [isDragging, setDragging] = useState(false);
   const [isFocused, setFocused] = useState(false);
   const status = STATUS_META[table.status];
   const half = table.size / 2;
   const seatPositions = getSeatPositions(table.shape, table.size, table.seats);
+
+  /**
+   * Belt-and-suspenders against the same WebKit/Safari-on-iOS bug the
+   * pointerdown/pointermove `preventDefault()` calls below are already
+   * defending against: `touch-action: none` (this `<g>`'s `touch-none`) has
+   * historically not been honoured reliably on nested SVG elements, and —
+   * worse for a drag specifically — some engines commit to a native
+   * pan/scroll on the compositor thread from the raw `touchstart`/
+   * `touchmove` stream before a *Pointer Event* handler's `preventDefault()`
+   * ever runs on the main thread, silently starving `pointermove` and
+   * making a real drag look like a stationary tap by the time `pointerup`
+   * fires. A `touchmove`/`touchstart` listener registered here with
+   * `{ passive: false }` — bypassing whatever a framework or browser would
+   * otherwise default to — is the mechanism `touch-action` itself is
+   * specified in terms of, so it does not depend on that support at all.
+   * Native `addEventListener`, not a React `onTouchMove` prop: React
+   * registers `onTouchStart`/`onTouchMove` as passive by default (for
+   * scroll perf), which would make `preventDefault()` inside them a
+   * silent no-op.
+   */
+  useEffect(() => {
+    const node = gRef.current;
+    if (!node) return;
+    function preventTouchScroll(event: TouchEvent) {
+      event.preventDefault();
+    }
+    node.addEventListener("touchstart", preventTouchScroll, { passive: false });
+    node.addEventListener("touchmove", preventTouchScroll, { passive: false });
+    return () => {
+      node.removeEventListener("touchstart", preventTouchScroll);
+      node.removeEventListener("touchmove", preventTouchScroll);
+    };
+  }, []);
 
   function moveTo(nextX: number, nextY: number) {
     const clampedX = clamp(nextX, half, CANVAS_WIDTH - half);
@@ -100,6 +134,17 @@ export function TableShape({
 
   function endDrag(event: ReactPointerEvent<SVGGElement>) {
     if (!pointerStart.current) return;
+    // Suppresses the browser's compatibility "click" that follows a touch
+    // gesture. This matters here specifically: that ghost click fires at the
+    // ORIGINAL touch-down coordinates, and when this release is a tap that
+    // just opened `MobileTableSheet` (a fixed, full-viewport backdrop with
+    // `onClick={onClose}`), the ghost click lands squarely on that backdrop
+    // and closes the sheet right back — verified directly (Chromium touch
+    // emulation): a tap correctly set `selectedTableId`, then a `click`
+    // event fired on the backdrop `<div>` a moment later and reset it to
+    // `null` before the sheet ever stayed open. `pointerup` is cancelable
+    // (`pointercancel` is not, so this is a no-op there, which is fine).
+    event.preventDefault();
     const wasDragging = isDragging;
     const wasCancelled = event.type === "pointercancel";
     pointerStart.current = null;
@@ -147,6 +192,7 @@ export function TableShape({
 
   return (
     <g
+      ref={gRef}
       transform={`translate(${table.x} ${table.y})`}
       tabIndex={0}
       role="button"
