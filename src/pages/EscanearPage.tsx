@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, Armchair, Camera, CheckCircle2, QrCode, User } from "lucide-react";
 import QrScanner from "qr-scanner";
 import { Card, CardBody } from "@/components/ui/Card";
@@ -6,8 +6,9 @@ import { IconTile } from "@/components/ui/IconTile";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { api } from "@/api";
+import { api, ApiError } from "@/api";
 import type { Reservacion } from "@/api";
+import { useReservationStore } from "@/lib/useReservationStore";
 import { formatDateTime } from "@/lib/format";
 
 /**
@@ -24,6 +25,7 @@ type Resultado =
   | { tipo: "con_mesa"; reservacion: Reservacion }
   | { tipo: "sin_mesa"; reservacion: Reservacion }
   | { tipo: "inactiva"; reservacion: Reservacion }
+  | { tipo: "ya_escaneada"; reservacion: Reservacion }
   | { tipo: "no_encontrada" }
   | { tipo: "error"; mensaje: string };
 
@@ -48,6 +50,7 @@ function extraerCodigoPublico(texto: string): string {
 }
 
 export function EscanearPage() {
+  const checkInByCode = useReservationStore((s) => s.checkInByCode);
   const videoRef = useRef<HTMLVideoElement>(null);
   const scannerRef = useRef<QrScanner | null>(null);
   const busyRef = useRef(false);
@@ -58,6 +61,63 @@ export function EscanearPage() {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [buscando, setBuscando] = useState(false);
   const [resultado, setResultado] = useState<Resultado | null>(null);
+
+  /**
+   * Se busca primero de forma sólo-lectura para poder mostrar el detalle de la
+   * reserva incluso cuando no procede sentarla (sin mesa, cancelada, ya
+   * sentada). Sólo cuando la reserva está activa y tiene mesa asignada se
+   * invoca `checkInByCode`, que es quien realmente sienta al cliente y ocupa
+   * la mesa (`useReservationStore.ts`) — igual que hace `CheckInPage` con el
+   * flujo manual.
+   *
+   * `useCallback` con `[checkInByCode]` mantiene la función estable entre
+   * renders (la acción de Zustand nunca cambia de identidad), para que el
+   * `useEffect` de la cámara, más abajo, pueda declararla como dependencia
+   * sin reiniciarla en cada render.
+   */
+  const handleDecoded = useCallback(
+    async (texto: string) => {
+      if (busyRef.current) return;
+      const now = Date.now();
+      if (texto === lastCodeRef.current && now - lastScanAtRef.current < COOLDOWN_MS) return;
+      lastCodeRef.current = texto;
+      lastScanAtRef.current = now;
+      busyRef.current = true;
+      setBuscando(true);
+      scannerRef.current?.pause();
+      try {
+        const codigo = extraerCodigoPublico(texto);
+        const reservacion = await api.buscarReservacionPorCodigo(codigo);
+        if (!reservacion) {
+          setResultado({ tipo: "no_encontrada" });
+          return;
+        }
+        if (reservacion.estado === "sentada") {
+          setResultado({ tipo: "ya_escaneada", reservacion });
+          return;
+        }
+        if (reservacion.estado === "cancelada" || reservacion.estado === "no_show") {
+          setResultado({ tipo: "inactiva", reservacion });
+          return;
+        }
+        if (!reservacion.mesaId) {
+          setResultado({ tipo: "sin_mesa", reservacion });
+          return;
+        }
+        const sentada = await checkInByCode(codigo);
+        setResultado({ tipo: "con_mesa", reservacion: sentada });
+      } catch (err) {
+        setResultado({
+          tipo: "error",
+          mensaje: err instanceof ApiError ? err.message : "No se pudo validar el código escaneado",
+        });
+      } finally {
+        setBuscando(false);
+        busyRef.current = false;
+      }
+    },
+    [checkInByCode],
+  );
 
   useEffect(() => {
     const video = videoRef.current;
@@ -90,49 +150,28 @@ export function EscanearPage() {
       scanner.destroy();
       scannerRef.current = null;
     };
-    // Se monta una sola vez: el ciclo de vida de la cámara no depende de estado de React.
-  }, []);
-
-  async function handleDecoded(texto: string) {
-    if (busyRef.current) return;
-    const now = Date.now();
-    if (texto === lastCodeRef.current && now - lastScanAtRef.current < COOLDOWN_MS) return;
-    lastCodeRef.current = texto;
-    lastScanAtRef.current = now;
-    busyRef.current = true;
-    setBuscando(true);
-    try {
-      const codigo = extraerCodigoPublico(texto);
-      const reservacion = await api.buscarReservacionPorCodigo(codigo);
-      if (!reservacion) {
-        setResultado({ tipo: "no_encontrada" });
-        return;
-      }
-      if (reservacion.estado === "cancelada" || reservacion.estado === "no_show") {
-        setResultado({ tipo: "inactiva", reservacion });
-        return;
-      }
-      if (!reservacion.mesaId) {
-        setResultado({ tipo: "sin_mesa", reservacion });
-        return;
-      }
-      setResultado({ tipo: "con_mesa", reservacion });
-    } catch (err) {
-      setResultado({
-        tipo: "error",
-        mensaje: err instanceof Error ? err.message : "No se pudo validar el código escaneado",
-      });
-    } finally {
-      setBuscando(false);
-      busyRef.current = false;
-    }
-  }
+    // handleDecoded es estable (useCallback + acción de Zustand estable), así que
+    // este efecto sigue montando la cámara una sola vez pese a listar la dependencia.
+  }, [handleDecoded]);
 
   /** Deja la cámara lista para el siguiente cliente sin recargar la pantalla. */
   function handleSiguiente() {
     setResultado(null);
     lastCodeRef.current = null;
+    scannerRef.current?.start().catch((err: unknown) => {
+      setCameraStatus("error");
+      setCameraError(
+        err instanceof Error ? err.message : "No se pudo reanudar la cámara del dispositivo",
+      );
+    });
   }
+
+  /**
+   * Mientras se resuelve el escaneo o ya hay un resultado, la cámara se oculta
+   * (queda montada y en pausa — ver `handleDecoded`/`handleSiguiente` — para
+   * no reiniciar el stream) y el resultado pasa a ocupar toda la vista.
+   */
+  const mostrandoResultado = buscando || resultado !== null;
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -142,8 +181,14 @@ export function EscanearPage() {
       />
 
       <div className="flex flex-1 items-center justify-center overflow-y-auto px-4 py-6 sm:px-6">
-        <div className="grid w-full max-w-3xl gap-5 md:grid-cols-2">
-          <Card className="overflow-hidden">
+        <div
+          className={
+            mostrandoResultado
+              ? "grid w-full max-w-md gap-5"
+              : "grid w-full max-w-3xl gap-5 md:grid-cols-2"
+          }
+        >
+          <Card className={mostrandoResultado ? "hidden" : "overflow-hidden"}>
             <div className="relative aspect-square w-full bg-black">
               <video ref={videoRef} className="h-full w-full object-cover" muted playsInline />
               {cameraStatus !== "ready" && (
@@ -166,7 +211,13 @@ export function EscanearPage() {
           </Card>
 
           <Card className="flex flex-col">
-            <CardBody className="flex flex-1 flex-col items-center justify-center gap-4 py-10 text-center">
+            <CardBody
+              className={
+                mostrandoResultado
+                  ? "flex flex-1 flex-col items-center justify-center gap-4 py-14 text-center sm:py-20"
+                  : "flex flex-1 flex-col items-center justify-center gap-4 py-10 text-center"
+              }
+            >
               {buscando && <p className="text-sm text-fg-muted">Buscando reserva…</p>}
 
               {!buscando && !resultado && (
@@ -205,6 +256,23 @@ export function EscanearPage() {
                   <p className="max-w-xs text-sm text-status-reserved-fg">
                     Esta reserva todavía no tiene mesa asignada; pide al cliente que elija una desde
                     su enlace.
+                  </p>
+                </div>
+              )}
+
+              {!buscando && resultado?.tipo === "ya_escaneada" && (
+                <div className="flex flex-col items-center gap-2">
+                  <IconTile tone="reserved" size="xl">
+                    <AlertTriangle size={26} />
+                  </IconTile>
+                  <p className="text-base font-medium text-fg">{resultado.reservacion.clienteNombre}</p>
+                  {resultado.reservacion.mesaEtiqueta && (
+                    <Badge tone="reserved" className="font-mono text-base tabular-nums">
+                      <Armchair size={14} /> Mesa {resultado.reservacion.mesaEtiqueta}
+                    </Badge>
+                  )}
+                  <p className="max-w-xs text-sm text-status-reserved-fg">
+                    Esta reserva ya fue escaneada — el cliente ya está sentado.
                   </p>
                 </div>
               )}
