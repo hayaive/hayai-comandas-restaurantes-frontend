@@ -42,7 +42,6 @@ export function FloorPlanPage() {
   const renameTable = useFloorPlanStore((state) => state.renameTable);
   const setSeats = useFloorPlanStore((state) => state.setSeats);
   const setShape = useFloorPlanStore((state) => state.setShape);
-  const setStatus = useFloorPlanStore((state) => state.setStatus);
   const selectTable = useFloorPlanStore((state) => state.selectTable);
 
   const editingTemplate = useEditingTemplate();
@@ -167,9 +166,6 @@ export function FloorPlanPage() {
           onRename={(label) => selectedTable && renameTable(selectedTable.id, label)}
           onSetSeats={(seats) => selectedTable && setSeats(selectedTable.id, seats)}
           onSetShape={(shape) => selectedTable && setShape(selectedTable.id, shape)}
-          onSetStatus={(tableStatus, occupantName) =>
-            selectedTable && setStatus(selectedTable.id, tableStatus, occupantName)
-          }
           onDelete={() => {
             if (selectedTable) void removeTable(selectedTable.id);
           }}
@@ -185,9 +181,6 @@ export function FloorPlanPage() {
         onRename={(label) => selectedTable && renameTable(selectedTable.id, label)}
         onSetSeats={(seats) => selectedTable && setSeats(selectedTable.id, seats)}
         onSetShape={(shape) => selectedTable && setShape(selectedTable.id, shape)}
-        onSetStatus={(tableStatus, occupantName) =>
-          selectedTable && setStatus(selectedTable.id, tableStatus, occupantName)
-        }
         onDelete={() => {
           if (selectedTable) void removeTable(selectedTable.id);
         }}

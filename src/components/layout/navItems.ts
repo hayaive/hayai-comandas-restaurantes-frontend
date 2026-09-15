@@ -7,6 +7,7 @@ import {
   QrCode,
   Receipt,
   UtensilsCrossed,
+  Wallet,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -24,7 +25,8 @@ export interface NavItem {
 export const navItems: NavItem[] = [
   { to: "/mesas", label: "Mesas", icon: Armchair },
   { to: "/mesero", label: "Mesero", icon: UtensilsCrossed },
-  { to: "/comandas", label: "Comandas", icon: Receipt },
+  { to: "/comandas", label: "Despacho", icon: Receipt },
+  { to: "/cuentas", label: "Por cobrar", icon: Wallet },
   { to: "/reservaciones", label: "Reservaciones", icon: CalendarCheck },
   { to: "/checkin", label: "Check-in", icon: QrCode },
   { to: "/escanear", label: "Escanear", icon: Camera },

@@ -3,7 +3,6 @@ import { create } from "zustand";
 import { api, ApiError } from "@/api";
 import type { CreateReservacionInput, Reservacion } from "@/api";
 import { useFloorPlanStore } from "./useFloorPlanStore";
-import { useComandaStore } from "./useComandaStore";
 
 interface ReservationState {
   reservaciones: Reservacion[];
@@ -105,11 +104,14 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
     if (!mesaId) {
       throw new ApiError("Esta reserva todavía no tiene mesa asignada; pide al cliente que elija una desde su enlace", 422);
     }
-    const { reservacion: sentadaCruda, comanda } = await api.sentarReservacion(reservacion.id);
-    const sentada = conMesaEtiqueta(sentadaCruda);
+    // Sentar ya NO abre una comanda (una comanda exige al menos un ítem, y la
+    // primera la crea el mesero al tomar la nota). El `setStatus` optimista
+    // sigue siendo correcto igualmente: `v_mesa_estado` cuenta una reserva
+    // sentada como ocupación por sí sola, así que el `refreshPlano` de abajo
+    // CONFIRMA este estado en vez de devolver la mesa a "libre".
+    const sentada = conMesaEtiqueta(await api.sentarReservacion(reservacion.id));
     set({ reservaciones: get().reservaciones.map((r) => (r.id === sentada.id ? sentada : r)) });
     useFloorPlanStore.getState().setStatus(mesaId, "occupied", sentada.clienteNombre);
-    useComandaStore.getState().registerComanda(comanda);
     void useFloorPlanStore.getState().refreshPlano();
     return sentada;
   },

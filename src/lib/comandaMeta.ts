@@ -1,4 +1,4 @@
-import type { EstadoComanda, EstadoComandaItem } from "@/api";
+import type { DestinoPreparacion, EstadoComanda } from "@/api";
 
 type Tone = "neutral" | "accent" | "free" | "reserved" | "occupied";
 
@@ -8,23 +8,25 @@ interface Meta {
 }
 
 /**
- * Comanda/item states reuse the same Badge tones as table status (free =
- * emerald, reserved = amber, occupied/danger-adjacent kept separate) instead
- * of inventing new colors — see `src/components/floor-plan/statusMeta.ts`
- * for the source of truth on that palette.
+ * Estados de comanda con las mismas tonalidades de Badge que el estado de
+ * mesa, en vez de inventar colores nuevos — ver
+ * `src/components/floor-plan/statusMeta.ts`, que es la fuente de verdad de esa
+ * paleta.
+ *
+ * ⚠️ Ya no hay `COMANDA_ITEM_META`: el workflow por ítem
+ * (`pendiente`/`en_preparacion`/`servido`) desapareció con el rediseño. Una
+ * línea sólo puede estar viva o anulada, y eso se lee de `canceladoEn`.
  */
-export const COMANDA_ITEM_META: Record<EstadoComandaItem, Meta> = {
-  pendiente: { label: "Pendiente", tone: "reserved" },
-  en_preparacion: { label: "En preparación", tone: "accent" },
-  servido: { label: "Servido", tone: "free" },
-  cancelado: { label: "Cancelado", tone: "neutral" },
-};
-
-export const COMANDA_ITEM_ORDER: EstadoComandaItem[] = ["pendiente", "en_preparacion", "servido"];
-
 export const COMANDA_ESTADO_META: Record<EstadoComanda, Meta> = {
-  abierta: { label: "Abierta", tone: "accent" },
-  por_cobrar: { label: "Por cobrar", tone: "reserved" },
+  pendiente: { label: "En cocina", tone: "reserved" },
+  despachada: { label: "Despachada", tone: "accent" },
   cobrada: { label: "Cobrada", tone: "free" },
   anulada: { label: "Anulada", tone: "neutral" },
+};
+
+/** Dónde se prepara una línea. `ninguno` no se rotula: no aporta nada. */
+export const DESTINO_META: Record<DestinoPreparacion, Meta | null> = {
+  cocina: { label: "Cocina", tone: "occupied" },
+  barra: { label: "Barra", tone: "accent" },
+  ninguno: null,
 };

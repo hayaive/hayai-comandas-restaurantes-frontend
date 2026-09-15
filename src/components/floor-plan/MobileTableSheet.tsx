@@ -3,7 +3,7 @@ import { X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { IconButton } from "@/components/ui/IconButton";
 import { cn } from "@/lib/cn";
-import type { RestaurantTable, TableShape as TableShapeKind, TableStatus } from "@/lib/types";
+import type { RestaurantTable, TableShape as TableShapeKind } from "@/lib/types";
 import { TableInspectorForm } from "./TableInspectorForm";
 
 interface MobileTableSheetProps {
@@ -12,7 +12,6 @@ interface MobileTableSheetProps {
   onRename: (label: string) => void;
   onSetSeats: (seats: number) => void;
   onSetShape: (shape: TableShapeKind) => void;
-  onSetStatus: (status: TableStatus, occupantName?: string) => void;
   onDelete: () => void;
   onDeleteForever: () => void;
 }

@@ -5,6 +5,7 @@ import { PwaUpdateBanner } from "@/components/shared/PwaUpdateBanner";
 import { FloorPlanPage } from "@/pages/FloorPlanPage";
 import { MeseroPage } from "@/pages/MeseroPage";
 import { ComandasPage } from "@/pages/ComandasPage";
+import { CuentasPorCobrarPage } from "@/pages/CuentasPorCobrarPage";
 import { VentasPage } from "@/pages/VentasPage";
 import { ReservacionesPage } from "@/pages/ReservacionesPage";
 import { ProductosPage } from "@/pages/ProductosPage";
@@ -28,6 +29,7 @@ export function App() {
             <Route path="/mesas" element={<FloorPlanPage />} />
             <Route path="/mesero" element={<MeseroPage />} />
             <Route path="/comandas" element={<ComandasPage />} />
+            <Route path="/cuentas" element={<CuentasPorCobrarPage />} />
             <Route path="/ventas" element={<VentasPage />} />
             <Route path="/reservaciones" element={<ReservacionesPage />} />
             <Route path="/productos" element={<ProductosPage />} />

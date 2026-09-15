@@ -24,9 +24,25 @@ export type EstadoReservacion =
 
 export type OrigenReservacion = "personal" | "enlace_publico";
 
-export type EstadoComanda = "abierta" | "por_cobrar" | "cobrada" | "anulada";
+/**
+ * DERIVADO por el trigger `comanda_estado` a partir de tres hechos
+ * independientes (`despachadaEn`, `cobroId`, `anuladaEn`). El cliente NUNCA lo
+ * escribe: manda el hecho (despachar, anular, cobrar) y lee la palabra.
+ *
+ *   pendiente  → en la cola de despacho   (despachadaEn = null)
+ *   despachada → salió de cocina, cobrable (despachadaEn ≠ null)
+ *   cobrada    → cubierta por un `Cobro`   (cobroId ≠ null)
+ *   anulada    → descartada                (anuladaEn ≠ null)
+ */
+export type EstadoComanda = "pendiente" | "despachada" | "cobrada" | "anulada";
 
-export type EstadoComandaItem = "pendiente" | "en_preparacion" | "servido" | "cancelado";
+/**
+ * `mesa` exige `mesaId`; `para_llevar` lo exige ausente. El backend deriva
+ * `salonId`/`plantillaId` de la mesa, el cliente no los manda.
+ */
+export type TipoComanda = "mesa" | "para_llevar";
+
+export type TurnoServicio = "desayuno" | "almuerzo" | "cena" | "madrugada";
 
 export type DestinoPreparacion = "cocina" | "barra" | "ninguno";
 
@@ -56,20 +72,39 @@ export interface PagoInput {
   referencia?: string;
 }
 
-export interface ComandaPago {
+/**
+ * Una línea de pago de un `Cobro` (`cobro_pago`). Antes colgaba de la comanda
+ * y se llamaba `ComandaPago`; desde el rediseño cuelga de la factura, porque
+ * lo que se paga es la cuenta de la mesa y no un pedido suelto.
+ */
+export interface CobroPago {
   id: string;
   metodo: MetodoPago;
   moneda: Moneda;
+  /** En la moneda de `moneda`. */
   monto: string;
+  /** Tasa usada para convertir. `null` cuando `moneda` es USD (la base). */
+  tasaAplicada?: string | null;
   montoUsd: string;
-  referencia?: string;
+  referencia?: string | null;
   recibidoEn: string;
 }
 
-export interface CobrarComandaInput {
+/**
+ * Cuerpo de `POST /mesas/:mesaId/cobrar`. El cobro es de la MESA: liquida
+ * todas sus comandas despachadas y no cobradas en un solo `Cobro`.
+ *
+ * - `comandaIds` ausente = cobrar todo lo despachado de la mesa. Presente =
+ *   cobro parcial, sólo esas.
+ * - Lo que sigue en cocina NUNCA entra (CHECK `comanda_cobro_tras_despacho`),
+ *   se pidan sus ids o no: queda vivo y arranca la cuenta siguiente.
+ * - La suma en USD de `pagos` debe cuadrar con el total (±0.01) o el backend
+ *   responde 400. Los totales los calcula el servidor, jamás el cliente.
+ */
+export interface CobrarMesaInput {
   propina?: number;
   descuento?: number;
-  /** La suma en USD debe cuadrar con el total de la comanda. */
+  comandaIds?: string[];
   pagos: PagoInput[];
 }
 
@@ -169,7 +204,21 @@ export interface PlantillaDetalle extends Plantilla {
   mesas: PlantillaMesa[];
 }
 
-/** One row of `v_mesa_estado`, normalized to camelCase by the client. */
+/**
+ * One row of `v_mesa_estado`, normalized to camelCase by the client.
+ *
+ * ⚠️ `comandaId` DESAPARECIÓ con el rediseño de comandas múltiples: una mesa ya
+ * no tiene "la" comanda viva, tiene N. La vista pasó a agregar sobre todas
+ * ellas (`comandas`, `cuentaTotal`, …), y además distingue dos reservaciones
+ * distintas sobre la misma mesa:
+ *
+ * - `reservacionId`/`reservacionCliente`: la PRÓXIMA que llega (ventana de
+ *   −30 min a +2 h). Es la que pinta la mesa como `reservada`.
+ * - `sentadaReservacionId`/`sentadaCliente`: la que YA está sentada ahí. Ocupa
+ *   la mesa por sí sola, sin comanda, desde el check-in y hasta que se cobre.
+ *   Es lo que hace que el estado optimista del escaneo no se pise en el
+ *   siguiente refresco del plano.
+ */
 export interface MesaEstado {
   salonId: string;
   plantillaId: string;
@@ -178,9 +227,22 @@ export interface MesaEstado {
   etiqueta: string;
   estado: EstadoMesa;
   bloqueada: boolean;
-  comandaId: string | null;
+  /** Comandas vivas (ni cobradas ni anuladas) de esta mesa. */
+  comandas: number;
+  /** De las vivas, las que la cocina todavía no despachó. */
+  comandasEnCocina: number;
+  /** De las vivas, las ya despachadas que esperan pago. */
+  comandasPorCobrar: number;
+  /** Suma de las comandas vivas, decimal-as-string. */
+  cuentaTotal: string;
+  /** Primer pedido, o el check-in si todavía no pidieron nada. */
+  ocupadaDesde: string | null;
+  comensales: number;
   reservacionId: string | null;
   reservacionCliente: string | null;
+  sentadaReservacionId: string | null;
+  sentadaCliente: string | null;
+  sentadaEn: string | null;
 }
 
 export interface CreatePlantillaInput {
@@ -291,37 +353,182 @@ export interface Reservacion {
   motivoCancelacion?: string;
 }
 
+/**
+ * Una línea de comanda.
+ *
+ * ⚠️ NO hay workflow por ítem: se fueron `estado`
+ * (`pendiente`/`en_preparacion`/`servido`), `enviadoEn` y `servidoEn`. La
+ * cocina despacha la comanda entera, así que esos estados no tenían quién los
+ * moviera. Lo único que le puede pasar a una línea es anularse, y eso se
+ * reconoce por `canceladoEn != null` — y sólo mientras la comanda siga
+ * `pendiente` (trigger `comanda_item_solo_pendiente`, → 409).
+ */
 export interface ComandaItem {
   id: string;
   productoId: string;
   /** Snapshot at order time — never re-read the live product name/price. */
   nombreSnap: string;
   precioUnitarioSnap: string;
+  destinoSnap: DestinoPreparacion;
+  /** `Decimal(14,3)` en la base; el cliente lo normaliza a `number`. */
   cantidad: number;
   totalLinea: string;
-  estado: EstadoComandaItem;
-  nota?: string;
+  nota?: string | null;
+  /** Anulada ⟺ no es `null`. No se borra: la traza sobrevive en el ticket. */
+  canceladoEn?: string | null;
 }
 
+/**
+ * UN PEDIDO, no la cuenta de la mesa.
+ *
+ * Cada envío a cocina es una comanda nueva y una mesa acumula N vivas a la
+ * vez; su cuenta es la suma de todas (`CuentaMesa`). Lo que se cobra es la
+ * mesa, y eso emite un `Cobro`.
+ *
+ * Nace ya en la cola de despacho con sus líneas: no hay borrador, y `total` es
+ * SÓLO la suma de sus líneas vivas — descuento, impuesto y propina se negocian
+ * sobre la cuenta de la mesa y viven en `Cobro` (un ticket de cocina no tiene
+ * propina). Por eso aquí ya no hay `subtotal`, `propina`, `abiertaEn` ni
+ * `cerradaEn`.
+ */
 export interface Comanda {
   id: string;
+  tipo: TipoComanda;
+  /** `null` sólo en `para_llevar`. */
+  mesaId: string | null;
+  /** No viene del backend en todas las respuestas; se completa en el borde. */
+  mesaEtiqueta?: string | null;
+  salonId?: string | null;
+  reservacionId?: string | null;
+  /** Número visible del día, único por (restaurante, fecha operativa). */
+  numeroDia: number;
+  comensales: number;
+  meseroId?: string | null;
+  /** Derivado por el servidor. Nunca se manda en un PATCH. */
+  estado: EstadoComanda;
+  creadaEn: string;
+  despachadaEn?: string | null;
+  anuladaEn?: string | null;
+  /** La factura que la cubre. `null` = sigue en la cuenta viva de la mesa. */
+  cobroId?: string | null;
+  /** Suma de las líneas VIVAS, decimal-as-string. Lo recalcula el servidor. */
+  total: string;
+  notas?: string | null;
+  items: ComandaItem[];
+}
+
+/** Una línea embebida en el jsonb de `v_cola_despacho`. */
+export interface ColaDespachoItem {
+  id: string;
+  nombre: string;
+  cantidad: number;
+  destino: DestinoPreparacion;
+  nota?: string | null;
+  /**
+   * Los cancelados VIENEN en la cola a propósito, marcados: la cocina tiene
+   * que ver que algo se anuló si ya lo había empezado.
+   */
+  cancelado: boolean;
+}
+
+/**
+ * Una fila de `v_cola_despacho` (`GET /despacho/cola`), normalizada.
+ *
+ * La cola es GLOBAL —todas las mesas juntas— y FIFO estricto por `creadaEn`.
+ * La unidad es la COMANDA, no el ítem: cocina y barra despachan el pedido
+ * entero. Las líneas vienen embebidas para que el KDS no haga un N+1 cada vez
+ * que refresca.
+ */
+export interface ComandaEnCola {
+  comandaId: string;
+  tipo: TipoComanda;
+  mesaId: string | null;
+  mesaEtiqueta: string | null;
+  numeroDia: number;
+  creadaEn: string;
+  minutosEnCola: number;
+  meseroId: string | null;
+  meseroNombre: string | null;
+  comensales: number;
+  total: string;
+  notas: string | null;
+  items: ColaDespachoItem[];
+}
+
+/**
+ * Una fila de `v_cuenta_mesa`: la cuenta viva de una mesa.
+ *
+ * Alimenta las DOS entradas al mismo dato: `GET /cuentas-por-cobrar` (todas
+ * las mesas con `comandasPorCobrar > 0`) y `GET /mesas/:mesaId/cuenta` (una
+ * sola). Incluye a propósito lo que todavía está en cocina: el cajero necesita
+ * verlo antes de cerrar, porque cobrar deja eso vivo y abre una cuenta nueva.
+ */
+export interface CuentaMesa {
   mesaId: string;
   mesaEtiqueta: string;
-  reservacionId?: string;
-  /** Guest name, carried over from the reservation when there is one. */
-  clienteNombre?: string;
+  salonId: string | null;
+  salonNombre: string | null;
+  /** Comandas vivas en total. */
+  comandas: number;
+  /** Ya despachadas: lo que se puede cobrar ahora. */
+  comandasPorCobrar: number;
+  /** Todavía en cocina: NO entra en este cobro. */
+  comandasEnCocina: number;
+  cuentaTotal: string;
+  totalPorCobrar: string;
+  totalEnCocina: string;
   comensales: number;
-  estado: EstadoComanda;
-  /** Número visible del día, único por (restaurante, fecha operativa). */
-  numeroDia?: number;
-  abiertaEn: string;
-  cerradaEn?: string;
-  items: ComandaItem[];
-  /** Sólo viene con el detalle (`GET /comandas/:id`) y al cobrar. */
-  pagos?: ComandaPago[];
+  ocupadaDesde: string;
+  minutosOcupada: number;
+  meseroId: string | null;
+  reservacionId: string | null;
+}
+
+/**
+ * `GET /mesas/:mesaId/cuenta`. Responde 200 con `cuenta: null` y
+ * `comandas: []` cuando la mesa está libre — "esta mesa no debe nada" es una
+ * respuesta, no un 404.
+ */
+export interface CuentaDeMesa {
+  mesa: Mesa;
+  cuenta: CuentaMesa | null;
+  /** Las comandas vivas que la componen, con sus líneas, en orden FIFO. */
+  comandas: Comanda[];
+}
+
+/**
+ * LA FACTURA: la cuenta consolidada de una mesa, que reúne N comandas
+ * despachadas. Es lo reimprimible (`GET /cobros/:id`).
+ *
+ * Comprobante INTERNO de cobro, no un documento fiscal: sin IVA discriminado
+ * ni correlativo SENIAT.
+ */
+export interface Cobro {
+  id: string;
+  mesaId: string | null;
+  salonId: string | null;
+  /** Número visible de la factura del día. Contador propio, distinto al de la comanda. */
+  numeroDia: number;
+  fechaOperativa: string;
+  turno: TurnoServicio;
+  comensales: number;
   subtotal: string;
-  propina?: string;
+  descuento: string;
+  impuesto: string;
+  propina: string;
   total: string;
+  /** Congelados al emitir para poder reimprimir el mismo monto en Bs. */
+  tasaValor: string;
+  totalBs: string;
+  cobradoEn: string;
+  anuladoEn?: string | null;
+  motivoAnulacion?: string | null;
+  notas?: string | null;
+  pagos: CobroPago[];
+  /** Las comandas que cubre, con sus líneas. */
+  comandas: Comanda[];
+  /** Sólo viene en `GET /cobros/:id`; el POST de cobro no la embebe. */
+  mesa?: Mesa | null;
 }
 
 export interface ProductoVendido {
@@ -334,7 +541,8 @@ export interface ProductoVendido {
 export interface ReporteDia {
   fecha: string;
   totalVentasUsd: string;
-  numeroComandas: number;
+  /** Facturas emitidas. La columna de `v_venta_dia` pasó de `comandas` a `cobros`. */
+  numeroCobros: number;
   comensales: number;
   propinasUsd: string;
 }
@@ -353,7 +561,14 @@ export type GranularidadSerie = "turno" | "dia" | "mes";
  * aritmética con ellos como `number` sin convertir explícitamente primero.
  */
 export interface VentaResumen {
-  comandas: number;
+  /**
+   * Facturas emitidas = mesas atendidas. ⚠️ CAMBIO DE CONTRATO: se llamaba
+   * `comandas` cuando una comanda ERA la cuenta de la mesa. Hoy una mesa
+   * genera varias comandas y UNA factura, así que contar comandas ya no
+   * respondía "cuántas mesas vendimos" ni servía de denominador del ticket
+   * promedio.
+   */
+  cobros: number;
   comensales: number;
   totalUsd: string;
   /** Ventas SIN propina. */
@@ -430,18 +645,35 @@ export interface CreateReservacionInput {
   notas?: string;
 }
 
-export interface CreateComandaInput {
-  mesaId: string;
-  mesaEtiqueta: string;
-  comensales?: number;
-  reservacionId?: string;
-  clienteNombre?: string;
-}
-
 export interface AddComandaItemInput {
   productoId: string;
   cantidad: number;
   nota?: string;
+}
+
+/**
+ * `POST /comandas`. El pedido nace YA en la cola de despacho, con sus líneas,
+ * en una sola transacción: "crear" y "enviar a cocina" son el mismo acto,
+ * porque cada envío es una comanda nueva.
+ *
+ * Por eso `items` es OBLIGATORIO y con al menos uno — una comanda vacía sería
+ * un ticket en blanco en la pantalla de cocina, y el backend la rechaza con
+ * 400. Ya no hay 409 por "mesa ocupada": la mesa acepta N comandas vivas.
+ */
+export interface CreateComandaInput {
+  /** Default `"mesa"`. `"para_llevar"` exige `mesaId` ausente. */
+  tipo?: TipoComanda;
+  mesaId?: string;
+  comensales?: number;
+  /** Atarla a la reserva la deja `sentada` y permite cerrarla al cobrar. */
+  reservacionId?: string;
+  notas?: string;
+  items: AddComandaItemInput[];
+  /**
+   * Sólo para pintar el resultado sin releer el plano — el backend no lo
+   * recibe ni lo devuelve.
+   */
+  mesaEtiqueta?: string;
 }
 
 /** Thrown by both clients so screens can render one error shape. */
@@ -501,28 +733,38 @@ export interface ApiClient {
   setProductoDisponibilidad(id: string, disponible: boolean): Promise<Producto>;
   deleteProducto(id: string): Promise<void>;
 
-  // --- Comandas ---
-  listComandasActivas(): Promise<Comanda[]>;
+  // --- Comandas (el PEDIDO) ---
+  /** Nace ya encolada, con sus ítems. No existe `POST /comandas/:id/enviar`. */
   createComanda(input: CreateComandaInput): Promise<Comanda>;
   getComanda(id: string): Promise<Comanda>;
+  /** Sólo mientras la comanda siga `pendiente`; si no, 409. */
   addComandaItems(comandaId: string, items: AddComandaItemInput[]): Promise<ComandaItem[]>;
-  setComandaItemEstado(
-    comandaId: string,
-    itemId: string,
-    estado: EstadoComandaItem,
-  ): Promise<ComandaItem>;
+  /** Anula UNA línea (deja `canceladoEn`, no borra). Sólo si está `pendiente`. */
   removeComandaItem(comandaId: string, itemId: string, motivo: string): Promise<void>;
-  cobrarComanda(comandaId: string, input: CobrarComandaInput): Promise<Comanda>;
+  /** La cocina sacó el pedido: sale de la cola pero NO de la cuenta de la mesa. */
+  despacharComanda(comandaId: string): Promise<Comanda>;
   anularComanda(comandaId: string, motivo: string): Promise<Comanda>;
+
+  // --- Despacho y cobro ---
+  /** Cola del KDS: global, FIFO estricto, por comanda y con las líneas embebidas. */
+  getColaDespacho(): Promise<ComandaEnCola[]>;
+  /** Mesas con algo ya despachado esperando pago. */
+  getCuentasPorCobrar(): Promise<CuentaMesa[]>;
+  /** Mismo dato que el anterior filtrado a una mesa, más sus comandas vivas. */
+  getCuentaDeMesa(mesaId: string): Promise<CuentaDeMesa>;
+  /** Liquida las comandas despachadas de la mesa en UN `Cobro`. */
+  cobrarMesa(mesaId: string, input: CobrarMesaInput): Promise<Cobro>;
+  /** La factura completa, para reimprimirla. */
+  getCobro(cobroId: string): Promise<Cobro>;
   /**
-   * Comandas cobradas de un día operativo, con su detalle.
+   * Facturas emitidas de un día operativo.
    *
-   * Devuelve `null` cuando el backend no expone el listado — hoy es el caso:
-   * `CONTRACT.md` sólo define `GET /comandas/activas` y `GET /comandas/:id`,
-   * no hay forma de pedir el histórico. Las pantallas deben distinguir "no hay
-   * comandas cobradas" de "el backend no sabe contestar esto".
+   * Devuelve `null` cuando el backend no sabe contestarlo — hoy es el caso:
+   * `CONTRACT.md` sólo define `GET /cobros/:id`, no hay listado por fecha. Las
+   * pantallas deben distinguir "hoy no se cobró nada" de "esto no se puede
+   * preguntar todavía".
    */
-  listComandasCobradas(fecha: string): Promise<Comanda[] | null>;
+  listCobrosDelDia(fecha: string): Promise<Cobro[] | null>;
 
   // --- Tasa de cambio ---
   /** Responde 200 siempre; `usd`/`eur` son `null` si nunca se registró ninguna. */
@@ -537,7 +779,15 @@ export interface ApiClient {
   createReservacion(input: CreateReservacionInput): Promise<Reservacion>;
   confirmarReservacion(id: string): Promise<Reservacion>;
   cancelarReservacion(id: string, motivo: string): Promise<Reservacion>;
-  sentarReservacion(id: string): Promise<{ reservacion: Reservacion; comanda: Comanda }>;
+  /**
+   * ⚠️ Ya NO abre una comanda: devuelve sólo la reservación en `sentada`. Una
+   * comanda es un pedido y exige al menos una línea, así que la primera la
+   * crea el mesero al tomar la nota. La mesa igual queda ocupada desde este
+   * instante — `v_mesa_estado` cuenta una reserva sentada como ocupación por
+   * sí sola (`sentadaReservacionId`), así que el refresco del plano confirma
+   * el estado optimista en vez de pisarlo.
+   */
+  sentarReservacion(id: string): Promise<Reservacion>;
   buscarReservacionPorCodigo(codigo: string): Promise<Reservacion | null>;
   asignarMesaReservacion(codigoPublico: string, mesaId: string, mesaEtiqueta: string): Promise<Reservacion>;
 

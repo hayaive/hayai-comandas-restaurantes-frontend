@@ -76,10 +76,18 @@ function toUiStatus(estado: MesaEstado["estado"]): TableStatus {
   }
 }
 
+/**
+ * Quién está (o va a estar) en la mesa.
+ *
+ * `v_mesa_estado` distingue dos reservaciones y el orden importa: la SENTADA
+ * es la gente que ya está ahí, y manda sobre `reservacionCliente`, que es la
+ * PRÓXIMA en llegar. Leer sólo la segunda —como se hacía cuando la vista traía
+ * una sola— rotularía una mesa ocupada con el nombre de quien todavía no llegó.
+ */
 function occupantOf(estado: MesaEstado | undefined): string | undefined {
   if (!estado) return undefined;
   if (estado.estado === "bloqueada") return "Fuera de servicio";
-  return estado.reservacionCliente ?? undefined;
+  return estado.sentadaCliente ?? estado.reservacionCliente ?? undefined;
 }
 
 /** `plantilla_mesa` (+ identidad + estado) → la mesa que dibuja el canvas. */

@@ -4,15 +4,15 @@ import { Circle, LogOut, MinusCircle, PlusCircle, Square, Trash2 } from "lucide-
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
-import type { RestaurantTable, TableShape as TableShapeKind, TableStatus } from "@/lib/types";
-import { STATUS_META, STATUS_ORDER } from "./statusMeta";
+import type { RestaurantTable, TableShape as TableShapeKind } from "@/lib/types";
+import { STATUS_META } from "./statusMeta";
+import { TableAccountPanel } from "./TableAccountPanel";
 
 export interface TableInspectorFormProps {
   table: RestaurantTable;
   onRename: (label: string) => void;
   onSetSeats: (seats: number) => void;
   onSetShape: (shape: TableShapeKind) => void;
-  onSetStatus: (status: TableStatus, occupantName?: string) => void;
   /** Saca la mesa de ESTA distribución. Su identidad y su histórico sobreviven. */
   onDelete: () => void;
   /**
@@ -29,25 +29,25 @@ export interface TableInspectorFormProps {
  * column (`TableInspectorPanel`) and the mobile bottom sheet
  * (`MobileTableSheet`), so both stay in sync with a single implementation.
  *
- * Two different kinds of "active" live on this form, and they are styled
- * differently on purpose:
+ * **El estado ya no se elige a mano, se informa.** Antes esta columna tenía
+ * tres botones (libre / reservada / ocupada) y marcar "ocupada" abría la
+ * comanda de la mesa. Eso dejó de ser posible: en el modelo nuevo una comanda
+ * es un pedido y exige al menos una línea real, así que no hay forma honesta de
+ * crear una desde aquí — ni de liberar una mesa anulando "su" comanda, porque
+ * ahora puede tener varias. El estado lo deriva el servidor (`v_mesa_estado`),
+ * que es quien ve las comandas vivas y la reserva sentada; la columna lo pinta
+ * y, cuando la mesa está ocupada, muestra su cuenta real y deja cobrarla.
  *
- * - **Shape** (round / square) is a *choice the user made*, so the selected
- *   one takes the brown active fill like every other selected control in the
- *   product.
- * - **Status** (libre / reservada / ocupada) is a *fact about the world*. It
- *   keeps its own semantic colour, because a host scanning the panel has to
- *   read "this table is occupied" as occupied-red, not as selected-brown.
- *   Overriding it would make the three states indistinguishable at a glance,
- *   which is the one thing the status palette exists to prevent. The selected
- *   status is marked by its ring instead.
+ * La **forma** (redonda / cuadrada) sí sigue siendo una elección del usuario y
+ * conserva el relleno activo marrón como cualquier otro control seleccionado.
+ * El estado conserva su color semántico: un anfitrión tiene que leer "ocupada"
+ * como rojo-ocupada, no como marrón-seleccionado.
  */
 export function TableInspectorForm({
   table,
   onRename,
   onSetSeats,
   onSetShape,
-  onSetStatus,
   onDelete,
   onDeleteForever,
 }: TableInspectorFormProps) {
@@ -59,7 +59,7 @@ export function TableInspectorForm({
     setConfirmingDeleteForever(false);
   }, [table.id]);
 
-  const occupantVisible = table.status !== "free";
+  const statusMeta = STATUS_META[table.status];
 
   return (
     <div className="flex flex-col gap-6">
@@ -133,43 +133,39 @@ export function TableInspectorForm({
 
       <div>
         <FieldLabel>Estado</FieldLabel>
-        <div className="flex flex-col gap-1.5">
-          {STATUS_ORDER.map((status) => {
-            const meta = STATUS_META[status];
-            const active = table.status === status;
-            return (
-              <button
-                key={status}
-                type="button"
-                aria-pressed={active}
-                onClick={() => onSetStatus(status, table.occupantName)}
-                className={cn(
-                  "flex items-center gap-2.5 rounded-[var(--radius-md)] border px-3.5 py-2.5 text-left text-[13px] font-medium",
-                  "transition-colors duration-150",
-                  active
-                    ? cn(meta.bgSoftClass, meta.borderClass, meta.textClass, "ring-2 ring-active")
-                    : "border-border bg-surface-raised text-fg-muted hover:border-border-strong hover:bg-surface-hover",
-                )}
-              >
-                <span className={cn("size-2 shrink-0 rounded-full", meta.dotClass)} />
-                {meta.label}
-              </button>
-            );
-          })}
+        {/* Informativo, no editable: lo decide el servidor a partir de las
+            comandas vivas y de la reserva sentada. */}
+        <div
+          className={cn(
+            "flex items-center gap-2.5 rounded-[var(--radius-md)] border px-3.5 py-2.5 text-[13px] font-medium",
+            statusMeta.bgSoftClass,
+            statusMeta.borderClass,
+            statusMeta.textClass,
+          )}
+        >
+          <span className={cn("size-2 shrink-0 rounded-full", statusMeta.dotClass)} />
+          {statusMeta.label}
+          {table.occupantName && (
+            <span className="ml-auto min-w-0 truncate font-normal opacity-80">
+              {table.occupantName}
+            </span>
+          )}
         </div>
-
-        {occupantVisible && (
-          <div className="mt-3">
-            <Input
-              label="Nombre del cliente"
-              placeholder="Ej. Familia Restrepo"
-              value={table.occupantName ?? ""}
-              onChange={(event) => onSetStatus(table.status, event.target.value)}
-              maxLength={40}
-            />
-          </div>
-        )}
+        <p className="mt-2 text-[11px] leading-relaxed text-fg-subtle">
+          Una mesa se ocupa al sentar una reserva o al enviarle un pedido, y se libera al cobrarla.
+        </p>
       </div>
+
+      {table.status === "occupied" && (
+        <div>
+          <FieldLabel>Cuenta de la mesa</FieldLabel>
+          <TableAccountPanel
+            mesaId={table.id}
+            mesaEtiqueta={table.label}
+            clienteNombre={table.occupantName}
+          />
+        </div>
+      )}
 
       <div className="border-t border-border pt-5">
         {confirmingDelete ? (

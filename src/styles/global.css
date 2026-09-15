@@ -311,3 +311,40 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* --- Factura de cobro (ticket térmico) --------------------------------
+   `#factura-print` es la única cosa que sobrevive a `visibility: hidden`
+   cuando se imprime — el resto de la app (sidebar, top bar, el propio
+   modal de preview) queda invisible pero sigue ocupando su lugar en el
+   documento, así que no hay que desmontar nada para imprimir.
+
+   El nodo con ese id vive en un `createPortal` directo a `<body>`
+   (`FacturaMesaModal.tsx`), NUNCA dentro del `DialogContent` del modal de
+   preview: ese `DialogContent` se centra con `transform`, y un
+   `position: fixed` dentro de un ancestro con `transform` se ancla a ese
+   ancestro en vez de al viewport/página — exactamente el tipo de bug que
+   sólo aparece en la vista previa de impresión, nunca en pantalla.
+
+   El ancho físico del rollo (58mm/80mm) lo decide el driver de la
+   impresora térmica; aquí sólo se garantiza que el contenido mismo mida
+   ese ancho (`FacturaMesaTicket`'s `w-[58mm]`/`w-[80mm]`) y que `@page` no
+   le agregue márgenes que lo empujen fuera del papel. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #factura-print,
+  #factura-print * {
+    visibility: visible;
+  }
+  #factura-print {
+    position: fixed;
+    inset: 0;
+    margin: 0;
+    background: #fff;
+    color: #000;
+  }
+  @page {
+    margin: 0;
+  }
+}

@@ -1,5 +1,5 @@
 import { EmptyState } from "@/components/ui/EmptyState";
-import type { RestaurantTable, TableShape as TableShapeKind, TableStatus } from "@/lib/types";
+import type { RestaurantTable, TableShape as TableShapeKind } from "@/lib/types";
 import { TableInspectorForm } from "./TableInspectorForm";
 import { Users } from "lucide-react";
 
@@ -8,7 +8,6 @@ interface TableInspectorPanelProps {
   onRename: (label: string) => void;
   onSetSeats: (seats: number) => void;
   onSetShape: (shape: TableShapeKind) => void;
-  onSetStatus: (status: TableStatus, occupantName?: string) => void;
   onDelete: () => void;
   onDeleteForever: () => void;
 }
@@ -29,7 +28,7 @@ export function TableInspectorPanel({ table, ...formProps }: TableInspectorPanel
         <EmptyState
           icon={<Users size={24} />}
           title="Ninguna mesa seleccionada"
-          description="Toca una mesa en el plano para editar su número, sillas y estado."
+          description="Toca una mesa en el plano para editar su número y sillas, o para ver y cobrar su cuenta."
         />
       )}
     </aside>

@@ -3,16 +3,20 @@ import type {
   AddComandaItemInput,
   ApiClient,
   Categoria,
+  Cobro,
+  CobrarMesaInput,
+  ColaDespachoItem,
   Comanda,
+  ComandaEnCola,
   ComandaItem,
-  ComandaPago,
-  CobrarComandaInput,
+  CuentaDeMesa,
+  CuentaMesa,
   CreateComandaInput,
   CreatePlantillaInput,
   CreatePlantillaMesaInput,
   CreateProductoInput,
   CreateReservacionInput,
-  EstadoComandaItem,
+  DestinoPreparacion,
   EstadoMesa,
   FuenteTasa,
   Mesa,
@@ -31,6 +35,7 @@ import type {
   DivisaTasa,
   TasaDivisa,
   TasaVigente,
+  TipoComanda,
   UpdateMesaInput,
   UpdatePlantillaInput,
   UpdatePlantillaMesaInput,
@@ -120,12 +125,27 @@ function json(body: unknown): RequestInit {
 }
 
 /**
- * OJO — dos endpoints del backend NO respetan el camelCase del contrato:
- * `GET /plano` y `GET /comandas/activas` devuelven las filas crudas de sus
- * vistas SQL (`v_mesa_estado`, `v_comanda_activa`), o sea snake_case. Se
- * normalizan aquí, en el borde, para que ni los stores ni las pantallas tengan
- * que saberlo. Verificado contra el backend real el 2026-09-13.
+ * OJO — los endpoints que leen una VISTA SQL no respetan el camelCase del
+ * contrato: `GET /plano`, `GET /despacho/cola`, `GET /cuentas-por-cobrar` y el
+ * campo `cuenta` de `GET /mesas/:id/cuenta` devuelven las filas crudas
+ * (`v_mesa_estado`, `v_cola_despacho`, `v_cuenta_mesa`), o sea snake_case. Lo
+ * que pasa por Prisma (`/comandas`, `/cobros`, y los campos `mesa`/`comandas`
+ * de la cuenta) sí viene en camelCase. Todo se normaliza aquí, en el borde,
+ * para que ni los stores ni las pantallas tengan que saberlo.
+ *
+ * Los `Decimal` de una vista pueden llegar como `string` o como `number` según
+ * cómo serialice la fila: cada helper lo normaliza en vez de asumir uno.
  */
+function decimalString(value: string | number | null | undefined, fallback = "0"): string {
+  if (value === null || value === undefined) return fallback;
+  return typeof value === "string" ? value : String(value);
+}
+
+function intOf(value: string | number | null | undefined): number {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
 interface MesaEstadoRow {
   salon_id: string;
   plantilla_id: string;
@@ -134,9 +154,17 @@ interface MesaEstadoRow {
   etiqueta: string;
   estado: EstadoMesa;
   bloqueada: boolean;
-  comanda_id: string | null;
+  comandas: number | string;
+  comandas_en_cocina: number | string;
+  comandas_por_cobrar: number | string;
+  cuenta_total: string | number;
+  ocupada_desde: string | null;
+  comensales: number | string;
   reservacion_id: string | null;
   reservacion_cliente: string | null;
+  sentada_reservacion_id: string | null;
+  sentada_cliente: string | null;
+  sentada_en: string | null;
 }
 
 function toMesaEstado(row: MesaEstadoRow): MesaEstado {
@@ -148,37 +176,131 @@ function toMesaEstado(row: MesaEstadoRow): MesaEstado {
     etiqueta: row.etiqueta,
     estado: row.estado,
     bloqueada: row.bloqueada,
-    comandaId: row.comanda_id,
+    comandas: intOf(row.comandas),
+    comandasEnCocina: intOf(row.comandas_en_cocina),
+    comandasPorCobrar: intOf(row.comandas_por_cobrar),
+    cuentaTotal: decimalString(row.cuenta_total),
+    ocupadaDesde: row.ocupada_desde,
+    comensales: intOf(row.comensales),
     reservacionId: row.reservacion_id,
     reservacionCliente: row.reservacion_cliente,
+    sentadaReservacionId: row.sentada_reservacion_id,
+    sentadaCliente: row.sentada_cliente,
+    sentadaEn: row.sentada_en,
   };
 }
 
-interface ComandaActivaRow {
+/** Fila cruda de `v_cola_despacho`, con las líneas embebidas en jsonb. */
+interface ColaDespachoRow {
   comanda_id: string;
+  tipo: TipoComanda;
   mesa_id: string | null;
   mesa_etiqueta: string | null;
+  numero_dia: number | string;
+  creada_en: string;
+  minutos_en_cola: number | string;
+  mesero_id: string | null;
+  mesero_nombre: string | null;
+  comensales: number | string;
+  total: string | number;
+  notas: string | null;
+  items: RawColaItem[] | null;
 }
 
-/**
- * `GET /comandas/:id` sí viene en camelCase, con `items` y la `mesa` embebida.
- * `POST /comandas` y `POST /comandas/:id/items` no traen la etiqueta ni los
- * ítems, así que se completan con lo que ya se sabe.
- */
-interface ComandaDetalleResponse {
+interface RawColaItem {
   id: string;
+  nombre: string;
+  cantidad: string | number;
+  destino: DestinoPreparacion;
+  nota?: string | null;
+  cancelado: boolean;
+}
+
+function toComandaEnCola(row: ColaDespachoRow): ComandaEnCola {
+  return {
+    comandaId: row.comanda_id,
+    tipo: row.tipo,
+    mesaId: row.mesa_id,
+    mesaEtiqueta: row.mesa_etiqueta,
+    numeroDia: intOf(row.numero_dia),
+    creadaEn: row.creada_en,
+    minutosEnCola: intOf(row.minutos_en_cola),
+    meseroId: row.mesero_id,
+    meseroNombre: row.mesero_nombre,
+    comensales: intOf(row.comensales),
+    total: decimalString(row.total),
+    notas: row.notas,
+    // `jsonb_agg` devuelve NULL, no `[]`, cuando la comanda no tiene líneas.
+    items: (row.items ?? []).map(
+      (item): ColaDespachoItem => ({
+        id: item.id,
+        nombre: item.nombre,
+        cantidad: Number(item.cantidad),
+        destino: item.destino,
+        nota: item.nota ?? null,
+        cancelado: Boolean(item.cancelado),
+      }),
+    ),
+  };
+}
+
+/** Fila cruda de `v_cuenta_mesa`. */
+interface CuentaMesaRow {
+  mesa_id: string;
+  mesa_etiqueta: string;
+  salon_id: string | null;
+  salon_nombre: string | null;
+  comandas: number | string;
+  comandas_por_cobrar: number | string;
+  comandas_en_cocina: number | string;
+  cuenta_total: string | number;
+  total_por_cobrar: string | number;
+  total_en_cocina: string | number;
+  comensales: number | string;
+  ocupada_desde: string;
+  minutos_ocupada: number | string;
+  mesero_id: string | null;
+  reservacion_id: string | null;
+}
+
+function toCuentaMesa(row: CuentaMesaRow): CuentaMesa {
+  return {
+    mesaId: row.mesa_id,
+    mesaEtiqueta: row.mesa_etiqueta,
+    salonId: row.salon_id,
+    salonNombre: row.salon_nombre,
+    comandas: intOf(row.comandas),
+    comandasPorCobrar: intOf(row.comandas_por_cobrar),
+    comandasEnCocina: intOf(row.comandas_en_cocina),
+    cuentaTotal: decimalString(row.cuenta_total),
+    totalPorCobrar: decimalString(row.total_por_cobrar),
+    totalEnCocina: decimalString(row.total_en_cocina),
+    comensales: intOf(row.comensales),
+    ocupadaDesde: row.ocupada_desde,
+    minutosOcupada: intOf(row.minutos_ocupada),
+    meseroId: row.mesero_id,
+    reservacionId: row.reservacion_id,
+  };
+}
+
+/** Lo que Prisma serializa de `comanda` + `items`, ya en camelCase. */
+interface ComandaResponse {
+  id: string;
+  tipo: TipoComanda;
   mesaId: string | null;
-  comensales: number;
-  estado: Comanda["estado"];
-  numeroDia?: number;
-  abiertaEn: string;
-  cerradaEn?: string | null;
+  salonId?: string | null;
   reservacionId?: string | null;
-  subtotal: string;
-  propina?: string;
-  total: string;
+  numeroDia: number;
+  comensales: number;
+  meseroId?: string | null;
+  estado: Comanda["estado"];
+  creadaEn: string;
+  despachadaEn?: string | null;
+  anuladaEn?: string | null;
+  cobroId?: string | null;
+  total: string | number;
+  notas?: string | null;
   items?: RawComandaItem[];
-  pagos?: ComandaPago[];
   mesa?: { etiqueta: string } | null;
 }
 
@@ -186,12 +308,13 @@ interface RawComandaItem {
   id: string;
   productoId: string;
   nombreSnap: string;
-  precioUnitarioSnap: string;
+  precioUnitarioSnap: string | number;
+  destinoSnap: DestinoPreparacion;
   /** Prisma serializa el Decimal como string; el resto de la app lo usa como number. */
   cantidad: string | number;
-  totalLinea: string;
-  estado: EstadoComandaItem;
+  totalLinea: string | number;
   nota?: string | null;
+  canceladoEn?: string | null;
 }
 
 function toComandaItem(raw: RawComandaItem): ComandaItem {
@@ -199,36 +322,110 @@ function toComandaItem(raw: RawComandaItem): ComandaItem {
     id: raw.id,
     productoId: raw.productoId,
     nombreSnap: raw.nombreSnap,
-    precioUnitarioSnap: raw.precioUnitarioSnap,
+    precioUnitarioSnap: decimalString(raw.precioUnitarioSnap),
+    destinoSnap: raw.destinoSnap,
     cantidad: Number(raw.cantidad),
-    totalLinea: raw.totalLinea,
-    estado: raw.estado,
-    nota: raw.nota ?? undefined,
+    totalLinea: decimalString(raw.totalLinea),
+    nota: raw.nota ?? null,
+    canceladoEn: raw.canceladoEn ?? null,
   };
 }
 
-function toComanda(raw: ComandaDetalleResponse, mesaEtiquetaFallback = ""): Comanda {
+function toComanda(raw: ComandaResponse, mesaEtiquetaFallback?: string): Comanda {
   return {
     id: raw.id,
-    mesaId: raw.mesaId ?? "",
-    mesaEtiqueta: raw.mesa?.etiqueta ?? mesaEtiquetaFallback,
-    reservacionId: raw.reservacionId ?? undefined,
-    comensales: raw.comensales,
-    estado: raw.estado,
+    tipo: raw.tipo,
+    mesaId: raw.mesaId ?? null,
+    mesaEtiqueta: raw.mesa?.etiqueta ?? mesaEtiquetaFallback ?? null,
+    salonId: raw.salonId ?? null,
+    reservacionId: raw.reservacionId ?? null,
     numeroDia: raw.numeroDia,
-    abiertaEn: raw.abiertaEn,
-    cerradaEn: raw.cerradaEn ?? undefined,
+    comensales: raw.comensales,
+    meseroId: raw.meseroId ?? null,
+    estado: raw.estado,
+    creadaEn: raw.creadaEn,
+    despachadaEn: raw.despachadaEn ?? null,
+    anuladaEn: raw.anuladaEn ?? null,
+    cobroId: raw.cobroId ?? null,
+    total: decimalString(raw.total),
+    notas: raw.notas ?? null,
     items: (raw.items ?? []).map(toComandaItem),
-    pagos: raw.pagos,
-    propina: raw.propina,
-    subtotal: raw.subtotal,
-    total: raw.total,
+  };
+}
+
+interface CobroResponse {
+  id: string;
+  mesaId: string | null;
+  salonId: string | null;
+  numeroDia: number;
+  fechaOperativa: string;
+  turno: Cobro["turno"];
+  comensales: number;
+  subtotal: string | number;
+  descuento: string | number;
+  impuesto: string | number;
+  propina: string | number;
+  total: string | number;
+  tasaValor: string | number;
+  totalBs: string | number;
+  cobradoEn: string;
+  anuladoEn?: string | null;
+  motivoAnulacion?: string | null;
+  notas?: string | null;
+  pagos?: {
+    id: string;
+    metodo: Cobro["pagos"][number]["metodo"];
+    moneda: Cobro["pagos"][number]["moneda"];
+    monto: string | number;
+    tasaAplicada?: string | number | null;
+    montoUsd: string | number;
+    referencia?: string | null;
+    recibidoEn: string;
+  }[];
+  comandas?: ComandaResponse[];
+  mesa?: Mesa | null;
+}
+
+function toCobro(raw: CobroResponse): Cobro {
+  const mesaEtiqueta = raw.mesa?.etiqueta;
+  return {
+    id: raw.id,
+    mesaId: raw.mesaId,
+    salonId: raw.salonId,
+    numeroDia: raw.numeroDia,
+    fechaOperativa: raw.fechaOperativa,
+    turno: raw.turno,
+    comensales: raw.comensales,
+    subtotal: decimalString(raw.subtotal),
+    descuento: decimalString(raw.descuento),
+    impuesto: decimalString(raw.impuesto),
+    propina: decimalString(raw.propina),
+    total: decimalString(raw.total),
+    tasaValor: decimalString(raw.tasaValor),
+    totalBs: decimalString(raw.totalBs),
+    cobradoEn: raw.cobradoEn,
+    anuladoEn: raw.anuladoEn ?? null,
+    motivoAnulacion: raw.motivoAnulacion ?? null,
+    notas: raw.notas ?? null,
+    pagos: (raw.pagos ?? []).map((pago) => ({
+      id: pago.id,
+      metodo: pago.metodo,
+      moneda: pago.moneda,
+      monto: decimalString(pago.monto),
+      tasaAplicada: pago.tasaAplicada == null ? null : decimalString(pago.tasaAplicada),
+      montoUsd: decimalString(pago.montoUsd),
+      referencia: pago.referencia ?? null,
+      recibidoEn: pago.recibidoEn,
+    })),
+    comandas: (raw.comandas ?? []).map((comanda) => toComanda(comanda, mesaEtiqueta)),
+    mesa: raw.mesa ?? null,
   };
 }
 
 interface VentaDiaRow {
-  comandas?: number;
-  comensales?: number;
+  /** Renombrada desde `comandas` con el rediseño: hoy cuenta FACTURAS. */
+  cobros?: number | string;
+  comensales?: number | string;
   total_usd?: string;
   ventas_usd?: string;
   propinas_usd?: string;
@@ -238,8 +435,8 @@ function toReporteDia(fecha: string, row: VentaDiaRow | null): ReporteDia {
   return {
     fecha,
     totalVentasUsd: row?.total_usd ?? row?.ventas_usd ?? "0",
-    numeroComandas: Number(row?.comandas ?? 0),
-    comensales: Number(row?.comensales ?? 0),
+    numeroCobros: intOf(row?.cobros),
+    comensales: intOf(row?.comensales),
     propinasUsd: row?.propinas_usd ?? "0",
   };
 }
@@ -361,79 +558,92 @@ export const httpApi: ApiClient = {
     }),
   deleteProducto: (id) => request<void>(`/productos/${id}`, { method: "DELETE" }),
 
-  // --- Comandas ---
-  listComandasActivas: async () => {
-    // La vista sólo trae un CONTEO de ítems (`items: number`), no el arreglo,
-    // así que se hidrata cada comanda con su detalle. Son tantas llamadas como
-    // mesas ocupadas haya: acotado por definición.
-    const rows = await request<ComandaActivaRow[]>("/comandas/activas");
-    const detalles = await Promise.all(
-      rows.map(async (row) => {
-        const detalle = await request<ComandaDetalleResponse>(
-          `/comandas/${encodeURIComponent(row.comanda_id)}`,
-        );
-        return toComanda(detalle, row.mesa_etiqueta ?? "");
-      }),
-    );
-    return detalles;
-  },
+  // --- Comandas (el PEDIDO) ---
   createComanda: async (input: CreateComandaInput) => {
-    const creada = await request<ComandaDetalleResponse>("/comandas", {
+    // `items` viaja obligatorio y con al menos uno: la comanda nace encolada.
+    // `tipo` default `mesa` porque es lo que pide toda pantalla de salón.
+    const creada = await request<ComandaResponse>("/comandas", {
       method: "POST",
       ...json({
-        tipo: "mesa",
+        tipo: input.tipo ?? "mesa",
         mesaId: input.mesaId,
         comensales: input.comensales,
         reservacionId: input.reservacionId,
+        notas: input.notas,
+        items: input.items,
       }),
     });
     return toComanda(creada, input.mesaEtiqueta);
   },
   getComanda: async (id) => {
-    const detalle = await request<ComandaDetalleResponse>(`/comandas/${encodeURIComponent(id)}`);
+    const detalle = await request<ComandaResponse>(`/comandas/${encodeURIComponent(id)}`);
     return toComanda(detalle);
   },
   addComandaItems: async (comandaId, items: AddComandaItemInput[]) => {
-    const creados = await request<RawComandaItem[]>(`/comandas/${comandaId}/items`, {
-      method: "POST",
-      ...json({ items }),
-    });
+    const creados = await request<RawComandaItem[]>(
+      `/comandas/${encodeURIComponent(comandaId)}/items`,
+      { method: "POST", ...json({ items }) },
+    );
     return creados.map(toComandaItem);
   },
-  setComandaItemEstado: async (comandaId, itemId, estado: EstadoComandaItem) => {
-    const actualizado = await request<RawComandaItem>(
-      `/comandas/${comandaId}/items/${itemId}/estado`,
-      { method: "PATCH", ...json({ estado }) },
-    );
-    return toComandaItem(actualizado);
-  },
   removeComandaItem: (comandaId, itemId, motivo) =>
-    request<void>(`/comandas/${comandaId}/items/${itemId}`, {
-      method: "DELETE",
-      ...json({ motivo }),
-    }),
-  cobrarComanda: async (comandaId, input: CobrarComandaInput) => {
-    const cobrada = await request<ComandaDetalleResponse>(`/comandas/${comandaId}/cobrar`, {
-      method: "POST",
-      ...json(input),
-    });
-    // La respuesta del cobro no embebe la mesa ni los ítems: se relee el
-    // detalle para poder archivarla completa en el histórico de Ventas.
-    return toComanda(await request<ComandaDetalleResponse>(`/comandas/${comandaId}`), cobrada.mesa?.etiqueta ?? "");
-  },
+    request<void>(
+      `/comandas/${encodeURIComponent(comandaId)}/items/${encodeURIComponent(itemId)}`,
+      { method: "DELETE", ...json({ motivo }) },
+    ),
+  despacharComanda: async (comandaId) =>
+    toComanda(
+      await request<ComandaResponse>(`/comandas/${encodeURIComponent(comandaId)}/despachar`, {
+        method: "POST",
+        ...json({}),
+      }),
+    ),
   anularComanda: async (comandaId, motivo) =>
     toComanda(
-      await request<ComandaDetalleResponse>(`/comandas/${comandaId}/anular`, {
+      await request<ComandaResponse>(`/comandas/${encodeURIComponent(comandaId)}/anular`, {
         method: "POST",
         ...json({ motivo }),
       }),
     ),
-  listComandasCobradas: async () => {
-    // El backend no expone el histórico: `CONTRACT.md` sólo define
-    // `/comandas/activas` y `/comandas/:id`. Probado contra el servidor real:
-    // `GET /comandas`, `?estado=cobrada` y `/comandas/cobradas` dan 404/422.
-    // Se devuelve `null` (no `[]`) para que Ventas pueda decir la verdad en vez
-    // de fingir que hoy no se cobró nada.
+
+  // --- Despacho y cobro ---
+  getColaDespacho: async () => {
+    // El backend ya la devuelve ordenada por `creada_en ASC`; no se reordena
+    // aquí para que el FIFO tenga una sola definición, la del servidor.
+    const rows = await request<ColaDespachoRow[]>("/despacho/cola");
+    return rows.map(toComandaEnCola);
+  },
+  getCuentasPorCobrar: async () => {
+    const rows = await request<CuentaMesaRow[]>("/cuentas-por-cobrar");
+    return rows.map(toCuentaMesa);
+  },
+  getCuentaDeMesa: async (mesaId) => {
+    // Respuesta MIXTA a propósito: `mesa` y `comandas` salen de Prisma
+    // (camelCase) y `cuenta` es una fila cruda de `v_cuenta_mesa` (snake_case).
+    const raw = await request<{
+      mesa: Mesa;
+      cuenta: CuentaMesaRow | null;
+      comandas: ComandaResponse[];
+    }>(`/mesas/${encodeURIComponent(mesaId)}/cuenta`);
+    return {
+      mesa: raw.mesa,
+      cuenta: raw.cuenta ? toCuentaMesa(raw.cuenta) : null,
+      comandas: (raw.comandas ?? []).map((comanda) => toComanda(comanda, raw.mesa?.etiqueta)),
+    } satisfies CuentaDeMesa;
+  },
+  cobrarMesa: async (mesaId, input: CobrarMesaInput) =>
+    toCobro(
+      await request<CobroResponse>(`/mesas/${encodeURIComponent(mesaId)}/cobrar`, {
+        method: "POST",
+        ...json(input),
+      }),
+    ),
+  getCobro: async (cobroId) =>
+    toCobro(await request<CobroResponse>(`/cobros/${encodeURIComponent(cobroId)}`)),
+  listCobrosDelDia: async () => {
+    // El backend no expone el listado de facturas de un día: `CONTRACT.md`
+    // sólo define `GET /cobros/:id`. Se devuelve `null` (no `[]`) para que
+    // Ventas diga la verdad en vez de fingir que hoy no se cobró nada.
     return null;
   },
 
@@ -465,12 +675,14 @@ export const httpApi: ApiClient = {
       }),
     ),
   sentarReservacion: async (id) => {
-    const result = await request<{ reservacion: ReservacionResponse; comanda: ComandaDetalleResponse }>(
-      `/reservaciones/${id}/sentar`,
+    // Ya NO devuelve `{ reservacion, comanda }`: sentar no abre comanda, y la
+    // mesa queda ocupada igual porque `v_mesa_estado` cuenta la reserva
+    // sentada como ocupación por sí sola.
+    const result = await request<{ reservacion: ReservacionResponse }>(
+      `/reservaciones/${encodeURIComponent(id)}/sentar`,
       { method: "POST", ...json({}) },
     );
-    const reservacion = toReservacion(result.reservacion);
-    return { reservacion, comanda: toComanda(result.comanda, reservacion.mesaEtiqueta ?? "") };
+    return toReservacion(result.reservacion);
   },
   buscarReservacionPorCodigo: async (codigo) => {
     try {

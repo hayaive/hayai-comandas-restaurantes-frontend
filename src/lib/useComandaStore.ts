@@ -1,25 +1,45 @@
 import { create } from "zustand";
 import { api, ApiError } from "@/api";
-import type { Comanda, EstadoComandaItem } from "@/api";
+import type {
+  Cobro,
+  CobrarMesaInput,
+  Comanda,
+  ComandaEnCola,
+  CreateComandaInput,
+  CuentaDeMesa,
+  CuentaMesa,
+} from "@/api";
 import { useFloorPlanStore } from "./useFloorPlanStore";
 
 /**
- * Comandas activas, una por mesa ocupada.
+ * Comandas, cola de despacho y cobro.
  *
- * La ocupación de una mesa NO se decide aquí ni en el editor de plano: la
- * calcula el backend (vista `v_mesa_estado`, expuesta en `GET /plano`), y una
- * mesa está ocupada exactamente cuando tiene una comanda viva. Por eso cada
- * acción de este store que cambia esa condición —abrir, anular o cobrar—
- * hace dos cosas: actualiza el plano de forma optimista para que la UI
- * responda al instante, y después pide `refreshPlano()` para reconciliar con
- * lo que el servidor realmente tiene.
+ * El modelo cambió de raíz: una comanda dejó de ser "la cuenta de la mesa" y
+ * pasó a ser UN pedido. Las tres consecuencias que se notan en todo este
+ * archivo, y la razón de que ya no exista nada parecido a
+ * `useComandaForTable(mesaId)`:
+ *
+ * 1. **Una mesa tiene N comandas vivas.** Su cuenta es la suma de todas y la
+ *    resuelve el servidor (`v_cuenta_mesa`), no una fila de comanda. Por eso
+ *    aquí no se guarda una lista global de comandas: se guardan las DOS
+ *    proyecciones que el backend expone —la cola de despacho y las cuentas por
+ *    cobrar— y la ficha de una mesa se pide aparte.
+ * 2. **El estado es derivado.** Nunca se escribe `estado`: se escribe el hecho
+ *    (despachar, anular, cobrar) y se relee.
+ * 3. **Se cobra la MESA, no la comanda.** Un cobro emite un `Cobro` que cubre
+ *    varias comandas; lo que siga en cocina no entra y arranca la cuenta
+ *    siguiente de esa mesa.
+ *
+ * La ocupación de una mesa tampoco se decide aquí: la calcula el backend
+ * (`v_mesa_estado`). Cada acción que la cambia refresca el plano para
+ * reconciliar en vez de inventar el estado del lado del cliente.
  */
 
 /**
  * El backend rechaza el cobro mientras el restaurante no tenga registrada la
- * tasa del día: cobrar congela `tasaValor`/`totalBs` en la comanda, así que sin
- * tasa no hay cierre posible. No es un fallo técnico sino un paso operativo que
- * falta, y por eso se distingue del resto de errores: la UI lo resuelve
+ * tasa del día: cobrar congela `tasaValor`/`totalBs` en el `Cobro`, así que sin
+ * tasa no hay factura posible. No es un fallo técnico sino un paso operativo
+ * que falta, y por eso se distingue del resto de errores: la UI lo resuelve
  * pidiendo la tasa, no mostrando un mensaje rojo.
  */
 export class TasaRequeridaError extends Error {
@@ -33,33 +53,50 @@ function esFaltaDeTasa(error: unknown): boolean {
   return error instanceof ApiError && /tasa de cambio/i.test(error.message);
 }
 
+type Status = "idle" | "loading" | "ready" | "error";
+
 interface ComandaState {
-  comandas: Comanda[];
-  /** Comandas ya cobradas del día operativo — alimentan el histórico de Ventas. */
-  cobradasHoy: Comanda[];
+  /** `GET /despacho/cola` — global, FIFO estricto. La pantalla de cocina. */
+  cola: ComandaEnCola[];
+  colaStatus: Status;
+  colaError: string | null;
+
+  /** `GET /cuentas-por-cobrar` — mesas con saldo pendiente. */
+  cuentas: CuentaMesa[];
+  cuentasStatus: Status;
+  cuentasError: string | null;
+
+  /** `GET /mesas/:id/cuenta`, cacheado por mesa para la ficha de la mesa. */
+  cuentaPorMesa: Record<string, CuentaDeMesa>;
+  cuentaMesaStatus: Record<string, Status>;
+
+  /** Facturas del día operativo — alimentan el histórico de Ventas. */
+  cobrosDelDia: Cobro[];
   /**
-   * `false` cuando el backend no sabe listar el histórico y lo único que se ve
-   * son los cobros hechos en esta sesión. Ventas lo dice explícitamente en vez
-   * de hacer pasar una lista incompleta por el histórico del día.
+   * `false` cuando el backend no sabe listar las facturas de un día y lo único
+   * que se ve son las emitidas en esta sesión. Ventas lo dice explícitamente
+   * en vez de hacer pasar una lista incompleta por el histórico del día.
    */
   historicoCompleto: boolean;
-  status: "idle" | "loading" | "ready" | "error";
-  error: string | null;
 
-  load: () => Promise<void>;
-  loadCobradas: (fecha: string) => Promise<void>;
-  ensureComandaForTable: (mesaId: string, mesaEtiqueta: string, clienteNombre?: string) => Promise<void>;
-  releaseComandaForTable: (mesaId: string) => Promise<void>;
-  /** Registers a comanda already created server-side (e.g. by a reservation check-in), without calling the API again. */
-  registerComanda: (comanda: Comanda) => void;
-  addItem: (comandaId: string, productoId: string, cantidad: number, nota?: string) => Promise<void>;
-  setItemEstado: (comandaId: string, itemId: string, estado: EstadoComandaItem) => Promise<void>;
-  removeItem: (comandaId: string, itemId: string, motivo: string) => Promise<void>;
+  loadCola: () => Promise<void>;
+  /** Saca la comanda de la cola. NO la borra: queda cobrable en la mesa. */
+  despachar: (comandaId: string) => Promise<void>;
+  /** Anula UNA línea. Sólo mientras la comanda siga `pendiente`. */
+  anularItem: (comandaId: string, itemId: string, motivo: string) => Promise<void>;
+  anularComanda: (comandaId: string, motivo: string) => Promise<void>;
+  /** Crea el pedido con sus ítems de una vez: nace ya encolado. */
+  crearComanda: (input: CreateComandaInput) => Promise<Comanda>;
+
+  loadCuentas: () => Promise<void>;
+  loadCuentaDeMesa: (mesaId: string) => Promise<void>;
   /**
-   * Cobra la comanda completa y libera la mesa. Lanza `TasaRequeridaError` si
-   * falta la tasa del día, para que la tarjeta pueda pedirla y reintentar.
+   * Cobra la mesa y devuelve la factura. Lanza `TasaRequeridaError` si falta
+   * la tasa del día, para que la UI pueda pedirla y reintentar en un gesto.
    */
-  cobrarYLiberar: (comandaId: string) => Promise<void>;
+  cobrarMesa: (mesaId: string, input: CobrarMesaInput) => Promise<Cobro>;
+
+  loadCobrosDelDia: (fecha: string) => Promise<void>;
 }
 
 function messageOf(error: unknown): string {
@@ -68,138 +105,123 @@ function messageOf(error: unknown): string {
   return "Ocurrió un error inesperado";
 }
 
-const creationLocks = new Set<string>();
-
 export const useComandaStore = create<ComandaState>((set, get) => ({
-  comandas: [],
-  cobradasHoy: [],
+  cola: [],
+  colaStatus: "idle",
+  colaError: null,
+
+  cuentas: [],
+  cuentasStatus: "idle",
+  cuentasError: null,
+
+  cuentaPorMesa: {},
+  cuentaMesaStatus: {},
+
+  cobrosDelDia: [],
   historicoCompleto: true,
-  status: "idle",
-  error: null,
 
-  load: async () => {
-    set({ status: "loading", error: null });
+  loadCola: async () => {
+    // `loading` sólo marca el primer arranque: el polling no debe vaciar la
+    // pantalla ni poner todo en "cargando" cada pocos segundos.
+    set({ colaStatus: get().colaStatus === "ready" ? "ready" : "loading", colaError: null });
     try {
-      const comandas = await api.listComandasActivas();
-      set({ comandas, status: "ready" });
+      set({ cola: await api.getColaDespacho(), colaStatus: "ready" });
     } catch (error) {
-      set({ status: "error", error: messageOf(error) });
+      set({ colaStatus: "error", colaError: messageOf(error) });
     }
   },
 
-  loadCobradas: async (fecha) => {
-    const delBackend = await api.listComandasCobradas(fecha);
-    if (delBackend === null) {
-      // Sin endpoint de histórico: se conserva lo cobrado en esta sesión.
-      set({ historicoCompleto: false });
-      return;
-    }
-    // El backend manda la verdad completa; lo de la sesión ya viene incluido.
-    set({ cobradasHoy: delBackend, historicoCompleto: true });
-  },
-
-  ensureComandaForTable: async (mesaId, mesaEtiqueta, clienteNombre) => {
-    const already = get().comandas.some((c) => c.mesaId === mesaId);
-    if (already || creationLocks.has(mesaId)) return;
-    creationLocks.add(mesaId);
+  despachar: async (comandaId) => {
+    // Optimista: la comanda sale de la cola al instante (la cocina pulsa y
+    // sigue). El 409 de la doble pulsación se reconcilia con el refetch.
+    const previa = get().cola;
+    set({ cola: previa.filter((c) => c.comandaId !== comandaId) });
     try {
-      const comanda = await api.createComanda({ mesaId, mesaEtiqueta, clienteNombre });
-      set({ comandas: [...get().comandas, comanda] });
-      // La mesa acaba de pasar a "ocupada" server-side: reconcilia el plano.
-      void useFloorPlanStore.getState().refreshPlano();
+      await api.despacharComanda(comandaId);
     } catch (error) {
-      set({ error: messageOf(error) });
-    } finally {
-      creationLocks.delete(mesaId);
+      set({ cola: previa, colaError: messageOf(error) });
+      throw error;
     }
+    // Ya es cobrable: la ficha de su mesa y las cuentas por cobrar cambiaron.
+    await get().loadCuentas();
+    void useFloorPlanStore.getState().refreshPlano();
   },
 
-  registerComanda: (comanda) => {
-    if (get().comandas.some((c) => c.id === comanda.id)) return;
-    set({ comandas: [...get().comandas, comanda] });
-  },
-
-  releaseComandaForTable: async (mesaId) => {
-    const comanda = get().comandas.find((c) => c.mesaId === mesaId);
-    if (!comanda) return;
-    set({ comandas: get().comandas.filter((c) => c.id !== comanda.id) });
-    try {
-      await api.anularComanda(comanda.id, "Mesa liberada manualmente desde el editor de plano");
-      void useFloorPlanStore.getState().refreshPlano();
-    } catch (error) {
-      set({ error: messageOf(error) });
-    }
-  },
-
-  addItem: async (comandaId, productoId, cantidad, nota) => {
-    const items = await api.addComandaItems(comandaId, [{ productoId, cantidad, nota }]);
-    set({
-      comandas: get().comandas.map((c) =>
-        c.id === comandaId
-          ? {
-              ...c,
-              items: [...c.items, ...items],
-              total: (Number(c.total) + items.reduce((s, i) => s + Number(i.totalLinea), 0)).toFixed(2),
-            }
-          : c,
-      ),
-    });
-  },
-
-  setItemEstado: async (comandaId, itemId, estado) => {
-    const updated = await api.setComandaItemEstado(comandaId, itemId, estado);
-    set({
-      comandas: get().comandas.map((c) =>
-        c.id === comandaId
-          ? { ...c, items: c.items.map((i) => (i.id === itemId ? updated : i)) }
-          : c,
-      ),
-    });
-  },
-
-  removeItem: async (comandaId, itemId, motivo) => {
+  anularItem: async (comandaId, itemId, motivo) => {
     await api.removeComandaItem(comandaId, itemId, motivo);
-    set({
-      comandas: get().comandas.map((c) =>
-        c.id === comandaId
-          ? {
-              ...c,
-              items: c.items.map((i) => (i.id === itemId ? { ...i, estado: "cancelado" as const } : i)),
-            }
-          : c,
-      ),
-    });
+    // El total lo recalcula el servidor: se relee en vez de restarlo aquí.
+    await get().loadCola();
   },
 
-  cobrarYLiberar: async (comandaId) => {
-    const comanda = get().comandas.find((c) => c.id === comandaId);
-    if (!comanda) return;
+  anularComanda: async (comandaId, motivo) => {
+    await api.anularComanda(comandaId, motivo);
+    await Promise.all([get().loadCola(), get().loadCuentas()]);
+    void useFloorPlanStore.getState().refreshPlano();
+  },
 
-    // Un solo pago en efectivo USD por el total: es el caso normal y lo que
-    // significa el botón "Cobrar y cerrar". Un cobro mixto o en Bs necesita
-    // elegir método, y eso es una pantalla de caja que todavía no existe.
-    const total = Number(comanda.total);
-    let cobrada: Comanda;
+  crearComanda: async (input) => {
+    const comanda = await api.createComanda(input);
+    // Nace ya en la cola y la mesa pasa a ocupada server-side.
+    await Promise.all([get().loadCola(), get().loadCuentas()]);
+    if (comanda.mesaId) {
+      void get().loadCuentaDeMesa(comanda.mesaId);
+    }
+    void useFloorPlanStore.getState().refreshPlano();
+    return comanda;
+  },
+
+  loadCuentas: async () => {
+    set({
+      cuentasStatus: get().cuentasStatus === "ready" ? "ready" : "loading",
+      cuentasError: null,
+    });
     try {
-      cobrada = await api.cobrarComanda(comandaId, {
-        pagos: [{ metodo: "efectivo_usd", moneda: "USD", monto: total }],
+      set({ cuentas: await api.getCuentasPorCobrar(), cuentasStatus: "ready" });
+    } catch (error) {
+      set({ cuentasStatus: "error", cuentasError: messageOf(error) });
+    }
+  },
+
+  loadCuentaDeMesa: async (mesaId) => {
+    set({ cuentaMesaStatus: { ...get().cuentaMesaStatus, [mesaId]: "loading" } });
+    try {
+      const cuenta = await api.getCuentaDeMesa(mesaId);
+      set({
+        cuentaPorMesa: { ...get().cuentaPorMesa, [mesaId]: cuenta },
+        cuentaMesaStatus: { ...get().cuentaMesaStatus, [mesaId]: "ready" },
       });
+    } catch {
+      set({ cuentaMesaStatus: { ...get().cuentaMesaStatus, [mesaId]: "error" } });
+    }
+  },
+
+  cobrarMesa: async (mesaId, input) => {
+    let cobro: Cobro;
+    try {
+      cobro = await api.cobrarMesa(mesaId, input);
     } catch (error) {
       if (esFaltaDeTasa(error)) throw new TasaRequeridaError(messageOf(error));
       throw error;
     }
 
     set({
-      comandas: get().comandas.filter((c) => c.id !== comandaId),
-      // La comanda cobrada sale del panel y pasa al histórico del día.
-      cobradasHoy: [cobrada, ...get().cobradasHoy.filter((c) => c.id !== cobrada.id)],
+      cobrosDelDia: [cobro, ...get().cobrosDelDia.filter((c) => c.id !== cobro.id)],
     });
-    // Optimista primero (la UI no debe esperar al round-trip), reconciliación después.
-    useFloorPlanStore.getState().setStatus(comanda.mesaId, "free");
+    // Cobrar NO libera la mesa por decreto: si quedaban comandas en cocina,
+    // esa cuenta sigue viva. Quien decide es el servidor, así que se relee
+    // todo en vez de marcar la mesa libre de forma optimista.
+    await Promise.all([get().loadCuentas(), get().loadCuentaDeMesa(mesaId), get().loadCola()]);
     void useFloorPlanStore.getState().refreshPlano();
+    return cobro;
+  },
+
+  loadCobrosDelDia: async (fecha) => {
+    const delBackend = await api.listCobrosDelDia(fecha);
+    if (delBackend === null) {
+      // Sin endpoint de histórico: se conserva lo cobrado en esta sesión.
+      set({ historicoCompleto: false });
+      return;
+    }
+    set({ cobrosDelDia: delBackend, historicoCompleto: true });
   },
 }));
-
-export function useComandaForTable(mesaId: string): Comanda | undefined {
-  return useComandaStore((state) => state.comandas.find((c) => c.mesaId === mesaId));
-}

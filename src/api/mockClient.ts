@@ -2,15 +2,19 @@ import type {
   AddComandaItemInput,
   ApiClient,
   Categoria,
+  Cobro,
+  CobroPago,
+  CobrarMesaInput,
+  ColaDespachoItem,
   Comanda,
+  ComandaEnCola,
   ComandaItem,
-  CobrarComandaInput,
+  CuentaMesa,
   CreateComandaInput,
   CreatePlantillaInput,
   CreatePlantillaMesaInput,
   CreateProductoInput,
   CreateReservacionInput,
-  EstadoComandaItem,
   EstadoMesa,
   FormaMesa,
   FuenteTasa,
@@ -27,6 +31,7 @@ import type {
   Salon,
   DivisaTasa,
   TasaDivisa,
+  TurnoServicio,
   UpdateMesaInput,
   VentaPunto,
   VentaResumen,
@@ -73,13 +78,36 @@ function todayAt(hours: number, minutes = 0): string {
   return d.toISOString();
 }
 
+/**
+ * Un instante N minutos en el pasado.
+ *
+ * Las comandas VIVAS del seed se fechan con esto y no con una hora de reloj
+ * fija, por dos razones que se notan en cuanto abres la app fuera de la hora
+ * de la cena:
+ *
+ * 1. **El FIFO se rompía.** Un seed fechado "hoy a las 20:10" está en el
+ *    FUTURO si abres el dev server a las 3 de la tarde, así que un pedido
+ *    recién enviado aparecía ANTES que él en la cola — justo al revés de lo
+ *    que la pantalla promete. Detectado ejecutando el flujo end-to-end, no
+ *    leyendo el código.
+ * 2. **`minutosEnCola` daba 0 en todas.** Con la hora en el futuro la resta
+ *    sale negativa y queda clampeada a cero, así que el dato más importante
+ *    del KDS —cuánto lleva esperando esto— era siempre "0 min".
+ */
+function minutosAtras(minutos: number): string {
+  return new Date(Date.now() - minutos * 60_000).toISOString();
+}
+
 // --- Mock de `GET /reportes/ventas` -------------------------------------
-// El mock sólo tiene datos fabricados para "hoy" (`comandasCobradasHoy`), así
-// que cualquier otro día operativo del tramo pedido viene en cero — es lo que
-// una `serie` "densa" real haría de todos modos si ese día no tuvo ventas.
+// El mock sólo tiene datos fabricados para "hoy" (`cobrosHoy`), así que
+// cualquier otro día operativo del tramo pedido viene en cero — es lo que una
+// `serie` "densa" real haría de todos modos si ese día no tuvo ventas.
+//
+// ⚠️ La unidad de venta es el COBRO, no la comanda: `v_venta_dia` agrupa por
+// `cobro.fecha_operativa` y su columna `comandas` pasó a llamarse `cobros`.
 
 const ZERO_RESUMEN: VentaResumen = {
-  comandas: 0,
+  cobros: 0,
   comensales: 0,
   totalUsd: "0.00",
   ventasUsd: "0.00",
@@ -89,57 +117,59 @@ const ZERO_RESUMEN: VentaResumen = {
   ticketPromedioUsd: "0.0000",
 };
 
-function sumResumen(comandas: Comanda[]): VentaResumen {
-  const total = comandas.length;
-  const comensales = comandas.reduce((sum, c) => sum + c.comensales, 0);
-  const ventasUsd = comandas.reduce((sum, c) => sum + Number(c.subtotal), 0);
-  const propinasUsd = comandas.reduce((sum, c) => sum + Number(c.propina ?? 0), 0);
-  const totalUsd = ventasUsd + propinasUsd;
+function sumResumen(cobros: Cobro[]): VentaResumen {
+  const total = cobros.length;
+  const comensales = cobros.reduce((sum, c) => sum + c.comensales, 0);
+  const totalUsd = cobros.reduce((sum, c) => sum + Number(c.total), 0);
+  const propinasUsd = cobros.reduce((sum, c) => sum + Number(c.propina), 0);
+  const descuentosUsd = cobros.reduce((sum, c) => sum + Number(c.descuento), 0);
+  const impuestosUsd = cobros.reduce((sum, c) => sum + Number(c.impuesto), 0);
   return {
-    comandas: total,
+    cobros: total,
     comensales,
     totalUsd: money(totalUsd),
-    ventasUsd: money(ventasUsd),
+    // Igual que la vista: `ventas_usd` EXCLUYE la propina, que es del mesero.
+    ventasUsd: money(totalUsd - propinasUsd),
     propinasUsd: money(propinasUsd),
-    descuentosUsd: "0.00",
-    impuestosUsd: "0.00",
+    descuentosUsd: money(descuentosUsd),
+    impuestosUsd: money(impuestosUsd),
     ticketPromedioUsd: total === 0 ? "0.0000" : (totalUsd / total).toFixed(4),
   };
 }
 
 /** Suma varios `VentaResumen` (p. ej. una `serie`) en uno solo. */
 function reduceResumenes(resumenes: VentaResumen[]): VentaResumen {
-  const comandas = resumenes.reduce((sum, r) => sum + r.comandas, 0);
+  const cobros = resumenes.reduce((sum, r) => sum + r.cobros, 0);
   const comensales = resumenes.reduce((sum, r) => sum + r.comensales, 0);
-  const sumField = (key: keyof Omit<VentaResumen, "comandas" | "comensales" | "ticketPromedioUsd">) =>
+  const sumField = (key: keyof Omit<VentaResumen, "cobros" | "comensales" | "ticketPromedioUsd">) =>
     resumenes.reduce((sum, r) => sum + Number(r[key]), 0);
   const totalUsd = sumField("totalUsd");
   return {
-    comandas,
+    cobros,
     comensales,
     totalUsd: money(totalUsd),
     ventasUsd: money(sumField("ventasUsd")),
     propinasUsd: money(sumField("propinasUsd")),
     descuentosUsd: money(sumField("descuentosUsd")),
     impuestosUsd: money(sumField("impuestosUsd")),
-    ticketPromedioUsd: comandas === 0 ? "0.0000" : (totalUsd / comandas).toFixed(4),
+    ticketPromedioUsd: cobros === 0 ? "0.0000" : (totalUsd / cobros).toFixed(4),
   };
 }
 
 /** Escala un resumen por un factor (para fabricar una comparación creíble). */
 function scaleResumen(base: VentaResumen, factor: number): VentaResumen {
-  if (base.comandas === 0) return ZERO_RESUMEN;
-  const comandas = Math.max(1, Math.round(base.comandas * factor));
+  if (base.cobros === 0) return ZERO_RESUMEN;
+  const cobros = Math.max(1, Math.round(base.cobros * factor));
   const totalUsd = Number(base.totalUsd) * factor;
   return {
-    comandas,
+    cobros,
     comensales: Math.max(1, Math.round(base.comensales * factor)),
     totalUsd: money(totalUsd),
     ventasUsd: money(Number(base.ventasUsd) * factor),
     propinasUsd: money(Number(base.propinasUsd) * factor),
     descuentosUsd: money(Number(base.descuentosUsd) * factor),
     impuestosUsd: money(Number(base.impuestosUsd) * factor),
-    ticketPromedioUsd: (totalUsd / comandas).toFixed(4),
+    ticketPromedioUsd: (totalUsd / cobros).toFixed(4),
   };
 }
 
@@ -157,7 +187,8 @@ function shiftIsoDate(fecha: string, days: number): string {
   return isoDate(d);
 }
 
-function turnoDe(hour: number): VentaPunto["clave"] {
+/** Misma partición de turnos que la función SQL `hayai_turno` del backend. */
+function turnoDe(hour: number): TurnoServicio {
   if (hour >= 5 && hour < 11) return "desayuno";
   if (hour >= 11 && hour < 17) return "almuerzo";
   if (hour >= 17 && hour < 23) return "cena";
@@ -165,10 +196,10 @@ function turnoDe(hour: number): VentaPunto["clave"] {
 }
 
 /**
- * Reporte de ventas por período fabricado a partir de `comandasCobradasHoy` —
- * el mock no tiene histórico real, así que sólo el día operativo actual trae
- * datos y el resto del tramo (días/meses anteriores) queda en cero. Suficiente
- * para probar la UI (selector, comparación, serie) sin backend real corriendo.
+ * Reporte de ventas por período fabricado a partir de `cobrosHoy` — el mock no
+ * tiene histórico real, así que sólo el día operativo actual trae datos y el
+ * resto del tramo (días/meses anteriores) queda en cero. Suficiente para
+ * probar la UI (selector, comparación, serie) sin backend real corriendo.
  */
 function buildReporteVentas(periodo: PeriodoReporte, fechaInput: string | undefined): ReporteVentas {
   const now = new Date();
@@ -177,13 +208,12 @@ function buildReporteVentas(periodo: PeriodoReporte, fechaInput: string | undefi
   const esHoyElAncla = ancla === hoy;
 
   if (periodo === "dia") {
-    const totalHoy = sumResumen(comandasCobradasHoy);
+    const totalHoy = sumResumen(cobrosHoy());
     const turnos: VentaPunto["clave"][] = ["desayuno", "almuerzo", "cena", "madrugada"];
-    const porTurno = new Map<string, Comanda[]>(turnos.map((t) => [t, []]));
+    const porTurno = new Map<string, Cobro[]>(turnos.map((t) => [t, []]));
     if (esHoyElAncla) {
-      for (const comanda of comandasCobradasHoy) {
-        const hour = new Date(comanda.cerradaEn ?? comanda.abiertaEn).getHours();
-        porTurno.get(turnoDe(hour))?.push(comanda);
+      for (const cobro of cobrosHoy()) {
+        porTurno.get(cobro.turno)?.push(cobro);
       }
     }
     const serie: VentaPunto[] = turnos.map((clave) => ({
@@ -221,7 +251,7 @@ function buildReporteVentas(periodo: PeriodoReporte, fechaInput: string | undefi
     for (let dia = 1; dia <= hastaDiaNum; dia += 1) {
       const clave = `${mesStr}-${pad2(dia)}`;
       const esHoyBucket = esHoyElAncla && dia === now.getDate();
-      serie.push({ clave, ...(esHoyBucket ? sumResumen(comandasCobradasHoy) : ZERO_RESUMEN) });
+      serie.push({ clave, ...(esHoyBucket ? sumResumen(cobrosHoy()) : ZERO_RESUMEN) });
     }
     const total = reduceResumenes(serie);
     const mesAnteriorDate = new Date(year, month - 1, 1);
@@ -254,7 +284,7 @@ function buildReporteVentas(periodo: PeriodoReporte, fechaInput: string | undefi
     const esMesBucket = esAnioActual && month === now.getMonth();
     serie.push({
       clave,
-      ...(esMesBucket ? sumResumen(comandasCobradasHoy) : ZERO_RESUMEN),
+      ...(esMesBucket ? sumResumen(cobrosHoy()) : ZERO_RESUMEN),
     });
   }
   const total = reduceResumenes(serie);
@@ -412,128 +442,324 @@ function productoById(id: string): Producto {
   return found;
 }
 
+/**
+ * `comanda.total` es SÓLO la suma de sus líneas vivas — ni descuento, ni
+ * impuesto, ni propina: eso se negocia sobre la cuenta de la mesa y vive en el
+ * `Cobro`. Misma regla que `recalcularTotal` en el backend.
+ */
 function recomputeTotals(comanda: Comanda): void {
-  const activeItems = comanda.items.filter((item) => item.estado !== "cancelado");
-  const subtotal = activeItems.reduce((sum, item) => sum + Number(item.totalLinea), 0);
-  comanda.subtotal = money(subtotal);
-  comanda.total = money(subtotal);
+  const vivas = comanda.items.filter((item) => item.canceladoEn == null);
+  comanda.total = money(vivas.reduce((sum, item) => sum + Number(item.totalLinea), 0));
 }
 
 // ---------------------------------------------------------------------------
-// Seed: comandas activas — matches the occupied tables already seeded in
-// src/lib/mockData.ts (Salón principal: t1, t5, t7, t11, t16).
+// Seed: comandas y cobros
+//
+// El modelo nuevo: una mesa acumula VARIAS comandas vivas. `comandas` guarda
+// TODAS (vivas, cobradas y anuladas) igual que la tabla real; quién está viva,
+// quién está en la cola y quién se puede cobrar se deriva de los tres hechos
+// (`despachadaEn`, `anuladaEn`, `cobroId`), nunca de un campo de estado
+// escrito a mano.
+//
+// Mesas ocupadas del seed (coinciden con src/lib/mockData.ts): t1, t5, t7,
+// t11, t16. t1 y t5 tienen DOS comandas cada una para que el caso de varias
+// comandas por mesa se vea sin tener que fabricarlo a mano.
 // ---------------------------------------------------------------------------
 
-function buildItem(productoId: string, cantidad: number, estado: EstadoComandaItem): ComandaItem {
+let contadorComanda = 0;
+let contadorCobro = 0;
+
+function buildItem(productoId: string, cantidad: number, nota?: string): ComandaItem {
   const producto = productoById(productoId);
   return {
     id: uid("ci"),
     productoId,
     nombreSnap: producto.nombre,
     precioUnitarioSnap: producto.precio,
+    destinoSnap: producto.destino,
     cantidad,
     totalLinea: money(Number(producto.precio) * cantidad),
-    estado,
+    nota: nota ?? null,
+    canceladoEn: null,
   };
 }
 
-let comandas: Comanda[] = [
-  {
-    id: "cmd-t1",
-    mesaId: "t1",
-    mesaEtiqueta: "M-1",
-    clienteNombre: "Marisol Peña",
-    comensales: 2,
-    estado: "abierta",
-    abiertaEn: todayAt(19, 5),
-    items: [buildItem("p-2", 2, "servido"), buildItem("p-4", 2, "en_preparacion"), buildItem("p-9", 2, "servido")],
-    subtotal: "0.00",
-    total: "0.00",
-  },
-  {
-    id: "cmd-t5",
-    mesaId: "t5",
-    mesaEtiqueta: "M-5",
-    clienteNombre: "Grupo Herrera",
-    comensales: 4,
-    estado: "abierta",
-    abiertaEn: todayAt(19, 30),
-    items: [buildItem("p-1", 1, "servido"), buildItem("p-5", 3, "pendiente"), buildItem("p-10", 4, "servido")],
-    subtotal: "0.00",
-    total: "0.00",
-  },
-  {
-    id: "cmd-t7",
-    mesaId: "t7",
-    mesaEtiqueta: "M-7",
-    clienteNombre: "Mateo Londoño",
-    comensales: 6,
-    estado: "por_cobrar",
-    abiertaEn: todayAt(18, 40),
-    items: [
-      buildItem("p-3", 2, "servido"),
-      buildItem("p-4", 3, "servido"),
-      buildItem("p-6", 3, "servido"),
-      buildItem("p-11", 6, "servido"),
-    ],
-    subtotal: "0.00",
-    total: "0.00",
-  },
-  {
-    id: "cmd-t11",
-    mesaId: "t11",
-    mesaEtiqueta: "M-11",
-    clienteNombre: "Camila Duarte",
-    comensales: 2,
-    estado: "abierta",
-    abiertaEn: todayAt(20, 0),
-    items: [buildItem("p-8", 2, "pendiente")],
-    subtotal: "0.00",
-    total: "0.00",
-  },
-  {
-    id: "cmd-t16",
-    mesaId: "t16",
-    mesaEtiqueta: "M-16",
-    clienteNombre: "Valeria Ocampo",
-    comensales: 4,
-    estado: "abierta",
-    abiertaEn: todayAt(19, 50),
-    items: [buildItem("p-7", 2, "en_preparacion"), buildItem("p-9", 3, "servido")],
-    subtotal: "0.00",
-    total: "0.00",
-  },
-];
-comandas.forEach(recomputeTotals);
+/**
+ * `estado` es DERIVADO, igual que el trigger `comanda_estado` del backend: se
+ * calcula desde los tres hechos en vez de guardarse. Así el mock no puede
+ * quedar en un estado imposible (p. ej. cobrada sin despachar).
+ */
+function estadoDeComanda(c: Pick<Comanda, "despachadaEn" | "anuladaEn" | "cobroId">): Comanda["estado"] {
+  if (c.anuladaEn) return "anulada";
+  if (c.cobroId) return "cobrada";
+  return c.despachadaEn ? "despachada" : "pendiente";
+}
 
-// Closed comandas earlier today, feeding the sales report so it is not empty
-// on first load. Never surfaced directly, only aggregated.
-let comandasCobradasHoy: Comanda[] = [
-  { id: "cmd-h1", mesaId: "t2", mesaEtiqueta: "M-2", comensales: 2, estado: "cobrada", abiertaEn: todayAt(12, 15), cerradaEn: todayAt(13, 20), items: [buildItem("p-4", 2, "servido"), buildItem("p-9", 2, "servido")], subtotal: "0", total: "0" },
-  { id: "cmd-h2", mesaId: "t4", mesaEtiqueta: "M-4", comensales: 4, estado: "cobrada", abiertaEn: todayAt(12, 40), cerradaEn: todayAt(14, 5), items: [buildItem("p-4", 4, "servido"), buildItem("p-10", 4, "servido"), buildItem("p-11", 2, "servido")], subtotal: "0", total: "0" },
-  { id: "cmd-h3", mesaId: "t9", mesaEtiqueta: "M-9", comensales: 6, estado: "cobrada", abiertaEn: todayAt(13, 0), cerradaEn: todayAt(14, 30), items: [buildItem("p-1", 2, "servido"), buildItem("p-5", 6, "servido"), buildItem("p-9", 6, "servido")], subtotal: "0", total: "0" },
-  { id: "cmd-h4", mesaId: "t12", mesaEtiqueta: "M-12", comensales: 2, estado: "cobrada", abiertaEn: todayAt(18, 0), cerradaEn: todayAt(19, 0), items: [buildItem("p-2", 2, "servido"), buildItem("p-4", 2, "servido")], subtotal: "0", total: "0" },
-  { id: "cmd-h5", mesaId: "t13", mesaEtiqueta: "M-13", comensales: 2, estado: "cobrada", abiertaEn: todayAt(18, 20), cerradaEn: todayAt(19, 15), items: [buildItem("p-3", 1, "servido"), buildItem("p-7", 2, "servido"), buildItem("p-10", 2, "servido")], subtotal: "0", total: "0" },
+function withEstado(comanda: Comanda): Comanda {
+  return { ...comanda, estado: estadoDeComanda(comanda) };
+}
+
+interface SeedComanda {
+  id: string;
+  mesaId: string;
+  comensales: number;
+  creadaEn: string;
+  /** `null` = sigue en la cola de despacho. */
+  despachadaEn: string | null;
+  items: ComandaItem[];
+  notas?: string;
+}
+
+function seedComanda(seed: SeedComanda): Comanda {
+  contadorComanda += 1;
+  const comanda: Comanda = {
+    id: seed.id,
+    tipo: "mesa",
+    mesaId: seed.mesaId,
+    mesaEtiqueta: mesas.find((m) => m.id === seed.mesaId)?.etiqueta ?? null,
+    salonId: SALON_ID,
+    reservacionId: null,
+    numeroDia: contadorComanda,
+    comensales: seed.comensales,
+    meseroId: null,
+    estado: "pendiente",
+    creadaEn: seed.creadaEn,
+    despachadaEn: seed.despachadaEn,
+    anuladaEn: null,
+    cobroId: null,
+    total: "0.00",
+    notas: seed.notas ?? null,
+    items: seed.items,
+  };
+  recomputeTotals(comanda);
+  return withEstado(comanda);
+}
+
+let comandas: Comanda[] = [
+  // Mesa 7: todo despachado → es la cuenta por cobrar lista del seed.
+  seedComanda({
+    id: "cmd-t7-1",
+    mesaId: "t7",
+    comensales: 6,
+    creadaEn: minutosAtras(95),
+    despachadaEn: minutosAtras(80),
+    items: [buildItem("p-3", 2), buildItem("p-4", 3)],
+  }),
+  seedComanda({
+    id: "cmd-t7-2",
+    mesaId: "t7",
+    comensales: 6,
+    creadaEn: minutosAtras(70),
+    despachadaEn: minutosAtras(55),
+    items: [buildItem("p-11", 6)],
+  }),
+  // Mesa 1: una ronda ya despachada + otra todavía en cocina.
+  seedComanda({
+    id: "cmd-t1-1",
+    mesaId: "t1",
+    comensales: 2,
+    creadaEn: minutosAtras(60),
+    despachadaEn: minutosAtras(45),
+    items: [buildItem("p-2", 2), buildItem("p-9", 2)],
+  }),
+  // Mesa 5: dos rondas, la primera ya despachada.
+  seedComanda({
+    id: "cmd-t5-1",
+    mesaId: "t5",
+    comensales: 4,
+    creadaEn: minutosAtras(40),
+    despachadaEn: minutosAtras(28),
+    items: [buildItem("p-1", 1), buildItem("p-10", 4)],
+  }),
+  // A partir de aquí, lo que está EN LA COLA, del más viejo al más nuevo.
+  // La de 22 min entra pasada del umbral de atraso (15 min) a propósito, para
+  // que el marcador de "pedido atrasado" del KDS se vea sin tener que esperar.
+  seedComanda({
+    id: "cmd-t16-1",
+    mesaId: "t16",
+    comensales: 4,
+    creadaEn: minutosAtras(22),
+    despachadaEn: null,
+    items: [buildItem("p-7", 2), buildItem("p-9", 3)],
+  }),
+  seedComanda({
+    id: "cmd-t1-2",
+    mesaId: "t1",
+    comensales: 2,
+    creadaEn: minutosAtras(14),
+    despachadaEn: null,
+    items: [buildItem("p-4", 2, "Sin picante")],
+  }),
+  seedComanda({
+    id: "cmd-t11-1",
+    mesaId: "t11",
+    comensales: 2,
+    creadaEn: minutosAtras(8),
+    despachadaEn: null,
+    items: [buildItem("p-8", 2)],
+  }),
+  seedComanda({
+    id: "cmd-t5-2",
+    mesaId: "t5",
+    comensales: 4,
+    creadaEn: minutosAtras(3),
+    despachadaEn: null,
+    items: [buildItem("p-5", 3)],
+    notas: "Mesa con apuro, vuelo en dos horas",
+  }),
 ];
-comandasCobradasHoy.forEach(recomputeTotals);
-// Los pagos se arman después de recalcular totales: la suma tiene que cuadrar
-// con el total, igual que exige el backend (vista `v_comanda_descuadre`).
-comandasCobradasHoy = comandasCobradasHoy.map((comanda, index) => ({
-  ...comanda,
-  numeroDia: index + 1,
-  propina: "0.00",
-  pagos: [
+
+let cobros: Cobro[] = [];
+
+/**
+ * Facturas ya emitidas hoy, para que el reporte de ventas no arranque vacío.
+ * Se fabrican con el mismo camino que un cobro real: comandas despachadas que
+ * pasan a tener `cobroId`, y un `Cobro` cuyos pagos cuadran con el total —
+ * `v_cobro_descuadre` tiene que seguir dando 0 filas también aquí.
+ */
+function seedCobro(
+  mesaId: string,
+  creadaEn: string,
+  cobradoEn: string,
+  comensales: number,
+  lineas: ComandaItem[],
+  propina: number,
+  metodo: CobroPago["metodo"],
+): void {
+  const comanda = seedComanda({
+    id: uid("cmd-h"),
+    mesaId,
+    comensales,
+    creadaEn,
+    despachadaEn: cobradoEn,
+    items: lineas,
+  });
+  const subtotal = Number(comanda.total);
+  const total = subtotal + propina;
+  const tasa = tasaUsd?.valor ?? "40.0000";
+  contadorCobro += 1;
+  const cobroId = uid("cob");
+  comandas = [...comandas, { ...comanda, cobroId, estado: "cobrada" }];
+  cobros = [
+    ...cobros,
     {
-      id: uid("pag"),
-      metodo: index % 2 === 0 ? ("efectivo_usd" as const) : ("pago_movil" as const),
-      moneda: "USD" as const,
-      monto: comanda.total,
-      montoUsd: comanda.total,
-      referencia: index % 2 === 0 ? undefined : `00${index}45678`,
-      recibidoEn: comanda.cerradaEn ?? comanda.abiertaEn,
+      id: cobroId,
+      mesaId,
+      salonId: SALON_ID,
+      numeroDia: contadorCobro,
+      fechaOperativa: isoDate(new Date(cobradoEn)),
+      turno: turnoDe(new Date(cobradoEn).getHours()),
+      comensales,
+      subtotal: money(subtotal),
+      descuento: "0.00",
+      impuesto: "0.00",
+      propina: money(propina),
+      total: money(total),
+      tasaValor: tasa,
+      totalBs: money(total * Number(tasa)),
+      cobradoEn,
+      anuladoEn: null,
+      pagos: [
+        {
+          id: uid("pag"),
+          metodo,
+          moneda: "USD",
+          monto: money(total),
+          tasaAplicada: null,
+          montoUsd: money(total),
+          referencia: metodo === "pago_movil" ? `0${contadorCobro}4455667` : null,
+          recibidoEn: cobradoEn,
+        },
+      ],
+      comandas: [{ ...comanda, cobroId, estado: "cobrada" }],
+      mesa: mesas.find((m) => m.id === mesaId) ?? null,
     },
-  ],
-}));
+  ];
+}
+
+seedCobro("t2", todayAt(12, 15), todayAt(13, 20), 2, [buildItem("p-4", 2), buildItem("p-9", 2)], 3, "efectivo_usd");
+seedCobro("t4", todayAt(12, 40), todayAt(14, 5), 4, [buildItem("p-4", 4), buildItem("p-10", 4), buildItem("p-11", 2)], 0, "pago_movil");
+seedCobro("t9", todayAt(13, 0), todayAt(14, 30), 6, [buildItem("p-1", 2), buildItem("p-5", 6), buildItem("p-9", 6)], 12, "efectivo_usd");
+seedCobro("t12", todayAt(18, 0), todayAt(19, 0), 2, [buildItem("p-2", 2), buildItem("p-4", 2)], 0, "punto");
+seedCobro("t13", todayAt(18, 20), todayAt(19, 15), 2, [buildItem("p-3", 1), buildItem("p-7", 2), buildItem("p-10", 2)], 5, "efectivo_usd");
+
+/** Las facturas del día operativo en curso, no anuladas. */
+function cobrosHoy(): Cobro[] {
+  const hoy = isoDate(new Date());
+  return cobros.filter((c) => c.fechaOperativa === hoy && !c.anuladoEn);
+}
+
+/** Comandas vivas: ni cobradas ni anuladas. Son las que ocupan una mesa. */
+function comandasVivas(mesaId?: string): Comanda[] {
+  return comandas.filter(
+    (c) =>
+      c.cobroId == null &&
+      c.anuladaEn == null &&
+      (mesaId === undefined || c.mesaId === mesaId),
+  );
+}
+
+function comandaById(id: string): Comanda {
+  const found = comandas.find((c) => c.id === id);
+  if (!found) throw new ApiError("Comanda no encontrada", 404);
+  return found;
+}
+
+/**
+ * Las líneas sólo se pueden tocar mientras la comanda siga `pendiente`
+ * (trigger `comanda_item_solo_pendiente` en el backend): se anula una línea
+ * antes de despachar, no se le añaden a un pedido que ya salió —rompería el
+ * FIFO— y no se toca nada de una comanda ya cobrada.
+ */
+function requerirPendiente(comanda: Comanda): void {
+  if (comanda.anuladaEn) throw new ApiError("Esa comanda está anulada", 409);
+  if (comanda.cobroId) {
+    throw new ApiError("Esa comanda ya se cobró: sus líneas no se pueden cambiar", 409);
+  }
+  if (comanda.despachadaEn) {
+    throw new ApiError("Esa comanda ya salió de cocina: sus líneas no se pueden cambiar", 409);
+  }
+}
+
+function replaceComanda(next: Comanda): Comanda {
+  const conEstado = withEstado(next);
+  comandas = comandas.map((c) => (c.id === conEstado.id ? conEstado : c));
+  return conEstado;
+}
+
+/** Réplica en memoria de una fila de `v_cuenta_mesa`. */
+function cuentaDeMesaRow(mesaId: string): CuentaMesa | null {
+  const vivas = comandasVivas(mesaId);
+  if (vivas.length === 0) return null;
+  const mesa = mesas.find((m) => m.id === mesaId);
+  const despachadas = vivas.filter((c) => c.despachadaEn != null);
+  const enCocina = vivas.filter((c) => c.despachadaEn == null);
+  const sum = (list: Comanda[]) => list.reduce((acc, c) => acc + Number(c.total), 0);
+  const ocupadaDesde = vivas.reduce(
+    (min, c) => (c.creadaEn < min ? c.creadaEn : min),
+    vivas[0].creadaEn,
+  );
+  return {
+    mesaId,
+    mesaEtiqueta: mesa?.etiqueta ?? "—",
+    salonId: SALON_ID,
+    salonNombre: salones.find((s) => s.id === SALON_ID)?.nombre ?? null,
+    comandas: vivas.length,
+    comandasPorCobrar: despachadas.length,
+    comandasEnCocina: enCocina.length,
+    cuentaTotal: money(sum(vivas)),
+    totalPorCobrar: money(sum(despachadas)),
+    totalEnCocina: money(sum(enCocina)),
+    comensales: Math.max(...vivas.map((c) => c.comensales)),
+    ocupadaDesde,
+    minutosOcupada: Math.max(
+      0,
+      Math.round((Date.now() - new Date(ocupadaDesde).getTime()) / 60_000),
+    ),
+    meseroId: null,
+    reservacionId: vivas.find((c) => c.reservacionId)?.reservacionId ?? null,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Seed: reservaciones de hoy
@@ -611,32 +837,42 @@ let reservaciones: Reservacion[] = [
   },
 ];
 
-/** Misma regla que la vista `v_mesa_estado` del backend, en memoria. */
-function estadoDeMesa(mesaId: string, bloqueada: boolean): EstadoMesa {
-  if (bloqueada) return "bloqueada";
-  const ocupada = comandas.some(
-    (c) => c.mesaId === mesaId && (c.estado === "abierta" || c.estado === "por_cobrar"),
-  );
-  if (ocupada) return "ocupada";
-  const reservada = reservaciones.some(
-    (r) =>
-      r.mesaId === mesaId &&
-      (r.estado === "pendiente" || r.estado === "confirmada" || r.estado === "sentada"),
-  );
-  return reservada ? "reservada" : "libre";
+/** La reserva que YA está sentada en la mesa (`sent` en `v_mesa_estado`). */
+function reservaSentadaDeMesa(mesaId: string): Reservacion | undefined {
+  return reservaciones.find((r) => r.mesaId === mesaId && r.estado === "sentada");
 }
 
-function clienteDeMesa(mesaId: string): string | null {
-  const comanda = comandas.find(
-    (c) => c.mesaId === mesaId && (c.estado === "abierta" || c.estado === "por_cobrar"),
-  );
-  if (comanda?.clienteNombre) return comanda.clienteNombre;
-  const reserva = reservaciones.find(
-    (r) =>
-      r.mesaId === mesaId &&
-      (r.estado === "pendiente" || r.estado === "confirmada" || r.estado === "sentada"),
-  );
-  return reserva?.clienteNombre ?? null;
+/**
+ * La PRÓXIMA reserva que pesa sobre la mesa (`rsv` en `v_mesa_estado`): sólo
+ * las que todavía no llegaron, y sólo dentro de la ventana de −30 min a +2 h.
+ * Va aparte de la sentada a propósito: aquélla es gente que ya está ahí.
+ */
+function proximaReservaDeMesa(mesaId: string): Reservacion | undefined {
+  const ahora = Date.now();
+  const desde = ahora - 30 * 60_000;
+  const hasta = ahora + 2 * 60 * 60_000;
+  return reservaciones
+    .filter(
+      (r) =>
+        r.mesaId === mesaId &&
+        (r.estado === "pendiente" || r.estado === "confirmada") &&
+        new Date(r.iniciaEn).getTime() >= desde &&
+        new Date(r.iniciaEn).getTime() <= hasta,
+    )
+    .sort((a, b) => a.iniciaEn.localeCompare(b.iniciaEn))[0];
+}
+
+/**
+ * Misma regla que la vista `v_mesa_estado`, en memoria — incluida la rama que
+ * el rediseño agregó: ⭐ una reserva SENTADA ocupa la mesa por sí sola, aunque
+ * todavía no haya ninguna comanda. Sin ella, el check-in pintaría la mesa
+ * ocupada de forma optimista y el siguiente refresco la devolvería a `libre`.
+ */
+function estadoDeMesa(mesaId: string, bloqueada: boolean): EstadoMesa {
+  if (bloqueada) return "bloqueada";
+  if (comandasVivas(mesaId).length > 0) return "ocupada";
+  if (reservaSentadaDeMesa(mesaId)) return "ocupada";
+  return proximaReservaDeMesa(mesaId) ? "reservada" : "libre";
 }
 
 export const mockApi: ApiClient = {
@@ -841,14 +1077,12 @@ export const mockApi: ApiClient = {
         const mesa = mesas.find((m) => m.id === pm.mesaId);
         if (!mesa) continue;
         const estado = estadoDeMesa(mesa.id, pm.bloqueada);
-        const comanda = comandas.find(
-          (c) => c.mesaId === mesa.id && (c.estado === "abierta" || c.estado === "por_cobrar"),
-        );
-        const reserva = reservaciones.find(
-          (r) =>
-            r.mesaId === mesa.id &&
-            (r.estado === "pendiente" || r.estado === "confirmada" || r.estado === "sentada"),
-        );
+        const vivas = comandasVivas(mesa.id);
+        const sentada = reservaSentadaDeMesa(mesa.id);
+        const proxima = proximaReservaDeMesa(mesa.id);
+        const primeraComanda = vivas
+          .map((c) => c.creadaEn)
+          .sort((a, b) => a.localeCompare(b))[0];
         rows.push({
           salonId,
           plantillaId: plantilla.id,
@@ -857,9 +1091,18 @@ export const mockApi: ApiClient = {
           etiqueta: mesa.etiqueta,
           estado,
           bloqueada: pm.bloqueada,
-          comandaId: comanda?.id ?? null,
-          reservacionId: reserva?.id ?? null,
-          reservacionCliente: clienteDeMesa(mesa.id),
+          comandas: vivas.length,
+          comandasEnCocina: vivas.filter((c) => c.despachadaEn == null).length,
+          comandasPorCobrar: vivas.filter((c) => c.despachadaEn != null).length,
+          cuentaTotal: money(vivas.reduce((sum, c) => sum + Number(c.total), 0)),
+          // El primer pedido o, si todavía no pidieron nada, el check-in.
+          ocupadaDesde: primeraComanda ?? sentada?.iniciaEn ?? null,
+          comensales: vivas.length > 0 ? Math.max(...vivas.map((c) => c.comensales)) : 0,
+          reservacionId: proxima?.id ?? null,
+          reservacionCliente: proxima?.clienteNombre ?? null,
+          sentadaReservacionId: sentada?.id ?? null,
+          sentadaCliente: sentada?.clienteNombre ?? null,
+          sentadaEn: sentada ? (sentada.iniciaEn ?? null) : null,
         });
       }
     }
@@ -973,131 +1216,295 @@ export const mockApi: ApiClient = {
     return delay(undefined);
   },
 
-  // --- Comandas ---------------------------------------------------------
-  async listComandasActivas() {
-    return delay(comandas.filter((c) => c.estado === "abierta" || c.estado === "por_cobrar"));
-  },
-
+  // --- Comandas (el PEDIDO) ---------------------------------------------
   async createComanda(input: CreateComandaInput) {
-    const existing = comandas.find(
-      (c) => c.mesaId === input.mesaId && (c.estado === "abierta" || c.estado === "por_cobrar"),
-    );
-    if (existing) throw new ApiError("La mesa ya tiene una comanda abierta", 409);
+    // La comanda nace YA en la cola, con sus líneas: por eso `items` es
+    // obligatorio y con al menos una. Y ya NO hay 409 por mesa ocupada — la
+    // mesa acepta N comandas vivas, que es el punto entero del rediseño.
+    if (!input.items || input.items.length === 0) {
+      throw new ApiError("Una comanda necesita al menos un ítem", 400);
+    }
+    const tipo = input.tipo ?? "mesa";
+    if (tipo === "mesa" && !input.mesaId) {
+      throw new ApiError("Una comanda de mesa exige mesaId", 400);
+    }
+    const mesa = input.mesaId ? mesaById(input.mesaId) : null;
+
+    const items: ComandaItem[] = [];
+    for (const entrada of input.items) {
+      if (entrada.cantidad <= 0) throw new ApiError("La cantidad debe ser mayor a cero", 422);
+      const producto = productoById(entrada.productoId);
+      if (!producto.disponible) {
+        throw new ApiError(`"${producto.nombre}" no está disponible hoy`, 409);
+      }
+      items.push(buildItem(producto.id, entrada.cantidad, entrada.nota));
+    }
+
+    contadorComanda += 1;
     const comanda: Comanda = {
       id: uid("cmd"),
-      mesaId: input.mesaId,
-      mesaEtiqueta: input.mesaEtiqueta,
-      reservacionId: input.reservacionId,
-      clienteNombre: input.clienteNombre,
+      tipo,
+      mesaId: tipo === "mesa" ? (input.mesaId ?? null) : null,
+      mesaEtiqueta: mesa?.etiqueta ?? input.mesaEtiqueta ?? null,
+      salonId: mesa ? mesa.salonId : null,
+      reservacionId: input.reservacionId ?? null,
+      numeroDia: contadorComanda,
       comensales: input.comensales ?? 1,
-      estado: "abierta",
-      abiertaEn: new Date().toISOString(),
-      items: [],
-      subtotal: "0.00",
+      meseroId: null,
+      estado: "pendiente",
+      creadaEn: new Date().toISOString(),
+      despachadaEn: null,
+      anuladaEn: null,
+      cobroId: null,
       total: "0.00",
+      notas: input.notas ?? null,
+      items,
     };
-    comandas = [...comandas, comanda];
-    return delay(comanda);
+    recomputeTotals(comanda);
+
+    // Idempotente, igual que el backend: si la comanda viene de una reserva, la
+    // deja sentada. La segunda comanda de la misma reserva no cambia nada.
+    if (input.reservacionId) {
+      reservaciones = reservaciones.map((r) =>
+        r.id === input.reservacionId && (r.estado === "pendiente" || r.estado === "confirmada")
+          ? { ...r, estado: "sentada" }
+          : r,
+      );
+    }
+
+    comandas = [...comandas, withEstado(comanda)];
+    return delay(withEstado(comanda));
   },
 
   async getComanda(id: string) {
-    const found = comandas.find((c) => c.id === id);
-    if (!found) throw new ApiError("La comanda no existe", 404);
-    return delay(found);
+    return delay(comandaById(id));
   },
 
   async addComandaItems(comandaId: string, items: AddComandaItemInput[]) {
-    const idx = comandas.findIndex((c) => c.id === comandaId);
-    if (idx === -1) throw new ApiError("La comanda no existe", 404);
-    const comanda = { ...comandas[idx], items: [...comandas[idx].items] };
+    const current = comandaById(comandaId);
+    requerirPendiente(current);
     const created: ComandaItem[] = [];
     for (const item of items) {
       if (item.cantidad <= 0) throw new ApiError("La cantidad debe ser mayor a cero", 422);
       const producto = productoById(item.productoId);
-      const line = buildItem(producto.id, item.cantidad, "pendiente");
-      line.nota = item.nota;
-      comanda.items.push(line);
-      created.push(line);
+      created.push(buildItem(producto.id, item.cantidad, item.nota));
     }
-    recomputeTotals(comanda);
-    comandas = [...comandas.slice(0, idx), comanda, ...comandas.slice(idx + 1)];
+    const next: Comanda = { ...current, items: [...current.items, ...created] };
+    recomputeTotals(next);
+    replaceComanda(next);
     return delay(created);
   },
 
-  async setComandaItemEstado(comandaId: string, itemId: string, estado: EstadoComandaItem) {
-    const cIdx = comandas.findIndex((c) => c.id === comandaId);
-    if (cIdx === -1) throw new ApiError("La comanda no existe", 404);
-    const comanda = { ...comandas[cIdx], items: [...comandas[cIdx].items] };
-    const iIdx = comanda.items.findIndex((i) => i.id === itemId);
-    if (iIdx === -1) throw new ApiError("El ítem no existe en esta comanda", 404);
-    const updated: ComandaItem = { ...comanda.items[iIdx], estado };
-    comanda.items[iIdx] = updated;
-    recomputeTotals(comanda);
-    comandas = [...comandas.slice(0, cIdx), comanda, ...comandas.slice(cIdx + 1)];
-    return delay(updated);
-  },
-
   async removeComandaItem(comandaId: string, itemId: string, motivo: string) {
-    void motivo; // el motivo de cancelación se auditaría server-side; el mock solo lo descarta.
-    const cIdx = comandas.findIndex((c) => c.id === comandaId);
-    if (cIdx === -1) throw new ApiError("La comanda no existe", 404);
-    const comanda = { ...comandas[cIdx], items: [...comandas[cIdx].items] };
-    const iIdx = comanda.items.findIndex((i) => i.id === itemId);
-    if (iIdx === -1) throw new ApiError("El ítem no existe en esta comanda", 404);
-    comanda.items[iIdx] = { ...comanda.items[iIdx], estado: "cancelado" };
-    recomputeTotals(comanda);
-    comandas = [...comandas.slice(0, cIdx), comanda, ...comandas.slice(cIdx + 1)];
+    const current = comandaById(comandaId);
+    requerirPendiente(current);
+    const idx = current.items.findIndex((i) => i.id === itemId);
+    if (idx === -1) throw new ApiError("El ítem no existe en esta comanda", 404);
+    // No se borra: queda la traza, y el ticket reimpreso la muestra.
+    const items = [...current.items];
+    items[idx] = { ...items[idx], canceladoEn: new Date().toISOString() };
+    void motivo; // el motivo se auditaría server-side; el mock sólo lo descarta.
+    const next: Comanda = { ...current, items };
+    recomputeTotals(next);
+    replaceComanda(next);
     return delay(undefined);
   },
 
-  async cobrarComanda(comandaId: string, input: CobrarComandaInput) {
-    const idx = comandas.findIndex((c) => c.id === comandaId);
-    if (idx === -1) throw new ApiError("La comanda no existe", 404);
+  async despacharComanda(comandaId: string) {
+    const current = comandaById(comandaId);
+    // El predicado completo del backend: lo que hace segura la doble pulsación
+    // de dos pantallas de cocina.
+    if (current.anuladaEn) throw new ApiError("Esa comanda está anulada", 409);
+    if (current.cobroId) throw new ApiError("Esa comanda ya se cobró", 409);
+    if (current.despachadaEn) throw new ApiError("Esa comanda ya se despachó", 409);
+    // Sale de la cola, NO de la base: sigue viva en la cuenta de la mesa.
+    return delay(replaceComanda({ ...current, despachadaEn: new Date().toISOString() }));
+  },
+
+  async anularComanda(comandaId: string, motivo: string) {
+    const current = comandaById(comandaId);
+    if (current.cobroId) {
+      throw new ApiError("Esa comanda ya se cobró y no se puede anular", 409);
+    }
+    if (current.anuladaEn) throw new ApiError("Esa comanda ya estaba anulada", 409);
+    void motivo;
+    return delay(replaceComanda({ ...current, anuladaEn: new Date().toISOString() }));
+  },
+
+  // --- Despacho y cobro --------------------------------------------------
+  async getColaDespacho() {
+    // Global y FIFO estricto por fecha de creación — sin filtro por mesa ni
+    // por destino: cocina y barra miran la misma cola.
+    const filas: ComandaEnCola[] = comandas
+      .filter((c) => c.despachadaEn == null && c.anuladaEn == null)
+      .sort((a, b) => a.creadaEn.localeCompare(b.creadaEn))
+      .map((c) => ({
+        comandaId: c.id,
+        tipo: c.tipo,
+        mesaId: c.mesaId,
+        mesaEtiqueta: c.mesaEtiqueta ?? null,
+        numeroDia: c.numeroDia,
+        creadaEn: c.creadaEn,
+        minutosEnCola: Math.max(
+          0,
+          Math.round((Date.now() - new Date(c.creadaEn).getTime()) / 60_000),
+        ),
+        meseroId: c.meseroId ?? null,
+        meseroNombre: null,
+        comensales: c.comensales,
+        total: c.total,
+        notas: c.notas ?? null,
+        // Los cancelados VIENEN, marcados: la cocina tiene que ver que algo se
+        // anuló si ya lo había empezado.
+        items: c.items.map(
+          (item): ColaDespachoItem => ({
+            id: item.id,
+            nombre: item.nombreSnap,
+            cantidad: item.cantidad,
+            destino: item.destinoSnap,
+            nota: item.nota ?? null,
+            cancelado: item.canceladoEn != null,
+          }),
+        ),
+      }));
+    return delay(filas, 140);
+  },
+
+  async getCuentasPorCobrar() {
+    const filas = mesas
+      .map((mesa) => cuentaDeMesaRow(mesa.id))
+      .filter((row): row is CuentaMesa => row !== null && row.comandasPorCobrar > 0)
+      .sort((a, b) => a.ocupadaDesde.localeCompare(b.ocupadaDesde));
+    return delay(filas);
+  },
+
+  async getCuentaDeMesa(mesaId: string) {
+    // 200 con `cuenta: null` cuando la mesa está libre: "no debe nada" es una
+    // respuesta. El 404 se reserva para una mesa que no existe.
+    const mesa = mesaById(mesaId);
+    return delay({
+      mesa,
+      cuenta: cuentaDeMesaRow(mesaId),
+      comandas: comandasVivas(mesaId).sort((a, b) => a.creadaEn.localeCompare(b.creadaEn)),
+    });
+  },
+
+  async cobrarMesa(mesaId: string, input: CobrarMesaInput) {
+    mesaById(mesaId);
     const tasa = tasaUsd;
     if (!tasa) {
-      // Misma precondición que el backend real: cobrar congela la tasa del día,
-      // así que sin tasa registrada no se puede cerrar una comanda.
+      // Misma precondición que el backend: el cobro congela la tasa del día.
       throw new ApiError("No hay una tasa de cambio registrada; regístrala antes de cobrar", 400);
     }
-    const current = comandas[idx];
-    const aCobrar = Number(current.total) + (input.propina ?? 0) - (input.descuento ?? 0);
-    const recibidoUsd = input.pagos.reduce(
-      (sum, p) => sum + (p.moneda === "BS" ? p.monto / Number(tasa.valor) : p.monto),
-      0,
-    );
-    if (input.pagos.length === 0 || Math.abs(recibidoUsd - aCobrar) > 0.009) {
+
+    // Sólo lo DESPACHADO y no cobrado. Lo que sigue en cocina nunca entra, se
+    // pidan sus ids o no: se queda vivo y arranca la cuenta siguiente.
+    let cobrables = comandasVivas(mesaId)
+      .filter((c) => c.despachadaEn != null)
+      .sort((a, b) => a.creadaEn.localeCompare(b.creadaEn));
+    if (input.comandaIds) {
+      const pedidas = new Set(input.comandaIds);
+      const seleccion = cobrables.filter((c) => pedidas.has(c.id));
+      if (seleccion.length !== input.comandaIds.length) {
+        throw new ApiError(
+          "Alguna de las comandas pedidas ya se cobró, sigue en cocina o no es de esa mesa",
+          409,
+        );
+      }
+      cobrables = seleccion;
+    }
+    if (cobrables.length === 0) {
       throw new ApiError(
-        `Los pagos (${money(recibidoUsd)}) no cuadran con el total a cobrar (${money(aCobrar)})`,
-        422,
+        "Esa mesa no tiene nada despachado por cobrar (¿ya la cobró otro cajero?)",
+        409,
       );
     }
-    const comanda: Comanda = {
-      ...current,
-      estado: "cobrada",
-      cerradaEn: new Date().toISOString(),
-      propina: money(input.propina ?? 0),
-      total: money(aCobrar),
+
+    // Los totales los calcula el servidor desde las comandas, jamás el cliente.
+    const subtotal = cobrables.reduce((sum, c) => sum + Number(c.total), 0);
+    const descuento = input.descuento ?? 0;
+    const propina = input.propina ?? 0;
+    const total = subtotal - descuento + propina;
+    if (total < 0) throw new ApiError("El descuento no puede superar el subtotal", 400);
+
+    const enUsd = (p: { moneda: string; monto: number }) =>
+      p.moneda === "BS" ? p.monto / Number(tasa.valor) : p.monto;
+    const recibidoUsd = input.pagos.reduce((sum, p) => sum + enUsd(p), 0);
+    if (input.pagos.length === 0 || Math.abs(recibidoUsd - total) > 0.01) {
+      throw new ApiError(
+        `Los pagos (${money(recibidoUsd)}) no cuadran con el total de la cuenta (${money(total)})`,
+        400,
+      );
+    }
+    for (const pago of input.pagos) {
+      if ((pago.metodo === "pago_movil" || pago.metodo === "transferencia") && !pago.referencia?.trim()) {
+        throw new ApiError("Pago móvil y transferencia exigen número de referencia", 400);
+      }
+    }
+
+    const ahora = new Date();
+    const cobradoEn = ahora.toISOString();
+    contadorCobro += 1;
+    const cobroId = uid("cob");
+    const cubiertas = cobrables.map((c) => withEstado({ ...c, cobroId }));
+    for (const comanda of cubiertas) replaceComanda(comanda);
+
+    const cobro: Cobro = {
+      id: cobroId,
+      mesaId,
+      salonId: SALON_ID,
+      numeroDia: contadorCobro,
+      fechaOperativa: isoDate(ahora),
+      turno: turnoDe(ahora.getHours()),
+      comensales: Math.max(...cubiertas.map((c) => c.comensales)),
+      subtotal: money(subtotal),
+      descuento: money(descuento),
+      impuesto: "0.00",
+      propina: money(propina),
+      total: money(total),
+      tasaValor: tasa.valor,
+      totalBs: money(total * Number(tasa.valor)),
+      cobradoEn,
+      anuladoEn: null,
       pagos: input.pagos.map((p) => ({
         id: uid("pag"),
         metodo: p.metodo,
         moneda: p.moneda,
         monto: money(p.monto),
-        montoUsd: money(p.moneda === "BS" ? p.monto / Number(tasa.valor) : p.monto),
-        referencia: p.referencia,
-        recibidoEn: new Date().toISOString(),
+        tasaAplicada: p.moneda === "BS" ? tasa.valor : null,
+        montoUsd: money(enUsd(p)),
+        referencia: p.referencia ?? null,
+        recibidoEn: cobradoEn,
       })),
+      comandas: cubiertas,
+      mesa: mesaById(mesaId),
     };
-    comandas = comandas.filter((c) => c.id !== comandaId);
-    comandasCobradasHoy = [...comandasCobradasHoy, comanda];
-    return delay(comanda);
+    cobros = [...cobros, cobro];
+
+    // Cerrar las reservaciones que quedaron servidas: sólo si a la MESA no le
+    // queda ninguna comanda viva. Si sigue habiendo algo en cocina, la gente
+    // sigue sentada y su cuenta nueva ya arrancó.
+    if (comandasVivas(mesaId).length === 0) {
+      reservaciones = reservaciones.map((r) =>
+        r.mesaId === mesaId && r.estado === "sentada" ? { ...r, estado: "completada" } : r,
+      );
+    }
+
+    return delay(cobro);
   },
 
-  async listComandasCobradas(fecha: string) {
+  async getCobro(cobroId: string) {
+    const found = cobros.find((c) => c.id === cobroId);
+    if (!found) throw new ApiError("Cobro no encontrado", 404);
+    return delay(found);
+  },
+
+  async listCobrosDelDia(fecha: string) {
     const dia = fecha.slice(0, 10);
     return delay(
-      comandasCobradasHoy
-        .filter((c) => (c.cerradaEn ?? c.abiertaEn).slice(0, 10) === dia)
-        .sort((a, b) => (b.cerradaEn ?? b.abiertaEn).localeCompare(a.cerradaEn ?? a.abiertaEn)),
+      cobros
+        .filter((c) => c.fechaOperativa === dia && !c.anuladoEn)
+        .sort((a, b) => b.cobradoEn.localeCompare(a.cobradoEn)),
     );
   },
 
@@ -1151,15 +1558,6 @@ export const mockApi: ApiClient = {
       creadaEn: now,
     };
     return delay({ fecha, usd: tasaUsd, eur: tasaEur });
-  },
-
-  async anularComanda(comandaId: string, motivo: string) {
-    const idx = comandas.findIndex((c) => c.id === comandaId);
-    if (idx === -1) throw new ApiError("La comanda no existe", 404);
-    const comanda: Comanda = { ...comandas[idx], estado: "anulada" };
-    void motivo;
-    comandas = comandas.filter((c) => c.id !== comandaId);
-    return delay(comanda);
   },
 
   // --- Reservaciones ------------------------------------------------------
@@ -1226,24 +1624,13 @@ export const mockApi: ApiClient = {
     if (!reservacion.mesaId || !reservacion.mesaEtiqueta) {
       throw new ApiError("Esta reserva todavía no tiene mesa asignada", 422);
     }
+    // ⚠️ Sentar ya NO abre una comanda: una comanda es un pedido y exige al
+    // menos una línea. La mesa queda ocupada igual porque `estadoDeMesa`
+    // cuenta la reserva sentada como ocupación por sí sola — la misma rama que
+    // `v_mesa_estado` agregó con el rediseño.
     const next: Reservacion = { ...reservacion, estado: "sentada" };
     reservaciones = [...reservaciones.slice(0, idx), next, ...reservaciones.slice(idx + 1)];
-
-    const comanda: Comanda = {
-      id: uid("cmd"),
-      mesaId: reservacion.mesaId,
-      mesaEtiqueta: reservacion.mesaEtiqueta,
-      reservacionId: reservacion.id,
-      clienteNombre: reservacion.clienteNombre,
-      comensales: reservacion.personas,
-      estado: "abierta",
-      abiertaEn: new Date().toISOString(),
-      items: [],
-      subtotal: "0.00",
-      total: "0.00",
-    };
-    comandas = [...comandas, comanda];
-    return delay({ reservacion: next, comanda });
+    return delay(next);
   },
 
   async buscarReservacionPorCodigo(codigo: string) {
@@ -1267,25 +1654,26 @@ export const mockApi: ApiClient = {
 
   // --- Reportes -------------------------------------------------------
   async getReporteDia(fecha: string) {
-    const totalVentasUsd = money(
-      comandasCobradasHoy.reduce((sum, c) => sum + Number(c.total), 0),
-    );
+    const delDia = cobros.filter((c) => c.fechaOperativa === fecha.slice(0, 10) && !c.anuladoEn);
     return delay({
       fecha,
-      totalVentasUsd,
-      numeroComandas: comandasCobradasHoy.length,
-      comensales: comandasCobradasHoy.reduce((sum, c) => sum + c.comensales, 0),
-      propinasUsd: money(comandasCobradasHoy.reduce((sum, c) => sum + Number(c.propina ?? 0), 0)),
+      totalVentasUsd: money(delDia.reduce((sum, c) => sum + Number(c.total), 0)),
+      numeroCobros: delDia.length,
+      comensales: delDia.reduce((sum, c) => sum + c.comensales, 0),
+      propinasUsd: money(delDia.reduce((sum, c) => sum + Number(c.propina), 0)),
     });
   },
 
   async getReporteProductos(orden: OrdenReporteProducto, limite = 10, fecha?: string) {
+    // Igual que `v_producto_vendido_dia`: el día sale del COBRO, no de la
+    // comanda, y los ítems cancelados no cuentan (se pidieron, no se vendieron).
     const dia = fecha?.slice(0, 10);
     const byProduct = new Map<string, ProductoVendido>();
-    for (const comanda of comandasCobradasHoy) {
-      if (dia && (comanda.cerradaEn ?? comanda.abiertaEn).slice(0, 10) !== dia) continue;
-      for (const item of comanda.items) {
-        if (item.estado === "cancelado") continue;
+    for (const cobro of cobros) {
+      if (cobro.anuladoEn) continue;
+      if (dia && cobro.fechaOperativa !== dia) continue;
+      for (const item of cobro.comandas.flatMap((c) => c.items)) {
+        if (item.canceladoEn != null) continue;
         const existing = byProduct.get(item.productoId);
         const ingreso = Number(item.totalLinea);
         if (existing) {

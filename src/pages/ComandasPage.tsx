@@ -1,91 +1,153 @@
-import { useEffect, useMemo } from "react";
-import { RefreshCw, Receipt } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { RefreshCw, Receipt, Volume2, VolumeX } from "lucide-react";
 
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/Button";
 import { PageBody, Section, StaggerGrid } from "@/components/ui/Section";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useComandaStore } from "@/lib/useComandaStore";
-import { useSyncComandasWithFloorPlan } from "@/lib/useSyncComandasWithFloorPlan";
+import { useAlertaCocina } from "@/lib/useAlertaCocina";
 import { ComandaCard } from "@/components/comandas/ComandaCard";
 
+/**
+ * La cola de despacho — la pantalla de cocina/barra (KDS).
+ *
+ * Es UNA sola cola, global a todas las mesas y en orden estricto de llegada:
+ * ese orden es lo que hace justa la cocina, así que se respeta el que manda el
+ * backend (`ORDER BY creada_en`) en vez de reordenar aquí. La unidad es la
+ * COMANDA, no el ítem: cocina y barra despachan el pedido entero.
+ *
+ * Sin WebSocket todavía (el backend no tiene gateway aún), así que refresca por
+ * polling. Cuando exista, se reemplaza `loadCola()` por el push y el resto de
+ * la pantalla no cambia.
+ */
+
+/**
+ * 6s: la cocina tiene que enterarse de un pedido nuevo casi al instante, y
+ * `GET /despacho/cola` es una sola consulta indexada con los ítems ya
+ * embebidos (sin N+1). El plano, que es menos urgente, sigue en 15s.
+ */
+const POLL_INTERVAL_MS = 6_000;
+
 export function ComandasPage() {
-  const comandas = useComandaStore((s) => s.comandas);
-  const status = useComandaStore((s) => s.status);
-  const error = useComandaStore((s) => s.error);
-  const load = useComandaStore((s) => s.load);
+  const cola = useComandaStore((s) => s.cola);
+  const status = useComandaStore((s) => s.colaStatus);
+  const error = useComandaStore((s) => s.colaError);
+  const loadCola = useComandaStore((s) => s.loadCola);
+  const alerta = useAlertaCocina();
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void loadCola();
+  }, [loadCola]);
 
-  // El pedido del cliente es que las comandas lleguen solas: sin este
-  // intervalo, un mesero que deja la pantalla abierta nunca vería una mesa
-  // nueva sin refrescar a mano. 15s es razonable para el ritmo de un piso de
-  // restaurante — ni tan agresivo como para saturar al backend, ni tan lento
-  // como para sentirse "atascado". Se salta el tick si ya hay un `load()` en
-  // curso (`getState()` en vez de suscribirse a `status`, para no tener que
-  // recrear el intervalo en cada cambio de estado).
   useEffect(() => {
-    const POLL_INTERVAL_MS = 15_000;
     const interval = setInterval(() => {
-      if (useComandaStore.getState().status === "loading") return;
-      void load();
+      if (useComandaStore.getState().colaStatus === "loading") return;
+      void loadCola();
     }, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [load]);
+  }, [loadCola]);
 
-  // Keeps this panel in lockstep with table status changes made in the
-  // floor plan editor (occupied → comanda opened, freed manually → cancelled).
-  useSyncComandasWithFloorPlan();
+  // Suena sólo cuando ENTRA una comanda que no estaba, no cada vez que la
+  // lista cambia: despachar una también cambia la lista, y premiar eso con un
+  // bip entrenaría a la cocina a ignorar el sonido.
+  //
+  // `null` como valor inicial distingue "todavía no cargué nada" de "la cola
+  // está vacía": sin esa distinción, la primera carga con pedidos ya en cola
+  // dispararía la alarma al abrir la pantalla.
+  // Se depende de `reproducir` (estable vía `useCallback`) y no del objeto
+  // `alerta`, que es nuevo en cada render y volvería a disparar este efecto
+  // sin motivo.
+  const { reproducir } = alerta;
+  const idsConocidos = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (status !== "ready") return;
+    const actuales = new Set(cola.map((c) => c.comandaId));
+    const previos = idsConocidos.current;
+    idsConocidos.current = actuales;
+    if (previos === null) return;
+    const hayNuevas = [...actuales].some((id) => !previos.has(id));
+    if (hayNuevas) reproducir();
+  }, [cola, status, reproducir]);
 
-  const sorted = useMemo(
-    () => [...comandas].sort((a, b) => a.abiertaEn.localeCompare(b.abiertaEn)),
-    [comandas],
-  );
+  const cargandoInicial = status === "loading" && cola.length === 0;
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <PageHeader
-        title="Comandas"
-        subtitle={`${sorted.length} ${sorted.length === 1 ? "mesa activa" : "mesas activas"}`}
+        title="Cola de despacho"
+        subtitle={
+          cola.length === 1 ? "1 pedido esperando" : `${cola.length} pedidos esperando`
+        }
         actions={
-          <Button size="sm" onClick={() => void load()} disabled={status === "loading"}>
-            <RefreshCw size={14} className={status === "loading" ? "animate-spin" : undefined} />
-            Actualizar
-          </Button>
+          <>
+            <Button
+              size="sm"
+              onClick={alerta.alternar}
+              aria-pressed={alerta.activa}
+              title={
+                alerta.bloqueadaPorNavegador
+                  ? "El navegador bloquea el sonido hasta que toques la pantalla"
+                  : alerta.activa
+                    ? "Silenciar el aviso de pedidos nuevos"
+                    : "Activar el aviso de pedidos nuevos"
+              }
+            >
+              {alerta.activa ? <Volume2 size={14} /> : <VolumeX size={14} />}
+              {alerta.activa ? "Sonido" : "Silencio"}
+            </Button>
+            <Button size="sm" onClick={() => void loadCola()} disabled={status === "loading"}>
+              <RefreshCw size={14} className={status === "loading" ? "animate-spin" : undefined} />
+              Actualizar
+            </Button>
+          </>
         }
       />
 
       <PageBody>
-        {status === "loading" && comandas.length === 0 && (
-          <p className="py-10 text-center text-sm text-fg-muted">Cargando comandas activas…</p>
+        {alerta.bloqueadaPorNavegador && (
+          <p
+            role="status"
+            className="rounded-[var(--radius-md)] border border-border bg-surface-sunken px-3.5 py-2.5 text-[12px] leading-relaxed text-fg-muted"
+          >
+            El navegador no deja sonar el aviso hasta que alguien toque la pantalla una vez. Un
+            toque en cualquier parte lo habilita para todo el turno.
+          </p>
         )}
 
-        {status === "error" && (
+        {cargandoInicial && (
+          <p className="py-10 text-center text-sm text-fg-muted">Cargando la cola…</p>
+        )}
+
+        {status === "error" && cola.length === 0 && (
           <EmptyState
             icon={<Receipt size={26} />}
-            title="No se pudieron cargar las comandas"
+            title="No se pudo cargar la cola"
             description={error ?? "Ocurrió un error inesperado."}
-            action={
-              <Button onClick={() => void load()}>Reintentar</Button>
-            }
+            action={<Button onClick={() => void loadCola()}>Reintentar</Button>}
           />
         )}
 
-        {status === "ready" && sorted.length === 0 && (
+        {status === "ready" && cola.length === 0 && (
           <EmptyState
             icon={<Receipt size={26} />}
-            title="No hay mesas ocupadas"
-            description="Cuando marques una mesa como ocupada en el plano del salón, su comanda aparecerá aquí automáticamente."
+            title="No hay pedidos en cola"
+            description="Cuando un mesero envíe un pedido a cocina aparecerá aquí, en orden de llegada, y sonará un aviso."
           />
         )}
 
-        {sorted.length > 0 && (
-          <Section title="En servicio">
+        {cola.length > 0 && (
+          <Section
+            title="En orden de llegada"
+            action={
+              <span className="font-mono text-[12px] tabular-nums text-fg-subtle">
+                el más viejo primero
+              </span>
+            }
+          >
             <StaggerGrid className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {sorted.map((comanda) => (
-                <ComandaCard key={comanda.id} comanda={comanda} />
+              {cola.map((comanda) => (
+                <ComandaCard key={comanda.comandaId} comanda={comanda} />
               ))}
             </StaggerGrid>
           </Section>

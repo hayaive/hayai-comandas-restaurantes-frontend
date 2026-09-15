@@ -59,7 +59,6 @@ export function MeseroPage() {
   const productos = useActiveProducts();
   const productStatus = useProductStore((s) => s.status);
   const loadProductos = useProductStore((s) => s.load);
-  const loadComandas = useComandaStore((s) => s.load);
 
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -71,10 +70,6 @@ export function MeseroPage() {
   useEffect(() => {
     if (productStatus === "idle") void loadProductos();
   }, [productStatus, loadProductos]);
-
-  useEffect(() => {
-    void loadComandas();
-  }, [loadComandas]);
 
   const sortedTables = useMemo(
     () =>
@@ -150,6 +145,13 @@ export function MeseroPage() {
     setCart((prev) => prev.filter((line) => line.productoId !== productoId));
   }
 
+  /**
+   * Enviar el pedido es UNA sola llamada: la comanda nace con sus líneas y ya
+   * encolada en despacho. Antes esto eran N+1 llamadas (abrir la comanda de la
+   * mesa y después empujarle los ítems uno a uno), y encima asumía que la mesa
+   * tenía como mucho una comanda. Hoy cada envío es una comanda nueva, así que
+   * mandar dos rondas a la misma mesa es lo normal y no un conflicto.
+   */
   async function handleSubmit() {
     if (!selectedTableId || cart.length === 0) return;
     setSubmitting(true);
@@ -160,21 +162,18 @@ export function MeseroPage() {
       const table = template?.tables.find((t) => t.id === selectedTableId);
       if (!table) throw new Error("La mesa seleccionada ya no existe");
 
-      const clienteFinal = !table.occupantName && clienteNombre.trim() ? clienteNombre.trim() : undefined;
+      await useComandaStore.getState().crearComanda({
+        tipo: "mesa",
+        mesaId: table.id,
+        mesaEtiqueta: table.label,
+        comensales: table.seats,
+        items: cart.map((line) => ({ productoId: line.productoId, cantidad: line.cantidad })),
+      });
 
-      await useComandaStore.getState().ensureComandaForTable(table.id, table.label, clienteFinal);
-
-      const comanda = useComandaStore.getState().comandas.find((c) => c.mesaId === table.id);
-      if (!comanda) {
-        throw new Error(useComandaStore.getState().error ?? "No se pudo abrir la comanda de la mesa");
-      }
-
+      // La ocupación la confirma `refreshPlano()` desde el store; esto sólo
+      // adelanta el color de la mesa para que el mesero no espere el round-trip.
       if (table.status === "free") {
-        useFloorPlanStore.getState().setStatus(table.id, "occupied", clienteFinal);
-      }
-
-      for (const line of cart) {
-        await useComandaStore.getState().addItem(comanda.id, line.productoId, line.cantidad);
+        useFloorPlanStore.getState().setStatus(table.id, "occupied", clienteNombre.trim() || undefined);
       }
 
       setFeedback({

@@ -1,81 +1,57 @@
 import { useState } from "react";
-import { Plus, Receipt, User, X } from "lucide-react";
+import { BellRing, Check, Clock, User, X } from "lucide-react";
 
 import { CardBody, CardHeader } from "@/components/ui/Card";
 import { MotionCard } from "@/components/ui/MotionCard";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { IconButton } from "@/components/ui/IconButton";
-import { Input } from "@/components/ui/Input";
-import { Select } from "@/components/ui/Select";
-import { api, ApiError } from "@/api";
-import type { Comanda, EstadoComandaItem } from "@/api";
-import { COMANDA_ESTADO_META, COMANDA_ITEM_META, COMANDA_ITEM_ORDER } from "@/lib/comandaMeta";
+import { ApiError } from "@/api";
+import type { ComandaEnCola } from "@/api";
+import { DESTINO_META } from "@/lib/comandaMeta";
+import { cn } from "@/lib/cn";
 import { formatTime } from "@/lib/format";
-import { TasaRequeridaError, useComandaStore } from "@/lib/useComandaStore";
 import { DualPrice } from "@/components/shared/DualPrice";
-import { AddItemModal } from "./AddItemModal";
+import { useComandaStore } from "@/lib/useComandaStore";
 
 /**
- * One open table's comanda.
+ * Un pedido esperando en la cola de despacho — la tarjeta del KDS.
  *
- * `lift` without `interactive`: the card rises and presses because it sits in
- * a grid of peers and that motion is what makes the grid feel physical, but it
- * does not take a pointer cursor or a hover outline — the click targets are
- * the controls inside it, and promising a card-level click it does not handle
- * would be a lie.
+ * Lo que esta tarjeta YA NO hace, y por qué:
  *
- * The footer row is pinned with `mt-auto` so every card in a row lines its
- * total and its buttons up on the same baseline no matter how many items it
- * holds.
+ * - **No cobra.** El cobro dejó de ser por comanda: se cobra la MESA entera
+ *   (`POST /mesas/:mesaId/cobrar`), y eso vive en "Cuentas por cobrar" y en la
+ *   ficha de la mesa. Un pedido suelto ya no es una cuenta.
+ * - **No tiene estado por ítem.** El workflow
+ *   `pendiente → en preparación → servido` desapareció: la cocina despacha la
+ *   comanda entera. Lo único que se le puede hacer a una línea es anularla, y
+ *   sólo mientras el pedido no haya salido.
+ * - **No agrega ítems.** Añadir a un pedido que ya está en la cola rompería el
+ *   FIFO; una ronda más es una comanda nueva, que se toma desde Mesero.
+ *
+ * Despachar la saca de la cola pero NO la borra: queda viva en la cuenta
+ * cobrable de su mesa.
  */
-export function ComandaCard({ comanda }: { comanda: Comanda }) {
-  const [addOpen, setAddOpen] = useState(false);
+
+/** A partir de este rato en cola, la tarjeta se marca como atrasada. */
+const MINUTOS_ATRASO = 15;
+
+export function ComandaCard({ comanda }: { comanda: ComandaEnCola }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /** Se abre sólo si el backend rechaza el cobro por falta de tasa del día. */
-  const [tasaPrompt, setTasaPrompt] = useState<string | null>(null);
-  const [tasaValor, setTasaValor] = useState("");
-  const addItem = useComandaStore((s) => s.addItem);
-  const setItemEstado = useComandaStore((s) => s.setItemEstado);
-  const removeItem = useComandaStore((s) => s.removeItem);
-  const cobrarYLiberar = useComandaStore((s) => s.cobrarYLiberar);
+  const despachar = useComandaStore((s) => s.despachar);
+  const anularItem = useComandaStore((s) => s.anularItem);
 
-  const activeItems = comanda.items.filter((item) => item.estado !== "cancelado");
-  const estadoMeta = COMANDA_ESTADO_META[comanda.estado];
+  const atrasada = comanda.minutosEnCola >= MINUTOS_ATRASO;
+  const vivos = comanda.items.filter((item) => !item.cancelado);
 
-  async function handleCobrar() {
+  async function ejecutar(accion: () => Promise<void>, fallback: string) {
     setBusy(true);
     setError(null);
     try {
-      await cobrarYLiberar(comanda.id);
+      await accion();
     } catch (err) {
-      if (err instanceof TasaRequeridaError) {
-        setTasaPrompt(err.message);
-      } else {
-        setError(err instanceof ApiError ? err.message : "No se pudo cobrar la comanda");
-      }
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  /** Registra la tasa del día y reintenta el cobro en el mismo gesto. */
-  async function handleRegistrarTasaYCobrar() {
-    const valor = Number(tasaValor);
-    if (!Number.isFinite(valor) || valor <= 0) {
-      setError("La tasa debe ser un número mayor a cero");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      await api.registrarTasa(valor, "manual");
-      setTasaPrompt(null);
-      setTasaValor("");
-      await cobrarYLiberar(comanda.id);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "No se pudo registrar la tasa");
+      setError(err instanceof ApiError ? err.message : fallback);
     } finally {
       setBusy(false);
     }
@@ -86,103 +62,109 @@ export function ComandaCard({ comanda }: { comanda: Comanda }) {
       <CardHeader>
         <div className="flex min-w-0 items-center gap-2">
           <span className="font-mono text-base font-semibold tabular-nums text-fg">
-            {comanda.mesaEtiqueta}
+            {comanda.tipo === "para_llevar"
+              ? "Para llevar"
+              : (comanda.mesaEtiqueta ?? "Sin mesa")}
           </span>
-          <Badge tone={estadoMeta.tone}>{estadoMeta.label}</Badge>
+          <Badge tone="neutral">#{comanda.numeroDia}</Badge>
         </div>
-        <span className="shrink-0 font-mono text-[12px] tabular-nums text-fg-subtle">
-          {formatTime(comanda.abiertaEn)}
+        <span
+          className={cn(
+            "flex shrink-0 items-center gap-1 font-mono text-[12px] tabular-nums",
+            atrasada ? "font-semibold text-danger" : "text-fg-subtle",
+          )}
+          // El reloj de la tarjeta es el dato operativo de la pantalla: cuánto
+          // lleva esperando este pedido, no a qué hora entró.
+          title={`Entró a las ${formatTime(comanda.creadaEn)}`}
+        >
+          <Clock size={13} />
+          {comanda.minutosEnCola} min
         </span>
       </CardHeader>
 
       <CardBody className="flex flex-1 flex-col gap-4">
-        <div className="flex items-center gap-2 text-sm text-fg-muted">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-fg-muted">
           <User size={15} className="shrink-0" />
-          <span className="truncate">{comanda.clienteNombre ?? "Sin nombre registrado"}</span>
+          <span className="truncate">{comanda.meseroNombre ?? "Sin mesero asignado"}</span>
           <span className="shrink-0 text-fg-subtle">· {comanda.comensales} pers.</span>
         </div>
 
-        {activeItems.length === 0 ? (
+        {comanda.notas && (
+          <p className="rounded-[var(--radius-md)] border border-status-reserved/40 bg-status-reserved-soft px-3 py-2 text-[12px] leading-relaxed text-status-reserved-fg">
+            {comanda.notas}
+          </p>
+        )}
+
+        {comanda.items.length === 0 ? (
           <p className="rounded-[var(--radius-md)] border border-dashed border-border px-3 py-5 text-center text-sm text-fg-subtle">
-            Sin ítems todavía
+            Sin ítems
           </p>
         ) : (
           <ul className="flex flex-col divide-y divide-border">
-            {activeItems.map((item) => (
-              <li key={item.id} className="flex items-center gap-2 py-2.5">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-fg">
-                    {item.cantidad}× {item.nombreSnap}
-                  </p>
-                  <DualPrice
-                    usd={item.totalLinea}
-                    className="font-mono text-[11px] tabular-nums text-fg-subtle"
-                  />
-                </div>
-                <Select
-                  aria-label={`Estado de ${item.nombreSnap}`}
-                  value={item.estado}
-                  disabled={busy}
-                  onChange={(e) =>
-                    void setItemEstado(comanda.id, item.id, e.target.value as EstadoComandaItem)
-                  }
-                  className="h-9! w-[136px] text-[12px]!"
-                >
-                  {COMANDA_ITEM_ORDER.map((estado) => (
-                    <option key={estado} value={estado}>
-                      {COMANDA_ITEM_META[estado].label}
-                    </option>
-                  ))}
-                </Select>
-                <IconButton
-                  icon={<X size={13} />}
-                  label={`Cancelar ${item.nombreSnap}`}
-                  variant="danger"
-                  size="sm"
-                  disabled={busy}
-                  onClick={() => void removeItem(comanda.id, item.id, "Cancelado desde el panel de comandas")}
-                />
-              </li>
-            ))}
+            {comanda.items.map((item) => {
+              const destino = DESTINO_META[item.destino];
+              return (
+                <li key={item.id} className="flex items-center gap-2 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <p
+                      className={cn(
+                        "truncate text-sm font-medium",
+                        // Los cancelados se quedan a la vista, tachados: la
+                        // cocina tiene que ver que algo se anuló por si ya lo
+                        // había empezado.
+                        item.cancelado ? "text-fg-subtle line-through" : "text-fg",
+                      )}
+                    >
+                      {item.cantidad}× {item.nombre}
+                    </p>
+                    {item.nota && (
+                      <p className="truncate text-[11px] text-fg-subtle">* {item.nota}</p>
+                    )}
+                  </div>
+                  {destino && (
+                    <Badge tone={destino.tone} className="shrink-0">
+                      {destino.label}
+                    </Badge>
+                  )}
+                  {item.cancelado ? (
+                    <Badge tone="neutral" className="shrink-0">
+                      Anulado
+                    </Badge>
+                  ) : (
+                    <IconButton
+                      icon={<X size={13} />}
+                      label={`Anular ${item.nombre}`}
+                      variant="danger"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() =>
+                        void ejecutar(
+                          () =>
+                            anularItem(
+                              comanda.comandaId,
+                              item.id,
+                              "Anulado desde la cola de despacho",
+                            ),
+                          "No se pudo anular el ítem",
+                        )
+                      }
+                    />
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
 
         <div className="mt-auto flex items-center justify-between border-t border-border pt-4">
-          <span className="text-sm font-medium text-fg-muted">Total</span>
+          <span className="text-sm font-medium text-fg-muted">
+            {vivos.length} {vivos.length === 1 ? "ítem" : "ítems"}
+          </span>
           <DualPrice
             usd={comanda.total}
             className="font-mono text-base font-semibold tabular-nums text-fg"
           />
         </div>
-
-        {tasaPrompt && (
-          <div className="flex flex-col gap-2 rounded-[var(--radius-md)] border border-status-reserved/40 bg-status-reserved-soft px-3 py-3">
-            <p className="text-[12px] leading-relaxed text-status-reserved-fg">
-              {tasaPrompt} Es el cambio del día en Bs por dólar; queda congelado en cada comanda
-              que cobres.
-            </p>
-            <div className="flex items-end gap-2">
-              <Input
-                label="Tasa (Bs por USD)"
-                type="number"
-                min={0}
-                step="0.01"
-                value={tasaValor}
-                onChange={(e) => setTasaValor(e.target.value)}
-                fieldClassName="flex-1"
-                autoFocus
-              />
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => void handleRegistrarTasaYCobrar()}
-                disabled={busy}
-              >
-                Guardar y cobrar
-              </Button>
-            </div>
-          </div>
-        )}
 
         {error && (
           <p
@@ -193,22 +175,22 @@ export function ComandaCard({ comanda }: { comanda: Comanda }) {
           </p>
         )}
 
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" className="flex-1" onClick={() => setAddOpen(true)}>
-            <Plus size={14} /> Agregar ítem
-          </Button>
-          <Button variant="primary" size="sm" onClick={() => void handleCobrar()} disabled={busy}>
-            <Receipt size={14} /> {busy ? "Cobrando…" : "Cobrar y cerrar"}
-          </Button>
-        </div>
+        <Button
+          variant="primary"
+          size="lg"
+          className="w-full"
+          disabled={busy}
+          onClick={() =>
+            void ejecutar(
+              () => despachar(comanda.comandaId),
+              "No se pudo despachar la comanda",
+            )
+          }
+        >
+          {busy ? <BellRing size={16} /> : <Check size={16} />}
+          {busy ? "Despachando…" : "Despachar"}
+        </Button>
       </CardBody>
-
-      <AddItemModal
-        open={addOpen}
-        onClose={() => setAddOpen(false)}
-        mesaLabel={comanda.mesaEtiqueta}
-        onAdd={(productoId, cantidad) => addItem(comanda.id, productoId, cantidad)}
-      />
     </MotionCard>
   );
 }

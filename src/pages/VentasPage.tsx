@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { PageBody, Section, StaggerGrid } from "@/components/ui/Section";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/primitives/tabs";
-import { ComandaHistorialRow } from "@/components/ventas/ComandaHistorialRow";
+import { CobroHistorialRow } from "@/components/ventas/CobroHistorialRow";
 import { useComandaStore } from "@/lib/useComandaStore";
 import { todayIso, useSalesReport } from "@/lib/useSalesReport";
 import { formatUsd } from "@/lib/format";
@@ -18,20 +18,17 @@ import type { GranularidadSerie, PeriodoReporte, ReporteVentas, VentaPunto } fro
 export function VentasPage() {
   const [periodo, setPeriodo] = useState<PeriodoReporte>("dia");
   const { status, error, reporte, productosVendidos, reload } = useSalesReport(periodo);
-  const cobradasHoy = useComandaStore((s) => s.cobradasHoy);
+  const cobrosDelDia = useComandaStore((s) => s.cobrosDelDia);
   const historicoCompleto = useComandaStore((s) => s.historicoCompleto);
-  const loadCobradas = useComandaStore((s) => s.loadCobradas);
+  const loadCobrosDelDia = useComandaStore((s) => s.loadCobrosDelDia);
 
   useEffect(() => {
-    void loadCobradas(todayIso());
-  }, [loadCobradas]);
+    void loadCobrosDelDia(todayIso());
+  }, [loadCobrosDelDia]);
 
   const historial = useMemo(
-    () =>
-      [...cobradasHoy].sort((a, b) =>
-        (b.cerradaEn ?? b.abiertaEn).localeCompare(a.cerradaEn ?? a.abiertaEn),
-      ),
-    [cobradasHoy],
+    () => [...cobrosDelDia].sort((a, b) => b.cobradoEn.localeCompare(a.cobradoEn)),
+    [cobrosDelDia],
   );
 
   // Con el histórico incompleto (el backend no lo expone), los totales del
@@ -56,7 +53,7 @@ export function VentasPage() {
   const deltaPct = reporte ? pctDelta(reporte.total.totalUsd, reporte.comparacion.total.totalUsd) : null;
 
   async function handleRefresh() {
-    await Promise.all([reload(), loadCobradas(todayIso())]);
+    await Promise.all([reload(), loadCobrosDelDia(todayIso())]);
   }
 
   return (
@@ -113,7 +110,7 @@ export function VentasPage() {
                   tone="brand"
                   label={labelTotal(periodo)}
                   value={formatUsd(reporte.total.totalUsd)}
-                  hint={`${formatUsd(reporte.total.ticketPromedioUsd)} por comanda`}
+                  hint={`${formatUsd(reporte.total.ticketPromedioUsd)} por cuenta`}
                 />
                 <StatTile
                   icon={
@@ -131,8 +128,11 @@ export function VentasPage() {
                 <StatTile
                   icon={<Receipt size={20} />}
                   tone="neutral"
-                  label="Comandas"
-                  value={reporte.total.comandas}
+                  // Facturas emitidas = mesas atendidas. Ya NO son comandas:
+                  // una mesa genera varias y una sola cuenta, así que contar
+                  // comandas dejó de responder "cuántas mesas vendimos".
+                  label="Cuentas"
+                  value={reporte.total.cobros}
                   hint={
                     periodo !== "dia" || historicoCompleto
                       ? undefined
@@ -249,11 +249,11 @@ export function VentasPage() {
               </Card>
             </Section>
 
-            <Section title="Histórico de comandas">
+            <Section title="Cuentas cobradas">
               <Card>
                 <CardHeader>
                   <CardTitle>
-                    {historial.length} {historial.length === 1 ? "comanda" : "comandas"}
+                    {historial.length} {historial.length === 1 ? "cuenta" : "cuentas"}
                   </CardTitle>
                   <span className="font-mono text-[13px] tabular-nums font-medium text-fg">
                     {formatUsd(totalHistorial)}
@@ -263,13 +263,13 @@ export function VentasPage() {
                   {historial.length === 0 ? (
                     <p className="px-5 py-8 text-center text-sm text-fg-muted">
                       {historicoCompleto
-                        ? "Todavía no se ha cobrado ninguna comanda hoy."
-                        : "Aún no has cobrado ninguna comanda en esta sesión."}
+                        ? "Todavía no se ha cobrado ninguna cuenta hoy."
+                        : "Aún no has cobrado ninguna cuenta en esta sesión."}
                     </p>
                   ) : (
                     <div>
-                      {historial.map((comanda) => (
-                        <ComandaHistorialRow key={comanda.id} comanda={comanda} />
+                      {historial.map((cobro) => (
+                        <CobroHistorialRow key={cobro.id} cobro={cobro} />
                       ))}
                     </div>
                   )}
@@ -278,12 +278,13 @@ export function VentasPage() {
 
               {!historicoCompleto && (
                 <p className="text-[12px] leading-relaxed text-fg-subtle">
-                  El histórico muestra sólo las comandas cobradas en esta sesión: el backend
-                  todavía no expone un listado de comandas cerradas (falta algo como{" "}
+                  El histórico muestra sólo las cuentas cobradas en esta sesión: el backend
+                  todavía no expone un listado de facturas por día (falta algo como{" "}
                   <code className="rounded bg-surface-hover px-1 py-0.5 font-mono text-[11px]">
-                    GET /comandas?estado=cobrada&amp;fecha=
+                    GET /cobros?fecha=
                   </code>
-                  ). Las cifras de arriba sí vienen del reporte del período.
+                  , hoy sólo existe <code className="rounded bg-surface-hover px-1 py-0.5 font-mono text-[11px]">GET /cobros/:id</code>).
+                  Las cifras de arriba sí vienen del reporte del período.
                 </p>
               )}
             </Section>
