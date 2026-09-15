@@ -16,14 +16,16 @@ export default defineConfig({
       // service* — an order or a floor-plan edit can be mid-flight at any
       // moment. `autoUpdate` would let a background deploy call
       // `skipWaiting()`/`clientsClaim()` on its own schedule and swap the app
-      // shell under a tab that's mid-interaction. `registerType: 'prompt'`
-      // instead surfaces a small "hay una actualización disponible" banner
+      // shell under a tab that's mid-interaction on its own timing.
+      // `registerType: 'prompt'` instead only updates+reloads when staff
+      // explicitly tap "Actualizar ahora"
       // (`src/components/shared/PwaUpdateBanner.tsx`, mounted once in
       // `App.tsx` via the `useRegisterSW` hook from
-      // `virtual:pwa-register/react`) and only updates+reloads when staff
-      // tap it — so nobody is silently stuck on a stale build (the banner
-      // never goes away on its own until they do), but nobody gets yanked
-      // out of an in-progress comanda either.
+      // `virtual:pwa-register/react`). That component now shows a
+      // non-dismissible blocking modal once a new version has installed —
+      // by owner's decision nobody is allowed to keep working on a stale
+      // build — but the reload itself still only ever happens on that
+      // explicit tap, never silently mid-order.
       registerType: "prompt",
       injectRegister: null,
       manifest: {

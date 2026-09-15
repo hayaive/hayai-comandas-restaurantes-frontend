@@ -27,6 +27,14 @@ export interface ModalProps {
   size?: ModalSize;
   children: ReactNode;
   footer?: ReactNode;
+  /**
+   * Set false for a modal the user must resolve before doing anything else
+   * (e.g. a mandatory app-update prompt): hides the header close button and
+   * ignores Escape / outside-click / the Radix `onOpenChange(false)` that
+   * those normally trigger, so `onClose` only ever fires from an explicit
+   * action inside `children`/`footer`. Defaults to true (today's behavior).
+   */
+  dismissible?: boolean;
 }
 
 /**
@@ -52,12 +60,13 @@ export function Modal({
   size = "md",
   children,
   footer,
+  dismissible = true,
 }: ModalProps) {
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!next) onClose();
+        if (!next && dismissible) onClose();
       }}
     >
       <DialogContent
@@ -67,6 +76,11 @@ export function Modal({
         // subtitle opt out explicitly so the console stays clean and no
         // dangling id is left pointing at an element that never renders.
         {...(description ? {} : { "aria-describedby": undefined })}
+        {...(!dismissible && {
+          onEscapeKeyDown: (event) => event.preventDefault(),
+          onPointerDownOutside: (event) => event.preventDefault(),
+          onInteractOutside: (event) => event.preventDefault(),
+        })}
         className={cn(
           "flex max-h-[90dvh] w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-0",
           SIZES[size],
@@ -77,13 +91,15 @@ export function Modal({
             <DialogTitle>{title}</DialogTitle>
             {description && <DialogDescription>{description}</DialogDescription>}
           </div>
-          <IconButton
-            icon={<X size={16} />}
-            label="Cerrar"
-            size="sm"
-            className="-mr-2 -mt-1.5 shrink-0 text-fg-subtle"
-            onClick={onClose}
-          />
+          {dismissible && (
+            <IconButton
+              icon={<X size={16} />}
+              label="Cerrar"
+              size="sm"
+              className="-mr-2 -mt-1.5 shrink-0 text-fg-subtle"
+              onClick={onClose}
+            />
+          )}
         </DialogHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">{children}</div>
