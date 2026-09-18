@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { create } from "zustand";
 
-import { useComandaStore } from "./useComandaStore";
+import { consumirComandaPropia, useComandaStore } from "./useComandaStore";
 
 /**
  * Alerta de la cola de despacho: cuando entra una comanda nueva suena una
@@ -351,7 +351,15 @@ export function useAlertaCocinaBootstrap(): void {
     // Suena sólo cuando ENTRA una comanda que no estaba, no cada vez que la
     // lista cambia: despachar una también cambia la lista, y premiar eso con
     // una alarma entrenaría a la cocina a ignorarla.
-    const nuevas = cola.filter((c) => !previos.has(c.comandaId));
+    //
+    // Y tampoco suena por lo que mandó ESTE aparato: al mesero no le tiene que
+    // vibrar el teléfono en la mano por el pedido que acaba de enviar él. El
+    // filtro va aquí y no en el store porque el de al lado —la tablet de
+    // cocina— sí debe oírlo: lo que importa es qué aparato está mirando la
+    // cola, no quién tomó la nota.
+    const nuevas = cola.filter(
+      (c) => !previos.has(c.comandaId) && !consumirComandaPropia(c.comandaId),
+    );
     if (nuevas.length === 0) return;
 
     // El cocinero mira la notificación desde el bolsillo: tiene que poder

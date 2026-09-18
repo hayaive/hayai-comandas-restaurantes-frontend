@@ -100,6 +100,31 @@ interface ComandaState {
   loadCobrosDelDia: (fecha: string) => Promise<void>;
 }
 
+/**
+ * Comandas que mandó ESTE aparato. Sirve para que al mesero no le suene en la
+ * mano la alarma del pedido que acaba de enviar él mismo: ya sabe que existe,
+ * y el aviso sólo entrena a ignorarlo.
+ *
+ * Vive fuera del store a propósito: no es estado que la UI deba re-renderizar,
+ * y como la detección de la alarma corre en un efecto aparte necesita leerlo de
+ * forma síncrona. Es por dispositivo y por sesión — el mismo usuario en la
+ * tablet de cocina SÍ debe oír el pedido que mandó desde su teléfono, porque
+ * ahí lo relevante es el aparato que está mirando la cola, no la persona.
+ */
+const comandasPropias = new Set<string>();
+
+export function marcarComandaPropia(comandaId: string): void {
+  comandasPropias.add(comandaId);
+}
+
+/**
+ * ¿La mandó este aparato? Consume la marca: una comanda sólo puede "entrar" a
+ * la cola una vez, así que el Set no crece sin límite durante un turno largo.
+ */
+export function consumirComandaPropia(comandaId: string): boolean {
+  return comandasPropias.delete(comandaId);
+}
+
 function messageOf(error: unknown): string {
   if (error instanceof ApiError) return error.message;
   if (error instanceof Error) return error.message;
@@ -162,6 +187,11 @@ export const useComandaStore = create<ComandaState>((set, get) => ({
 
   crearComanda: async (input) => {
     const comanda = await api.createComanda(input);
+    // Este aparato acaba de MANDAR este pedido: no tiene que sonarle la alarma
+    // de "entró un pedido nuevo" cuando aparezca en la cola. Se marca ANTES de
+    // recargar la cola, porque `loadCola()` es justo lo que la mete y dispara
+    // la detección. Ver `useAlertaCocinaBootstrap`.
+    marcarComandaPropia(comanda.id);
     // Nace ya en la cola y la mesa pasa a ocupada server-side.
     await Promise.all([get().loadCola(), get().loadCuentas()]);
     if (comanda.mesaId) {
