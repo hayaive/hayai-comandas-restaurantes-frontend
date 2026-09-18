@@ -33,9 +33,15 @@ import type { Producto } from "@/api";
  * Comandas panel (which is for managing/serving already-open comandas):
  * this one only creates/feeds a comanda and hands off to it.
  *
- * The three steps are numbered in the card headers because a new waiter runs
- * this screen under pressure on their first shift, and the order matters —
- * you cannot add a product before you have a table.
+ * The steps are numbered in the card headers because a new waiter runs this
+ * screen under pressure on their first shift, and the order matters — you
+ * cannot add a product before you have a table. Desktop keeps three steps
+ * ("1. Elige una mesa" / "2. Agrega productos" / "3. Pedido") in three cards.
+ * Mobile fuses the search and the cart into a single "2. Pedido" card, so
+ * there are only two steps there: the waiter wants the order growing right
+ * above the search box while typing, not in a card further down the screen.
+ * See `useIsDesktopViewport` below for why that fusion is JS-driven instead
+ * of pure responsive CSS.
  *
  * SELECTED TABLE: brown fill, white text. This is the clearest place in the
  * product where the client's override earns its keep — a waiter glancing down
@@ -52,7 +58,39 @@ interface CartLine {
 
 const TABLE_ORDER: Record<RestaurantTable["status"], number> = { free: 0, occupied: 1, reserved: 2 };
 
+/** Tailwind's `lg` breakpoint — keep in sync with the grid below. */
+const DESKTOP_QUERY = "(min-width: 1024px)";
+
+/**
+ * Mobile and desktop don't just reflow the same cards with responsive
+ * classes — they use a different card *structure*: desktop has two cards
+ * ("Agrega productos" and "Pedido"), mobile fuses them into one ("Pedido")
+ * with a single header and no second "3." title. That merge can't be done
+ * with CSS `order` alone (order repositions elements, it doesn't remove a
+ * card border/header), and forcing one DOM order for both viewports would
+ * mean either desktop's keyboard/tab order stops matching what's visually on
+ * screen, or mobile's does. So this hook picks which tree to mount, and only
+ * one ever exists at a time — the search `<Input>` and its results list are
+ * never duplicated in the DOM, just relocated between renders.
+ */
+function useIsDesktopViewport(): boolean {
+  const [isDesktop, setIsDesktop] = useState(() =>
+    typeof window === "undefined" ? true : window.matchMedia(DESKTOP_QUERY).matches,
+  );
+
+  useEffect(() => {
+    const mql = window.matchMedia(DESKTOP_QUERY);
+    const handleChange = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    setIsDesktop(mql.matches);
+    mql.addEventListener("change", handleChange);
+    return () => mql.removeEventListener("change", handleChange);
+  }, []);
+
+  return isDesktop;
+}
+
 export function MeseroPage() {
+  const isDesktop = useIsDesktopViewport();
   const activeTemplate = useActiveTemplate();
   const floorStatus = useFloorPlanStore((s) => s.status);
   const floorError = useFloorPlanStore((s) => s.error);
@@ -201,6 +239,264 @@ export function MeseroPage() {
     }
   }
 
+  const tableCard = (
+    <Card>
+      <CardHeader>
+        <CardTitle>1. Elige una mesa</CardTitle>
+        {selectedTable && <Badge tone="active">Mesa {selectedTable.label}</Badge>}
+      </CardHeader>
+      <CardBody>
+        {sortedTables.length === 0 ? (
+          <p className="py-8 text-center text-sm text-fg-muted">
+            {floorStatus === "loading" || floorStatus === "idle"
+              ? "Cargando el plano…"
+              : floorStatus === "error"
+                ? (floorError ?? "No se pudo cargar el plano del salón.")
+                : "No hay mesas en esta plantilla."}
+          </p>
+        ) : (
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4">
+            {sortedTables.map((table) => {
+              const meta = STATUS_META[table.status];
+              const isSelected = table.id === selectedTableId;
+              return (
+                <button
+                  key={table.id}
+                  type="button"
+                  aria-pressed={isSelected}
+                  onClick={() => selectTable(table)}
+                  className={cn(
+                    "flex flex-col items-start gap-1 rounded-[var(--radius-md)] border px-3.5 py-3 text-left",
+                    "transition-colors duration-150",
+                    isSelected
+                      ? "border-transparent bg-active"
+                      : "border-border bg-surface-raised hover:border-border-strong hover:bg-surface-hover",
+                  )}
+                >
+                  <div className="flex w-full items-center justify-between gap-2">
+                    <span
+                      className={cn(
+                        "font-mono text-sm font-semibold tabular-nums",
+                        isSelected ? "text-active-fg" : "text-fg",
+                      )}
+                    >
+                      {table.label}
+                    </span>
+                    <span
+                      className={cn(
+                        "size-2 shrink-0 rounded-full",
+                        isSelected ? "bg-white/80" : meta.dotClass,
+                      )}
+                    />
+                  </div>
+                  <span
+                    className={cn(
+                      "w-full truncate text-[11px]",
+                      isSelected ? "text-active-fg/80" : "text-fg-subtle",
+                    )}
+                  >
+                    {meta.label}
+                    {table.occupantName ? ` · ${table.occupantName}` : ""}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </CardBody>
+    </Card>
+  );
+
+  /**
+   * Contenido del buscador (input + estados + resultados). Se llama una sola
+   * vez por render, desde la única rama (mobile o desktop) que en efecto se
+   * monta — así el `<Input ref={productSearchRef}>` y su `<ul>` de resultados
+   * existen una sola vez en el DOM sin importar el viewport.
+   *
+   * `variant` sólo decide dónde va el contador de resultados: en desktop ya
+   * vive en el `CardHeader` de "2. Agrega productos" (no se toca, para no
+   * rediseñar esa vista); en mobile ese header ahora es "2. Pedido", así que
+   * el contador se muestra junto a la lista de resultados.
+   */
+  function renderSearchBlock(variant: "mobile" | "desktop") {
+    return (
+      <>
+        {!selectedTable && (
+          <p className="rounded-[var(--radius-md)] border border-dashed border-border px-4 py-8 text-center text-sm text-fg-muted">
+            Elige una mesa para empezar a agregar productos.
+          </p>
+        )}
+        {selectedTable && (
+          <>
+            <Input
+              ref={productSearchRef}
+              label="Buscar producto"
+              placeholder="Ej. Tequeños"
+              value={productQuery}
+              onChange={(e) => setProductQuery(e.target.value)}
+            />
+            {productStatus === "loading" && productos.length === 0 && (
+              <p className="py-8 text-center text-sm text-fg-muted">Cargando catálogo…</p>
+            )}
+            {productStatus === "ready" && productQuery.trim() === "" && (
+              <div className="flex flex-col items-center gap-3 py-8 text-center">
+                <IconTile tone="neutral" size="lg">
+                  <Search size={22} />
+                </IconTile>
+                <p className="text-sm text-fg-subtle">Escribe para buscar un producto.</p>
+              </div>
+            )}
+            {productStatus === "ready" &&
+              productQuery.trim() !== "" &&
+              filteredProductos.length === 0 && (
+                <p className="py-8 text-center text-sm text-fg-muted">
+                  No se encontraron productos con ese nombre.
+                </p>
+              )}
+            {filteredProductos.length > 0 && (
+              <>
+                {variant === "mobile" && (
+                  <span className="font-mono text-[12px] tabular-nums text-fg-subtle">
+                    {filteredProductos.length} resultados
+                  </span>
+                )}
+                <ul className="flex max-h-[380px] flex-col gap-1.5 overflow-y-auto">
+                  {filteredProductos.map((producto) => (
+                    <li key={producto.id}>
+                      <button
+                        type="button"
+                        onClick={() => addToCart(producto)}
+                        className="flex w-full items-center gap-3 rounded-[var(--radius-md)] border border-border bg-surface-raised px-3.5 py-2.5 text-left transition-colors duration-150 hover:border-border-strong hover:bg-surface-hover"
+                      >
+                        <ProductThumbnail imagenUrl={producto.imagenUrl} alt={producto.nombre} />
+                        <span className="flex min-w-0 flex-1 flex-col">
+                          <span className="truncate text-sm font-medium text-fg">
+                            {producto.nombre}
+                          </span>
+                          <DualPrice
+                            usd={producto.precio}
+                            className="font-mono text-[12px] tabular-nums text-fg-muted"
+                          />
+                        </span>
+                        <Badge tone="accent" className="shrink-0">
+                          <Plus size={12} />
+                          Agregar
+                        </Badge>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </>
+        )}
+      </>
+    );
+  }
+
+  /**
+   * Contenido del carrito (lista + total + cliente + feedback + CTA). Es el
+   * mismo bloque en las dos vistas — en desktop vive solo en la card
+   * "3. Pedido"; en mobile va primero dentro de la card fusionada "2. Pedido",
+   * antes del buscador, precisamente para que el total y el botón de enviar
+   * no queden empujados fuera de pantalla cuando la lista de resultados (que
+   * puede crecer hasta 380px con su propio scroll) está abierta debajo.
+   */
+  const cartBlock = (
+    <>
+      {cart.length === 0 ? (
+        <p className="rounded-[var(--radius-md)] border border-dashed border-border px-3 py-6 text-center text-sm text-fg-subtle">
+          Todavía no agregaste productos
+        </p>
+      ) : (
+        <ul className="flex flex-col divide-y divide-border">
+          {cart.map((line) => (
+            <li key={line.productoId} className="flex items-center gap-2 py-2.5">
+              <ProductThumbnail imagenUrl={line.imagenUrl} alt={line.nombre} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-fg">{line.nombre}</p>
+                <DualPrice
+                  usd={Number(line.precio) * line.cantidad}
+                  className="font-mono text-[11px] tabular-nums text-fg-subtle"
+                />
+              </div>
+              <div className="flex shrink-0 items-center gap-0.5">
+                <IconButton
+                  icon={<Minus size={13} />}
+                  label={`Quitar una unidad de ${line.nombre}`}
+                  size="sm"
+                  onClick={() => changeQuantity(line.productoId, -1)}
+                />
+                <span className="w-6 text-center font-mono text-sm tabular-nums font-semibold text-fg">
+                  {line.cantidad}
+                </span>
+                <IconButton
+                  icon={<Plus size={13} />}
+                  label={`Agregar una unidad de ${line.nombre}`}
+                  size="sm"
+                  onClick={() => changeQuantity(line.productoId, 1)}
+                />
+              </div>
+              <IconButton
+                icon={<Trash2 size={13} />}
+                label={`Quitar ${line.nombre} del pedido`}
+                variant="danger"
+                size="sm"
+                onClick={() => removeLine(line.productoId)}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="flex items-center justify-between border-t border-border pt-4">
+        <span className="text-sm font-medium text-fg-muted">Total</span>
+        <DualPrice
+          usd={cartTotal}
+          className="font-mono text-lg font-semibold tabular-nums text-fg"
+        />
+      </div>
+
+      {showClienteInput && (
+        <Input
+          label="Nombre del cliente (opcional)"
+          value={clienteNombre}
+          onChange={(e) => setClienteNombre(e.target.value)}
+          placeholder="Ej. Familia Restrepo"
+        />
+      )}
+
+      {feedback && (
+        <div
+          role="status"
+          className={cn(
+            "flex items-start gap-2 rounded-[var(--radius-md)] border px-3.5 py-3 text-sm",
+            feedback.type === "success"
+              ? "border-status-free/40 bg-status-free-soft text-status-free-fg"
+              : "border-danger/30 bg-danger-soft text-danger",
+          )}
+        >
+          {feedback.type === "success" ? (
+            <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
+          ) : (
+            <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+          )}
+          {feedback.message}
+        </div>
+      )}
+
+      <Button
+        variant="primary"
+        size="lg"
+        className="w-full"
+        onClick={() => void handleSubmit()}
+        disabled={!selectedTableId || cart.length === 0 || submitting}
+      >
+        <Receipt size={16} /> {submitting ? "Enviando…" : "Enviar a comanda"}
+      </Button>
+    </>
+  );
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <PageHeader
@@ -210,258 +506,63 @@ export function MeseroPage() {
 
       <PageBody>
         <Section>
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
-            <div className="flex flex-col gap-5">
-              <Card>
-                <CardHeader>
-                  <CardTitle>1. Elige una mesa</CardTitle>
-                  {selectedTable && <Badge tone="active">Mesa {selectedTable.label}</Badge>}
-                </CardHeader>
-                <CardBody>
-                  {sortedTables.length === 0 ? (
-                    <p className="py-8 text-center text-sm text-fg-muted">
-                      {floorStatus === "loading" || floorStatus === "idle"
-                        ? "Cargando el plano…"
-                        : floorStatus === "error"
-                          ? (floorError ?? "No se pudo cargar el plano del salón.")
-                          : "No hay mesas en esta plantilla."}
-                    </p>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4">
-                      {sortedTables.map((table) => {
-                        const meta = STATUS_META[table.status];
-                        const isSelected = table.id === selectedTableId;
-                        return (
-                          <button
-                            key={table.id}
-                            type="button"
-                            aria-pressed={isSelected}
-                            onClick={() => selectTable(table)}
-                            className={cn(
-                              "flex flex-col items-start gap-1 rounded-[var(--radius-md)] border px-3.5 py-3 text-left",
-                              "transition-colors duration-150",
-                              isSelected
-                                ? "border-transparent bg-active"
-                                : "border-border bg-surface-raised hover:border-border-strong hover:bg-surface-hover",
-                            )}
-                          >
-                            <div className="flex w-full items-center justify-between gap-2">
-                              <span
-                                className={cn(
-                                  "font-mono text-sm font-semibold tabular-nums",
-                                  isSelected ? "text-active-fg" : "text-fg",
-                                )}
-                              >
-                                {table.label}
-                              </span>
-                              <span
-                                className={cn(
-                                  "size-2 shrink-0 rounded-full",
-                                  isSelected ? "bg-white/80" : meta.dotClass,
-                                )}
-                              />
-                            </div>
-                            <span
-                              className={cn(
-                                "w-full truncate text-[11px]",
-                                isSelected ? "text-active-fg/80" : "text-fg-subtle",
-                              )}
-                            >
-                              {meta.label}
-                              {table.occupantName ? ` · ${table.occupantName}` : ""}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </CardBody>
-              </Card>
+          {isDesktop ? (
+            <div className="grid grid-cols-[minmax(0,1fr)_380px] gap-5">
+              <div className="flex flex-col gap-5">
+                {tableCard}
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>2. Agrega productos</CardTitle>
-                  {filteredProductos.length > 0 && (
-                    <span className="font-mono text-[12px] tabular-nums text-fg-subtle">
-                      {filteredProductos.length} resultados
-                    </span>
-                  )}
-                </CardHeader>
-                <CardBody className="flex flex-col gap-4">
-                  {!selectedTable && (
-                    <p className="rounded-[var(--radius-md)] border border-dashed border-border px-4 py-8 text-center text-sm text-fg-muted">
-                      Elige una mesa para empezar a agregar productos.
-                    </p>
-                  )}
-                  {selectedTable && (
-                    <>
-                      <Input
-                        ref={productSearchRef}
-                        label="Buscar producto"
-                        placeholder="Ej. Tequeños"
-                        value={productQuery}
-                        onChange={(e) => setProductQuery(e.target.value)}
-                      />
-                      {productStatus === "loading" && productos.length === 0 && (
-                        <p className="py-8 text-center text-sm text-fg-muted">Cargando catálogo…</p>
-                      )}
-                      {productStatus === "ready" && productQuery.trim() === "" && (
-                        <div className="flex flex-col items-center gap-3 py-8 text-center">
-                          <IconTile tone="neutral" size="lg">
-                            <Search size={22} />
-                          </IconTile>
-                          <p className="text-sm text-fg-subtle">Escribe para buscar un producto.</p>
-                        </div>
-                      )}
-                      {productStatus === "ready" &&
-                        productQuery.trim() !== "" &&
-                        filteredProductos.length === 0 && (
-                          <p className="py-8 text-center text-sm text-fg-muted">
-                            No se encontraron productos con ese nombre.
-                          </p>
-                        )}
-                      {filteredProductos.length > 0 && (
-                        <ul className="flex max-h-[380px] flex-col gap-1.5 overflow-y-auto">
-                          {filteredProductos.map((producto) => (
-                            <li key={producto.id}>
-                              <button
-                                type="button"
-                                onClick={() => addToCart(producto)}
-                                className="flex w-full items-center gap-3 rounded-[var(--radius-md)] border border-border bg-surface-raised px-3.5 py-2.5 text-left transition-colors duration-150 hover:border-border-strong hover:bg-surface-hover"
-                              >
-                                <ProductThumbnail imagenUrl={producto.imagenUrl} alt={producto.nombre} />
-                                <span className="flex min-w-0 flex-1 flex-col">
-                                  <span className="truncate text-sm font-medium text-fg">
-                                    {producto.nombre}
-                                  </span>
-                                  <DualPrice
-                                    usd={producto.precio}
-                                    className="font-mono text-[12px] tabular-nums text-fg-muted"
-                                  />
-                                </span>
-                                <Badge tone="accent" className="shrink-0">
-                                  <Plus size={12} />
-                                  Agregar
-                                </Badge>
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </>
-                  )}
-                </CardBody>
-              </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>2. Agrega productos</CardTitle>
+                    {filteredProductos.length > 0 && (
+                      <span className="font-mono text-[12px] tabular-nums text-fg-subtle">
+                        {filteredProductos.length} resultados
+                      </span>
+                    )}
+                  </CardHeader>
+                  <CardBody className="flex flex-col gap-4">{renderSearchBlock("desktop")}</CardBody>
+                </Card>
+              </div>
+
+              {/* La columna del pedido se pega arriba en desktop: el mesero
+                  agrega productos con el pulgar mientras el total queda a la
+                  vista sin hacer scroll de vuelta. */}
+              <div className="flex flex-col gap-5 self-start sticky top-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>3. Pedido</CardTitle>
+                    {selectedTable && (
+                      <span className="font-mono text-[12px] tabular-nums text-fg-subtle">
+                        {selectedTable.label}
+                      </span>
+                    )}
+                  </CardHeader>
+                  <CardBody className="flex flex-col gap-4">{cartBlock}</CardBody>
+                </Card>
+              </div>
             </div>
+          ) : (
+            <div className="flex flex-col gap-5">
+              {tableCard}
 
-            {/* La columna del pedido se pega arriba en desktop: el mesero
-                agrega productos con el pulgar mientras el total queda a la
-                vista sin hacer scroll de vuelta. */}
-            <div className="flex flex-col gap-5 lg:sticky lg:top-4 lg:self-start">
               <Card>
                 <CardHeader>
-                  <CardTitle>3. Pedido</CardTitle>
+                  <CardTitle>2. Pedido</CardTitle>
                   {selectedTable && (
                     <span className="font-mono text-[12px] tabular-nums text-fg-subtle">
                       {selectedTable.label}
                     </span>
                   )}
                 </CardHeader>
-                <CardBody className="flex flex-col gap-4">
-                  {cart.length === 0 ? (
-                    <p className="rounded-[var(--radius-md)] border border-dashed border-border px-3 py-6 text-center text-sm text-fg-subtle">
-                      Todavía no agregaste productos
-                    </p>
-                  ) : (
-                    <ul className="flex flex-col divide-y divide-border">
-                      {cart.map((line) => (
-                        <li key={line.productoId} className="flex items-center gap-2 py-2.5">
-                          <ProductThumbnail imagenUrl={line.imagenUrl} alt={line.nombre} />
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium text-fg">{line.nombre}</p>
-                            <DualPrice
-                              usd={Number(line.precio) * line.cantidad}
-                              className="font-mono text-[11px] tabular-nums text-fg-subtle"
-                            />
-                          </div>
-                          <div className="flex shrink-0 items-center gap-0.5">
-                            <IconButton
-                              icon={<Minus size={13} />}
-                              label={`Quitar una unidad de ${line.nombre}`}
-                              size="sm"
-                              onClick={() => changeQuantity(line.productoId, -1)}
-                            />
-                            <span className="w-6 text-center font-mono text-sm tabular-nums font-semibold text-fg">
-                              {line.cantidad}
-                            </span>
-                            <IconButton
-                              icon={<Plus size={13} />}
-                              label={`Agregar una unidad de ${line.nombre}`}
-                              size="sm"
-                              onClick={() => changeQuantity(line.productoId, 1)}
-                            />
-                          </div>
-                          <IconButton
-                            icon={<Trash2 size={13} />}
-                            label={`Quitar ${line.nombre} del pedido`}
-                            variant="danger"
-                            size="sm"
-                            onClick={() => removeLine(line.productoId)}
-                          />
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-
-                  <div className="flex items-center justify-between border-t border-border pt-4">
-                    <span className="text-sm font-medium text-fg-muted">Total</span>
-                    <DualPrice
-                      usd={cartTotal}
-                      className="font-mono text-lg font-semibold tabular-nums text-fg"
-                    />
+                <CardBody className="flex flex-col gap-5">
+                  {cartBlock}
+                  <div className="flex flex-col gap-4 border-t border-border pt-5">
+                    {renderSearchBlock("mobile")}
                   </div>
-
-                  {showClienteInput && (
-                    <Input
-                      label="Nombre del cliente (opcional)"
-                      value={clienteNombre}
-                      onChange={(e) => setClienteNombre(e.target.value)}
-                      placeholder="Ej. Familia Restrepo"
-                    />
-                  )}
-
-                  {feedback && (
-                    <div
-                      role="status"
-                      className={cn(
-                        "flex items-start gap-2 rounded-[var(--radius-md)] border px-3.5 py-3 text-sm",
-                        feedback.type === "success"
-                          ? "border-status-free/40 bg-status-free-soft text-status-free-fg"
-                          : "border-danger/30 bg-danger-soft text-danger",
-                      )}
-                    >
-                      {feedback.type === "success" ? (
-                        <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
-                      ) : (
-                        <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-                      )}
-                      {feedback.message}
-                    </div>
-                  )}
-
-                  <Button
-                    variant="primary"
-                    size="lg"
-                    className="w-full"
-                    onClick={() => void handleSubmit()}
-                    disabled={!selectedTableId || cart.length === 0 || submitting}
-                  >
-                    <Receipt size={16} /> {submitting ? "Enviando…" : "Enviar a comanda"}
-                  </Button>
                 </CardBody>
               </Card>
             </div>
-          </div>
+          )}
         </Section>
       </PageBody>
     </div>
