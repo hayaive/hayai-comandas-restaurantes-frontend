@@ -1,7 +1,12 @@
 import type {
+  AccesoCreadoResult,
+  AccesoTemporal,
+  AccesoVencimientos,
   ActualizarSuscripcionPushInput,
   AddComandaItemInput,
   ApiClient,
+  CanjearAccesoInput,
+  CanjearAccesoResult,
   Categoria,
   ClaveVapid,
   ResultadoPruebaPush,
@@ -12,23 +17,30 @@ import type {
   Comanda,
   ComandaEnCola,
   ComandaItem,
+  ConsultarAccesoInput,
+  ConsultarAccesoResult,
+  CreateAccesoInput,
   CuentaMesa,
   CreateComandaInput,
   CreatePlantillaInput,
   CreatePlantillaMesaInput,
   CreateProductoInput,
   CreateReservacionInput,
+  DuracionAcceso,
   EstadoMesa,
   FormaMesa,
   FuenteTasa,
   Mesa,
   MesaEstado,
+  ModuloApp,
   OrdenReporteProducto,
   PeriodoReporte,
   Plantilla,
   PlantillaMesa,
   Producto,
   ProductoVendido,
+  RegenerarAccesoInput,
+  RegenerarAccesoResult,
   ReporteVentas,
   Reservacion,
   Restaurante,
@@ -40,7 +52,9 @@ import type {
   TasaDivisa,
   TemaPush,
   TurnoServicio,
+  UpdateAccesoInput,
   UpdateMesaInput,
+  Usuario,
   VentaPunto,
   VentaResumen,
   UpdatePlantillaInput,
@@ -445,6 +459,102 @@ function tasaDemo(divisa: DivisaTasa, valor: string): TasaDivisa {
 
 let tasaUsd: TasaDivisa | null = tasaDemo("USD", "40.0000");
 let tasaEur: TasaDivisa | null = tasaDemo("EUR", "43.5000");
+
+// ---------------------------------------------------------------------------
+// Seed: accesos temporales de meseros
+//
+// El vencimiento "concreto" de cada atajo (Hoy/2 días/1 semana/1 mes) se
+// calcula sobre la hora de corte del día operativo (`restaurante.horaCorteDia`)
+// en vez de sumar horas a lo bruto: es la misma noción de "día" que usa el
+// resto del negocio (turnos, `fechaOperativa` de un `Cobro`, reportes), así
+// que un acceso "de hoy" vence justo cuando cierra la jornada de hoy, no a una
+// hora arbitraria. El backend real puede calcularlo distinto — esto sólo tiene
+// que ser plausible y consistente entre `getVencimientosAcceso` y
+// `createAcceso`, que es lo que la pantalla de Meseros necesita para que el
+// vencimiento que se PREVIÓ antes de crear sea el mismo que quedó guardado.
+//
+// `accesos` es lo público (lo que devuelve `listAccesos`); el token y el
+// código viven aparte, en `accesosSecretos`, porque el contrato es tajante:
+// fuera de la respuesta de creación/regeneración, NUNCA se vuelven a leer.
+// ---------------------------------------------------------------------------
+
+/** Próxima vez que cae la hora de corte, estrictamente después de `from`. */
+function proximoCorte(from: Date): Date {
+  const [h, m, s] = restaurante.horaCorteDia.split(":").map(Number);
+  const candidato = new Date(from);
+  candidato.setHours(h, m ?? 0, s ?? 0, 0);
+  if (candidato.getTime() <= from.getTime()) candidato.setDate(candidato.getDate() + 1);
+  return candidato;
+}
+
+function sumarDias(fecha: Date, dias: number): Date {
+  const copia = new Date(fecha);
+  copia.setDate(copia.getDate() + dias);
+  return copia;
+}
+
+/** Mismo cálculo para el preview (`getVencimientosAcceso`) y para crear/editar — no pueden divergir. */
+function vencimientoDe(duracion: DuracionAcceso, ahora: Date = new Date()): string {
+  const finDeHoy = proximoCorte(ahora);
+  switch (duracion) {
+    case "hoy":
+      return finDeHoy.toISOString();
+    case "2_dias":
+      return sumarDias(finDeHoy, 1).toISOString();
+    case "1_semana":
+      return sumarDias(finDeHoy, 6).toISOString();
+    case "1_mes":
+      return sumarDias(finDeHoy, 29).toISOString();
+  }
+}
+
+interface AccesoSecreto {
+  id: string;
+  token: string;
+  codigo: string;
+}
+
+let accesos: AccesoTemporal[] = [];
+let accesosSecretos: AccesoSecreto[] = [];
+
+function generarToken(): string {
+  return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+}
+
+function generarCodigo(): string {
+  return String(Math.floor(1000 + Math.random() * 9000));
+}
+
+function accesoVivo(a: AccesoTemporal): boolean {
+  return new Date(a.accesoHasta).getTime() > Date.now();
+}
+
+function accesoById(id: string): AccesoTemporal {
+  const found = accesos.find((a) => a.id === id && accesoVivo(a));
+  if (!found) throw new ApiError("Ese acceso no existe o ya venció", 404);
+  return found;
+}
+
+const MODULOS_ASIGNABLES = new Set<ModuloApp>([
+  "mesas",
+  "mesero",
+  "despacho",
+  "por_cobrar",
+  "reservaciones",
+  "checkin",
+  "escanear",
+  "productos",
+  "ventas",
+]);
+
+function validarModulosAcceso(modulos: ModuloApp[]): void {
+  if (modulos.length === 0) {
+    throw new ApiError("Elige al menos un módulo", 422);
+  }
+  if (modulos.some((m) => !MODULOS_ASIGNABLES.has(m))) {
+    throw new ApiError("Configuración y Meseros no se pueden ceder en un acceso", 422);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Seed: menú
@@ -1838,6 +1948,175 @@ export const mockApi: ApiClient = {
 
   async getReporteVentas(periodo: PeriodoReporte = "dia", fecha?: string) {
     return delay(buildReporteVentas(periodo, fecha));
+  },
+
+  // --- Meseros: accesos temporales ---------------------------------------
+  async getVencimientosAcceso() {
+    const ahora = new Date();
+    return delay({
+      hoy: vencimientoDe("hoy", ahora),
+      dosDias: vencimientoDe("2_dias", ahora),
+      unaSemana: vencimientoDe("1_semana", ahora),
+      unMes: vencimientoDe("1_mes", ahora),
+    } satisfies AccesoVencimientos);
+  },
+
+  async createAcceso(input: CreateAccesoInput) {
+    const nombre = input.nombre.trim();
+    if (nombre.length < 1 || nombre.length > 40) {
+      throw new ApiError("El nombre debe tener entre 1 y 40 caracteres", 422);
+    }
+    validarModulosAcceso(input.modulos);
+
+    const id = nextMockId("acc");
+    const token = generarToken();
+    const codigo = generarCodigo();
+    const acceso: AccesoTemporal = {
+      id,
+      nombre,
+      modulos: input.modulos,
+      accesoHasta: vencimientoDe(input.duracion),
+      ultimoAccesoEn: null,
+      fallosConsecutivos: 0,
+      ultimoFalloEn: null,
+    };
+    accesos = [...accesos, acceso];
+    accesosSecretos = [...accesosSecretos, { id, token, codigo }];
+
+    // `enlace` real: `https://<frontend>/acceso/<slug>#<token>`. En modo mock
+    // el "frontend" es esta misma pestaña — se arma contra `window.location`,
+    // igual que hace `selfSeatUrl` en `format.ts` para el QR de reservas.
+    const enlace = `${window.location.origin}/acceso/${restaurante.slug}#${token}`;
+    return delay({
+      acceso: {
+        id: acceso.id,
+        nombre: acceso.nombre,
+        modulos: acceso.modulos,
+        accesoHasta: acceso.accesoHasta,
+        creadoEn: new Date().toISOString(),
+      },
+      enlace,
+      codigo,
+    } satisfies AccesoCreadoResult);
+  },
+
+  async listAccesos() {
+    // Igual que el backend: sólo los vivos. Uno vencido simplemente deja de
+    // aparecer, no hace falta "borrarlo" — su token ya no canjea nada porque
+    // `consultarAcceso`/`canjearAcceso` comprueban `accesoVivo` aparte.
+    return delay(accesos.filter(accesoVivo).slice().sort((a, b) => a.nombre.localeCompare(b.nombre)));
+  },
+
+  async updateAcceso(id: string, input: UpdateAccesoInput) {
+    const current = accesoById(id);
+    if (input.modulos !== undefined) validarModulosAcceso(input.modulos);
+    const nombre = input.nombre !== undefined ? input.nombre.trim() : current.nombre;
+    if (input.nombre !== undefined && (nombre.length < 1 || nombre.length > 40)) {
+      throw new ApiError("El nombre debe tener entre 1 y 40 caracteres", 422);
+    }
+    const next: AccesoTemporal = {
+      ...current,
+      nombre,
+      ...(input.modulos !== undefined ? { modulos: input.modulos } : {}),
+      // `duracion` EXTIENDE desde ahora, nunca se suma al vencimiento previo.
+      ...(input.duracion !== undefined ? { accesoHasta: vencimientoDe(input.duracion) } : {}),
+    };
+    accesos = accesos.map((a) => (a.id === id ? next : a));
+    return delay(next);
+  },
+
+  async regenerarAcceso(id: string, input?: RegenerarAccesoInput) {
+    accesoById(id);
+    const secretoIdx = accesosSecretos.findIndex((s) => s.id === id);
+    if (secretoIdx === -1) throw new ApiError("Ese acceso no existe o ya venció", 404);
+
+    const regenerarEnlace = input?.enlace ?? true;
+    const regenerarCodigo = input?.codigo ?? true;
+    const actual = accesosSecretos[secretoIdx];
+    const token = regenerarEnlace ? generarToken() : actual.token;
+    const codigo = regenerarCodigo ? generarCodigo() : actual.codigo;
+    accesosSecretos = accesosSecretos.map((s) => (s.id === id ? { id, token, codigo } : s));
+
+    // Regenerar es también la forma de "curar" un acceso bajo ataque de
+    // fuerza bruta (fallosConsecutivos >= 10 en la pantalla de Meseros): se
+    // limpia el contador al invalidar el código viejo.
+    accesos = accesos.map((a) =>
+      a.id === id ? { ...a, fallosConsecutivos: 0, ultimoFalloEn: null } : a,
+    );
+
+    const result: RegenerarAccesoResult = {};
+    if (regenerarEnlace) result.enlace = `${window.location.origin}/acceso/${restaurante.slug}#${token}`;
+    if (regenerarCodigo) result.codigo = codigo;
+    return delay(result);
+  },
+
+  async deleteAcceso(id: string) {
+    accesoById(id);
+    accesos = accesos.filter((a) => a.id !== id);
+    accesosSecretos = accesosSecretos.filter((s) => s.id !== id);
+    return delay(undefined);
+  },
+
+  async consultarAcceso(input: ConsultarAccesoInput) {
+    if (input.restaurante !== restaurante.slug) {
+      throw new ApiError("Este enlace no es válido", 404);
+    }
+    const secreto = accesosSecretos.find((s) => s.token === input.token);
+    if (!secreto) throw new ApiError("Este enlace no es válido", 404);
+    const acceso = accesos.find((a) => a.id === secreto.id);
+    if (!acceso) throw new ApiError("Este enlace no es válido", 404);
+    if (!accesoVivo(acceso)) throw new ApiError("Este acceso ya venció", 410);
+
+    return delay({
+      restaurante: { nombre: restaurante.nombre, logoUrl: restaurante.logoUrl },
+      nombre: acceso.nombre,
+      accesoHasta: acceso.accesoHasta,
+    } satisfies ConsultarAccesoResult);
+  },
+
+  async canjearAcceso(input: CanjearAccesoInput) {
+    if (input.restaurante !== restaurante.slug) {
+      throw new ApiError("Este enlace no es válido", 404);
+    }
+    const secreto = accesosSecretos.find((s) => s.token === input.token);
+    if (!secreto) throw new ApiError("Este enlace no es válido", 404);
+    const idx = accesos.findIndex((a) => a.id === secreto.id);
+    if (idx === -1) throw new ApiError("Este enlace no es válido", 404);
+    const acceso = accesos[idx];
+    if (!accesoVivo(acceso)) throw new ApiError("Este acceso ya venció", 410);
+
+    if (input.codigo !== secreto.codigo) {
+      accesos = accesos.map((a, i) =>
+        i === idx
+          ? { ...a, fallosConsecutivos: a.fallosConsecutivos + 1, ultimoFalloEn: new Date().toISOString() }
+          : a,
+      );
+      throw new ApiError("Código incorrecto", 401);
+    }
+
+    const ahora = new Date().toISOString();
+    accesos = accesos.map((a, i) =>
+      i === idx ? { ...a, fallosConsecutivos: 0, ultimoFalloEn: null, ultimoAccesoEn: ahora } : a,
+    );
+
+    const usuario: Usuario = {
+      id: `mesero-${acceso.id}`,
+      restauranteId: restaurante.id,
+      nombre: acceso.nombre,
+      usuario: acceso.nombre,
+      // Rol interno del modo demo — el backend real decide el suyo. Lo único
+      // que el frontend necesita es que NO sea "administrador" (así respeta
+      // `modulos` en vez de verlo todo) y que traiga `accesoHasta`.
+      rol: "acceso_temporal",
+      activo: true,
+      ultimoAccesoEn: ahora,
+      creadoEn: ahora,
+      actualizadoEn: ahora,
+      modulos: acceso.modulos,
+      accesoHasta: acceso.accesoHasta,
+    };
+
+    return delay({ token: `mock-token-acceso-${acceso.id}`, usuario } satisfies CanjearAccesoResult);
   },
 
   // --- Web Push ---------------------------------------------------------

@@ -2,15 +2,19 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { m } from "framer-motion";
+import { AlertTriangle } from "lucide-react";
 
 import { Card, CardBody } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { IconTile } from "@/components/ui/IconTile";
 import { BrandMark } from "@/components/layout/BrandMark";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { useAuthStore } from "@/lib/useAuthStore";
+import { primeraPantallaConcedida } from "@/lib/permisos";
 import { useAppMotion } from "@/lib/useAppMotion";
 import { cn } from "@/lib/cn";
+import * as authApi from "@/api/auth";
 
 type Mode = "clave" | "pin";
 
@@ -38,12 +42,24 @@ export function LoginPage() {
   const error = useAuthStore((s) => s.error);
   const login = useAuthStore((s) => s.login);
   const loginPin = useAuthStore((s) => s.loginPin);
+  const usuarioSesion = useAuthStore((s) => s.usuario);
+  const modulosListos = useAuthStore((s) => s.modulosListos);
 
   const [mode, setMode] = useState<Mode>("clave");
   const [usuario, setUsuario] = useState("");
   const [secreto, setSecreto] = useState("");
 
-  const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname ?? "/mesas";
+  // Se lee UNA sola vez (función de inicialización de `useState`, no en un
+  // efecto): `tomarAvisoAccesoVencido` CONSUME la bandera, así que leerla en
+  // cada render la borraría antes de que el componente llegue a pintarla.
+  const [accesoVencido] = useState(() => authApi.tomarAvisoAccesoVencido());
+
+  // Antes fijo en "/mesas" — roto para cualquiera sin ese módulo (un
+  // encargado sin Mesas, un mesero temporal). La pantalla de inicio tras el
+  // login es la primera pantalla concedida, la misma función que usa el
+  // guard de rutas (`primeraPantallaConcedida`) para que nunca diverjan.
+  const stateFrom = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname;
+  const from = stateFrom ?? primeraPantallaConcedida(usuarioSesion, modulosListos);
 
   useEffect(() => {
     if (isAuthenticated) navigate(from, { replace: true });
@@ -86,77 +102,96 @@ export function LoginPage() {
           </div>
         </div>
 
-        <Card className="w-full shadow-[var(--shadow-token-lg)]">
-          <CardBody className="flex flex-col gap-5">
-            <div>
-              <h2 className="text-lg font-semibold text-fg">Iniciar sesión</h2>
-              <p className="text-sm text-fg-muted">
-                Ingresa con tu usuario y {mode === "clave" ? "clave" : "PIN"}.
+        {accesoVencido ? (
+          // Un acceso temporal vencido a mitad de turno cae aquí (401 →
+          // `handleUnauthorized` deja el aviso, ver `src/api/auth.ts`). Ese
+          // mesero no tiene usuario ni clave: mostrarle el formulario normal
+          // no le sirve de nada, así que la tarjeta entera se reemplaza por
+          // este mensaje en vez de mezclarlo con el login.
+          <Card className="w-full shadow-[var(--shadow-token-lg)]">
+            <CardBody className="flex flex-col items-center gap-3 py-8 text-center">
+              <IconTile tone="danger" size="xl">
+                <AlertTriangle size={26} />
+              </IconTile>
+              <h2 className="text-lg font-semibold text-fg">Tu acceso terminó</h2>
+              <p className="max-w-[32ch] text-sm text-fg-muted">
+                Pídele un enlace nuevo al encargado.
               </p>
-            </div>
-
-            {/* Segmented control. `role="tablist"` would be wrong — these do not
-                reveal panels; they change what the second field means. A plain
-                pair of buttons with `aria-pressed` says exactly that. */}
-            <div className="flex gap-1 rounded-[var(--radius-md)] bg-surface-sunken p-1">
-              {(["clave", "pin"] as const).map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  aria-pressed={mode === value}
-                  onClick={() => switchMode(value)}
-                  className={cn(
-                    "flex-1 rounded-[var(--radius-sm)] px-3 py-1.5 text-[13px] font-medium",
-                    "transition-colors duration-150",
-                    mode === value
-                      ? "bg-active text-active-fg shadow-[var(--shadow-token-sm)]"
-                      : "text-fg-muted hover:text-fg",
-                  )}
-                >
-                  {value === "clave" ? "Con clave" : "Con PIN"}
-                </button>
-              ))}
-            </div>
-
-            <form className="flex flex-col gap-3" onSubmit={(e) => void handleSubmit(e)}>
-              <Input
-                label="Usuario"
-                autoComplete="username"
-                value={usuario}
-                onChange={(e) => setUsuario(e.target.value)}
-                required
-                autoFocus
-              />
-              <Input
-                label={mode === "clave" ? "Clave" : "PIN"}
-                type="password"
-                inputMode={mode === "pin" ? "numeric" : undefined}
-                autoComplete="current-password"
-                value={secreto}
-                onChange={(e) => setSecreto(e.target.value)}
-                required
-              />
-
-              {error && (
-                <p
-                  role="alert"
-                  className="rounded-[var(--radius-md)] border border-danger/30 bg-danger-soft px-3 py-2 text-[12px] font-medium text-danger"
-                >
-                  {error}
+            </CardBody>
+          </Card>
+        ) : (
+          <Card className="w-full shadow-[var(--shadow-token-lg)]">
+            <CardBody className="flex flex-col gap-5">
+              <div>
+                <h2 className="text-lg font-semibold text-fg">Iniciar sesión</h2>
+                <p className="text-sm text-fg-muted">
+                  Ingresa con tu usuario y {mode === "clave" ? "clave" : "PIN"}.
                 </p>
-              )}
+              </div>
 
-              <Button
-                type="submit"
-                variant="primary"
-                className="mt-1 w-full"
-                disabled={status === "loading"}
-              >
-                {status === "loading" ? "Ingresando…" : "Ingresar"}
-              </Button>
-            </form>
-          </CardBody>
-        </Card>
+              {/* Segmented control. `role="tablist"` would be wrong — these do not
+                  reveal panels; they change what the second field means. A plain
+                  pair of buttons with `aria-pressed` says exactly that. */}
+              <div className="flex gap-1 rounded-[var(--radius-md)] bg-surface-sunken p-1">
+                {(["clave", "pin"] as const).map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={mode === value}
+                    onClick={() => switchMode(value)}
+                    className={cn(
+                      "flex-1 rounded-[var(--radius-sm)] px-3 py-1.5 text-[13px] font-medium",
+                      "transition-colors duration-150",
+                      mode === value
+                        ? "bg-active text-active-fg shadow-[var(--shadow-token-sm)]"
+                        : "text-fg-muted hover:text-fg",
+                    )}
+                  >
+                    {value === "clave" ? "Con clave" : "Con PIN"}
+                  </button>
+                ))}
+              </div>
+
+              <form className="flex flex-col gap-3" onSubmit={(e) => void handleSubmit(e)}>
+                <Input
+                  label="Usuario"
+                  autoComplete="username"
+                  value={usuario}
+                  onChange={(e) => setUsuario(e.target.value)}
+                  required
+                  autoFocus
+                />
+                <Input
+                  label={mode === "clave" ? "Clave" : "PIN"}
+                  type="password"
+                  inputMode={mode === "pin" ? "numeric" : undefined}
+                  autoComplete="current-password"
+                  value={secreto}
+                  onChange={(e) => setSecreto(e.target.value)}
+                  required
+                />
+
+                {error && (
+                  <p
+                    role="alert"
+                    className="rounded-[var(--radius-md)] border border-danger/30 bg-danger-soft px-3 py-2 text-[12px] font-medium text-danger"
+                  >
+                    {error}
+                  </p>
+                )}
+
+                <Button
+                  type="submit"
+                  variant="primary"
+                  className="mt-1 w-full"
+                  disabled={status === "loading"}
+                >
+                  {status === "loading" ? "Ingresando…" : "Ingresar"}
+                </Button>
+              </form>
+            </CardBody>
+          </Card>
+        )}
 
         <div className="mt-6">
           <ThemeToggle />

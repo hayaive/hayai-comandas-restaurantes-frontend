@@ -7,8 +7,15 @@ import { useComandaBootstrap } from "@/lib/useComandaStore";
 import { useAlertaCocinaBootstrap } from "@/lib/useAlertaCocina";
 import { usePushSubscriptionBootstrap } from "@/lib/pushSubscription";
 import { useRestauranteBootstrap } from "@/lib/useRestauranteStore";
+import { useModulosBootstrap } from "@/lib/useAuthStore";
 
 export function AppShell() {
+  // Refresca `GET /auth/yo` cuando hace falta (sesión vieja sin `modulos`
+  // guardada antes de este cambio) — ver el comentario largo en
+  // `useAuthStore.modulosListos`. Va PRIMERO porque los bootstraps de abajo
+  // (comandas/cuentas, alarma) dependen de saber qué módulos tiene el usuario
+  // antes de pedir nada.
+  useModulosBootstrap();
   // Nombre, logo y moneda de visualización del negocio: se cargan una sola
   // vez aquí y de ahí los lee toda la app (DualPrice, el ticket, la tarjeta
   // de WhatsApp) — ver `useRestauranteStore.ts`.

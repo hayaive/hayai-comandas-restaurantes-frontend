@@ -1,4 +1,11 @@
-import { ApiError } from "./types";
+import { ApiError, TODOS_LOS_MODULOS } from "./types";
+import type { Usuario } from "./types";
+
+/** Reexportado por compatibilidad: el resto de la app sigue haciendo
+ * `import type { Usuario } from "@/api/auth"`. La definición vive en
+ * `types.ts` porque `ApiClient.canjearAcceso` también la necesita — ver el
+ * comentario en ese archivo. */
+export type { Usuario };
 
 /**
  * Session storage + login/logout, separate from `ApiClient` (`httpClient.ts` /
@@ -15,18 +22,11 @@ import { ApiError } from "./types";
 
 const TOKEN_KEY = "hayai.auth.token";
 const USUARIO_KEY = "hayai.auth.usuario";
-
-export interface Usuario {
-  id: string;
-  restauranteId: string;
-  nombre: string;
-  usuario: string;
-  rol: string;
-  activo: boolean;
-  ultimoAccesoEn: string;
-  creadoEn: string;
-  actualizadoEn: string;
-}
+/** Bandera de sesión-a-sesión (no persiste al cerrar la pestaña) para que
+ * `LoginPage` sepa mostrar "tu acceso terminó" en vez del formulario normal
+ * tras un 401 de un acceso temporal. Ver `handleUnauthorized` /
+ * `tomarAvisoAccesoVencido`. */
+const ACCESO_VENCIDO_KEY = "hayai.auth.accesoVencido";
 
 export interface LoginResult {
   token: string;
@@ -96,10 +96,46 @@ export function hasSession(): boolean {
   return isUsingMockAuth ? true : getToken() !== null;
 }
 
-/** Called by `httpClient.ts` when the real backend answers 401 on a protected call. */
+/**
+ * Called by `httpClient.ts` when the real backend answers 401 on a protected
+ * call.
+ *
+ * Un acceso temporal vencido a mitad de turno también entra por aquí: el
+ * mesero no tiene usuario ni clave, así que mandarlo a `/login` como si se le
+ * hubiera cerrado la sesión normal no dice nada útil. Antes de limpiar la
+ * sesión se anota si el usuario guardado tenía `accesoHasta` (era temporal)
+ * para que `LoginPage` pueda mostrar el mensaje correcto — ver
+ * `tomarAvisoAccesoVencido`. Se guarda en `sessionStorage`, no en el store,
+ * porque el 401 puede llegar de cualquier pantalla y lo único que sigue vivo
+ * hasta que React vuelva a montar `/login` es el storage.
+ */
 export function handleUnauthorized(): void {
   if (isUsingMockAuth) return;
+  const usuario = getStoredUsuario();
+  if (usuario?.accesoHasta) {
+    try {
+      sessionStorage.setItem(ACCESO_VENCIDO_KEY, "1");
+    } catch {
+      // sessionStorage no disponible: el usuario simplemente verá el login normal.
+    }
+  }
   clearSession();
+}
+
+/**
+ * Consume (lee y borra) el aviso dejado por `handleUnauthorized`. Se lee UNA
+ * vez al montar `LoginPage` — si se dejara sin borrar, un logout manual
+ * posterior en la misma pestaña reabriría el mismo mensaje sin venir de un
+ * acceso vencido de verdad.
+ */
+export function tomarAvisoAccesoVencido(): boolean {
+  try {
+    const habia = sessionStorage.getItem(ACCESO_VENCIDO_KEY) === "1";
+    sessionStorage.removeItem(ACCESO_VENCIDO_KEY);
+    return habia;
+  } catch {
+    return false;
+  }
 }
 
 function safeJsonParse(text: string): unknown {
@@ -156,6 +192,11 @@ const MOCK_USUARIO: Usuario = {
   ultimoAccesoEn: new Date().toISOString(),
   creadoEn: new Date().toISOString(),
   actualizadoEn: new Date().toISOString(),
+  // El modo demo siempre entra como administrador: ve los 11 módulos y no
+  // tiene vencimiento. `useAuthStore` trata esto como "módulos ya listos" de
+  // inmediato, sin esperar ningún refresco.
+  modulos: TODOS_LOS_MODULOS,
+  accesoHasta: null,
 };
 
 function mockLogin(): Promise<LoginResult> {
@@ -180,4 +221,70 @@ export async function loginPin(usuario: string, pin: string): Promise<LoginResul
 
 export function logout(): void {
   clearSession();
+}
+
+/**
+ * Guarda una sesión obtenida por un camino que NO es `login`/`loginPin` —
+ * hoy sólo el canje de acceso temporal (`POST /auth/acceso`, que viaja como
+ * uno de los 8 métodos de `ApiClient`, no por este archivo, porque es un
+ * endpoint público normal y no necesita el fetch a mano de `postAuth`).
+ * `useAuthStore.canjearAcceso` llama a `api.canjearAcceso(...)` y después a
+ * esto para persistir el resultado exactamente igual que un login.
+ */
+export function adoptarSesion(token: string, usuario: Usuario): void {
+  persistSession(token, usuario);
+}
+
+/**
+ * `GET /auth/yo` — refresca el usuario guardado (trae `modulos`/`accesoHasta`
+ * al día sin tener que volver a iniciar sesión).
+ *
+ * Existe por la transición del deploy: una sesión abierta ANTES de este
+ * cambio tiene el usuario guardado SIN `modulos`, y `usePuedeVer` no puede
+ * distinguir eso de "no ve nada" sin ayuda — ver `src/lib/permisos.ts`. Esto
+ * es lo que llena ese hueco al arrancar la app (`useModulosBootstrap`, en
+ * `useAuthStore.ts`).
+ *
+ * No usa `httpClient.ts`'s `request()` a propósito: ese módulo IMPORTA
+ * `getToken`/`handleUnauthorized` DE AQUÍ, así que este archivo no puede
+ * importar de vuelta de `httpClient.ts` sin crear un ciclo. Por eso el fetch
+ * se arma a mano, igual que `postAuth`.
+ *
+ * Devuelve `null` si no se pudo refrescar (sin red, sin token, etc.) — quien
+ * llama debe seguir tratando el usuario ya guardado como el mejor dato
+ * disponible, nunca como "ahora sabemos que no tiene nada".
+ */
+export async function obtenerYo(): Promise<Usuario | null> {
+  // Modo demo: no hay backend real que preguntarle, y el usuario mock ya
+  // nace con `modulos` completos — se devuelve tal cual para que
+  // `useModulosBootstrap` marque "listo" de inmediato.
+  if (isUsingMockAuth) return getStoredUsuario();
+
+  const base = apiBaseUrl();
+  const token = getToken();
+  if (!base || !token) return null;
+
+  let response: Response;
+  try {
+    response = await fetch(`${base.replace(/\/+$/, "")}/auth/yo`, {
+      credentials: "include",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch {
+    return null;
+  }
+
+  if (response.status === 401) {
+    handleUnauthorized();
+    return null;
+  }
+  if (!response.ok) return null;
+
+  const text = await response.text();
+  const usuario = text ? (safeJsonParse(text) as Usuario | undefined) : undefined;
+  if (!usuario) return null;
+
+  // El token no cambia con este refresco — sólo se releyó el usuario.
+  persistSession(token, usuario);
+  return usuario;
 }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { api, ApiError, type TemaPush } from "@/api";
+import { useAuthStore } from "@/lib/useAuthStore";
 
 /**
  * Web Push: suscripción del dispositivo y su ciclo de vida.
@@ -13,11 +14,38 @@ import { api, ApiError, type TemaPush } from "@/api";
  * doble aviso (in-app + push) es intencional: cada uno falla en un escenario
  * distinto, igual que audio/vibración/notificación en `useAlertaCocina.ts`.
  *
- * Temas suscritos por defecto: los dos que el backend ya emite hoy
- * (`CONTRACT.md` del backend, sección push) — pedir `cuenta_por_cobrar` o
+ * Temas suscritos por defecto: los que el backend ya emite hoy (`CONTRACT.md`
+ * del backend, sección push) — pedir `cuenta_por_cobrar` o
  * `reservacion_nueva` no traería nada todavía, así que no se ofrecen aquí.
  */
 const TEMAS_DESPACHO: TemaPush[] = ["comanda_cocina", "comanda_barra"];
+
+/**
+ * El administrador recibe además el aviso de "alguien está probando códigos"
+ * en el enlace de un mesero temporal.
+ *
+ * ⚠️ Sin esto la defensa que eligió el dueño contra la fuerza bruta NO
+ * EXISTÍA: el backend manda ese push sólo a los aparatos suscritos al tema
+ * `acceso_sospechoso` (filtra por `temas @>`), y aquí todos se suscribían
+ * únicamente a los de cocina. El aviso salía hacia nadie, sin error.
+ *
+ * Suscribirlo a otro rol no tendría efecto (`ROLES_POR_TEMA` del backend lo
+ * limita al administrador), pero tampoco hay por qué pedirlo. Constantes de
+ * módulo y no un array nuevo por llamada: `usePushSubscripcion` las usa como
+ * dependencia y una identidad inestable recrearía sus callbacks en cada render.
+ */
+const TEMAS_ADMINISTRADOR: TemaPush[] = [...TEMAS_DESPACHO, "acceso_sospechoso"];
+
+/**
+ * Los temas que le corresponden a quien tiene la sesión abierta. Como la
+ * suscripción se reenvía en cada arranque (el latido de `revalidar`), un
+ * administrador que ya estaba suscrito recibe el tema nuevo sin tocar nada.
+ */
+function temasDelUsuario(): TemaPush[] {
+  return useAuthStore.getState().usuario?.rol === "administrador"
+    ? TEMAS_ADMINISTRADOR
+    : TEMAS_DESPACHO;
+}
 
 // --- Detección de plataforma ---------------------------------------------
 
@@ -181,7 +209,7 @@ export type ResultadoActivarPush =
  * `Notification.requestPermission()` exige eso igual que
  * `pedirPermisoNotificaciones` en `useAlertaCocina.ts`.
  */
-export async function activarPush(temas: TemaPush[] = TEMAS_DESPACHO): Promise<ResultadoActivarPush> {
+export async function activarPush(temas: TemaPush[] = temasDelUsuario()): Promise<ResultadoActivarPush> {
   if (!esPushSoportado()) return { ok: false, motivo: "no-soportado" };
 
   let permiso = Notification.permission;
@@ -218,7 +246,7 @@ export async function activarPush(temas: TemaPush[] = TEMAS_DESPACHO): Promise<R
  * nada — no es su trabajo suscribir por primera vez, eso es `activarPush`,
  * que exige el gesto explícito del usuario.
  */
-export async function revalidarSuscripcionPush(temas: TemaPush[] = TEMAS_DESPACHO): Promise<void> {
+export async function revalidarSuscripcionPush(temas: TemaPush[] = temasDelUsuario()): Promise<void> {
   if (!soportaServiceWorkerYPush()) return;
   try {
     const registro = await navigator.serviceWorker.ready;
@@ -275,7 +303,7 @@ interface UsoPushSubscripcion {
  * saber si YA hay una suscripción activa exige preguntarle al
  * `ServiceWorkerRegistration`, no hay forma de saberlo de forma síncrona.
  */
-export function usePushSubscripcion(temas: TemaPush[] = TEMAS_DESPACHO): UsoPushSubscripcion {
+export function usePushSubscripcion(temas: TemaPush[] = temasDelUsuario()): UsoPushSubscripcion {
   const [estado, setEstado] = useState<EstadoPush>("verificando");
   const [activando, setActivando] = useState(false);
   const [error, setError] = useState<string | null>(null);

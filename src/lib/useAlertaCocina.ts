@@ -2,6 +2,8 @@ import { useEffect, useRef } from "react";
 import { create } from "zustand";
 
 import { consumirComandaPropia, useComandaStore } from "./useComandaStore";
+import { useAuthStore } from "./useAuthStore";
+import { tieneModuloConfirmado } from "./permisos";
 
 /**
  * Alerta de la cola de despacho: cuando entra una comanda nueva suena una
@@ -344,6 +346,13 @@ export function useAlertaCocina() {
 export function useAlertaCocinaBootstrap(): void {
   const cola = useComandaStore((s) => s.cola);
   const status = useComandaStore((s) => s.colaStatus);
+  // Sin el módulo `despacho`, `useComandaBootstrap` nunca carga `cola` (queda
+  // `[]` para siempre), así que esto ya no dispararía solo — pero se corta
+  // explícito para no dejar el detector corriendo de balde en un mesero que
+  // nunca va a ver la cola.
+  const usuario = useAuthStore((s) => s.usuario);
+  const modulosListos = useAuthStore((s) => s.modulosListos);
+  const puedeDespacho = tieneModuloConfirmado(usuario, modulosListos, "despacho");
 
   /**
    * `null` como valor inicial distingue "todavía no cargué nada" de "la cola
@@ -353,7 +362,7 @@ export function useAlertaCocinaBootstrap(): void {
   const idsConocidos = useRef<Set<string> | null>(null);
 
   useEffect(() => {
-    if (status !== "ready") return;
+    if (!puedeDespacho || status !== "ready") return;
     const actuales = new Set(cola.map((c) => c.comandaId));
     const previos = idsConocidos.current;
     idsConocidos.current = actuales;
@@ -396,7 +405,7 @@ export function useAlertaCocinaBootstrap(): void {
             tag: "cola-despacho",
           },
     );
-  }, [cola, status]);
+  }, [cola, status, puedeDespacho]);
 
   // Primer gesto del usuario: el único momento en que el navegador permite
   // sacar el contexto de `suspended`. `once` para no dejar listeners colgando.

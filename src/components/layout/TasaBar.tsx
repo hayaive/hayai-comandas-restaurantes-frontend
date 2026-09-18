@@ -5,9 +5,15 @@ import { Button } from "@/components/ui/Button";
 import { IconButton } from "@/components/ui/IconButton";
 import { Input } from "@/components/ui/Input";
 import { useTasaBootstrap, useTasaStore } from "@/lib/useTasaStore";
+import { useAuthStore } from "@/lib/useAuthStore";
 import { formatDateTime, formatTasaValor } from "@/lib/format";
 import { ApiError } from "@/api";
 import type { DivisaTasa, TasaDivisa } from "@/api";
+
+/** El backend ahora responde 403 a `POST /tasa` y `POST /tasa/actualizar` para cualquier otro rol. */
+function puedeEditarTasa(rol: string | undefined): boolean {
+  return rol === "administrador" || rol === "encargado";
+}
 
 /**
  * Franja fija con la tasa BCV (USD) y Euro vigentes, visible desde cualquier
@@ -23,6 +29,7 @@ export function TasaBar() {
   const error = useTasaStore((s) => s.error);
   const actualizar = useTasaStore((s) => s.actualizar);
   const [detailOpen, setDetailOpen] = useState(false);
+  const puedeEditar = puedeEditarTasa(useAuthStore((s) => s.usuario?.rol));
 
   // Carga inicial + relectura periódica y al volver de segundo plano.
   useTasaBootstrap();
@@ -50,13 +57,15 @@ export function TasaBar() {
           {vigente ? `Vigente ${vigente.fecha}` : status === "loading" ? "Cargando tasa…" : ""}
         </span>
 
-        <IconButton
-          size="sm"
-          icon={<RefreshCw size={14} className={refreshing ? "animate-spin" : undefined} />}
-          label="Actualizar tasa"
-          onClick={() => void actualizar()}
-          disabled={refreshing}
-        />
+        {puedeEditar && (
+          <IconButton
+            size="sm"
+            icon={<RefreshCw size={14} className={refreshing ? "animate-spin" : undefined} />}
+            label="Actualizar tasa"
+            onClick={() => void actualizar()}
+            disabled={refreshing}
+          />
+        )}
       </div>
 
       <Modal
@@ -71,25 +80,38 @@ export function TasaBar() {
               {error}
             </p>
           )}
-          <DetalleTasa label="Dólar (BCV)" divisa="USD" tasa={vigente?.usd ?? null} />
-          <DetalleTasa label="Euro" divisa="EUR" tasa={vigente?.eur ?? null} />
-          <Button
-            variant="primary"
-            size="sm"
-            className="self-start"
-            onClick={() => void actualizar()}
-            disabled={refreshing}
-          >
-            <RefreshCw size={14} className={refreshing ? "animate-spin" : undefined} />
-            {refreshing ? "Actualizando…" : "Actualizar ahora"}
-          </Button>
+          <DetalleTasa label="Dólar (BCV)" divisa="USD" tasa={vigente?.usd ?? null} editable={puedeEditar} />
+          <DetalleTasa label="Euro" divisa="EUR" tasa={vigente?.eur ?? null} editable={puedeEditar} />
+          {puedeEditar && (
+            <Button
+              variant="primary"
+              size="sm"
+              className="self-start"
+              onClick={() => void actualizar()}
+              disabled={refreshing}
+            >
+              <RefreshCw size={14} className={refreshing ? "animate-spin" : undefined} />
+              {refreshing ? "Actualizando…" : "Actualizar ahora"}
+            </Button>
+          )}
         </div>
       </Modal>
     </>
   );
 }
 
-function DetalleTasa({ label, divisa, tasa }: { label: string; divisa: DivisaTasa; tasa: TasaDivisa | null }) {
+function DetalleTasa({
+  label,
+  divisa,
+  tasa,
+  editable,
+}: {
+  label: string;
+  divisa: DivisaTasa;
+  tasa: TasaDivisa | null;
+  /** El backend responde 403 a `POST /tasa`/`POST /tasa/actualizar` fuera de administrador/encargado. */
+  editable: boolean;
+}) {
   return (
     <div className="rounded-[var(--radius-md)] border border-border bg-surface-raised px-4 py-3">
       <p className="text-[12px] font-medium text-fg-muted">{label}</p>
@@ -103,9 +125,11 @@ function DetalleTasa({ label, divisa, tasa }: { label: string; divisa: DivisaTas
       ) : (
         <p className="text-[13px] text-fg-subtle">No hay tasa registrada todavía.</p>
       )}
-      <div className="mt-3 border-t border-border pt-3">
-        <EditarTasaManual divisa={divisa} tasaActual={tasa} />
-      </div>
+      {editable && (
+        <div className="mt-3 border-t border-border pt-3">
+          <EditarTasaManual divisa={divisa} tasaActual={tasa} />
+        </div>
+      )}
     </div>
   );
 }

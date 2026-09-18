@@ -7,6 +7,7 @@ import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { IconButton } from "@/components/ui/IconButton";
 import { useAuthStore } from "@/lib/useAuthStore";
 import { useInstallPrompt } from "@/lib/useInstallPrompt";
+import { usePuedeVer } from "@/lib/permisos";
 import { navItems } from "./navItems";
 import { NavBadge, useNavItemBadge } from "./NavBadge";
 
@@ -75,8 +76,11 @@ export function Sidebar() {
 }
 
 function SidebarNavLink({ item }: { item: (typeof navItems)[number] }) {
-  const { to, label, icon: Icon } = item;
+  const { to, label, icon: Icon, modulo } = item;
   const badge = useNavItemBadge(to);
+  const puede = usePuedeVer(modulo);
+
+  if (!puede) return null;
 
   return (
     <NavLink

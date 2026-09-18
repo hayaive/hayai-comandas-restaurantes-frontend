@@ -1,8 +1,13 @@
 import type {
+  AccesoCreadoResult,
+  AccesoTemporal,
+  AccesoVencimientos,
   ActivarPlantillaResult,
   ActualizarSuscripcionPushInput,
   AddComandaItemInput,
   ApiClient,
+  CanjearAccesoInput,
+  CanjearAccesoResult,
   Categoria,
   ClaveVapid,
   ResultadoPruebaPush,
@@ -12,6 +17,9 @@ import type {
   Comanda,
   ComandaEnCola,
   ComandaItem,
+  ConsultarAccesoInput,
+  ConsultarAccesoResult,
+  CreateAccesoInput,
   CuentaDeMesa,
   CuentaMesa,
   CreateComandaInput,
@@ -31,6 +39,8 @@ import type {
   PlantillaMesa,
   Producto,
   ProductoVendido,
+  RegenerarAccesoInput,
+  RegenerarAccesoResult,
   ReporteDia,
   ReporteVentas,
   Reservacion,
@@ -43,6 +53,7 @@ import type {
   TasaDivisa,
   TasaVigente,
   TipoComanda,
+  UpdateAccesoInput,
   UpdateMesaInput,
   UpdatePlantillaInput,
   UpdatePlantillaMesaInput,
@@ -756,6 +767,30 @@ export const httpApi: ApiClient = {
     if (fecha) params.set("fecha", fecha);
     return request<ReporteVentas>(`/reportes/ventas?${params.toString()}`);
   },
+
+  // --- Meseros: accesos temporales ---------------------------------------
+  getVencimientosAcceso: () => request<AccesoVencimientos>("/accesos/vencimientos"),
+  createAcceso: (input: CreateAccesoInput) =>
+    request<AccesoCreadoResult>("/accesos", { method: "POST", ...json(input) }),
+  listAccesos: () => request<AccesoTemporal[]>("/accesos"),
+  updateAcceso: (id, input: UpdateAccesoInput) =>
+    request<AccesoTemporal>(`/accesos/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      ...json(input),
+    }),
+  regenerarAcceso: (id, input?: RegenerarAccesoInput) =>
+    request<RegenerarAccesoResult>(`/accesos/${encodeURIComponent(id)}/regenerar`, {
+      method: "POST",
+      ...json(input ?? {}),
+    }),
+  deleteAcceso: (id) => request<void>(`/accesos/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  // Públicos, sin sesión: `request()` sólo agrega `Authorization` si hay un
+  // token guardado (nunca lo exige), así que estas dos llamadas funcionan
+  // igual estando o no logueado.
+  consultarAcceso: (input: ConsultarAccesoInput) =>
+    request<ConsultarAccesoResult>("/auth/acceso/consultar", { method: "POST", ...json(input) }),
+  canjearAcceso: (input: CanjearAccesoInput) =>
+    request<CanjearAccesoResult>("/auth/acceso", { method: "POST", ...json(input) }),
 
   // --- Web Push ---
   getClaveVapid: () => request<ClaveVapid>("/push/vapid"),

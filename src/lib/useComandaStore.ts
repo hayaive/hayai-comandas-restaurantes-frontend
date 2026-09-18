@@ -11,6 +11,35 @@ import type {
   CuentaMesa,
 } from "@/api";
 import { useFloorPlanStore } from "./useFloorPlanStore";
+import { useAuthStore } from "./useAuthStore";
+import { tieneModuloConfirmado } from "./permisos";
+import type { ModuloApp } from "@/api";
+
+/**
+ * ¿Puede quien tiene la sesión abierta recargar la vista de ese módulo?
+ *
+ * Crear o anular un pedido refrescaba SIEMPRE la cola y las cuentas. Con
+ * permisos por módulo, un mesero que sólo tiene "Mesero" recibía un 403 en
+ * cada una. No rompía nada —`loadCola`/`loadCuentas` capturan su propio
+ * error, así que el pedido NO se daba por fallido ni se duplicaba al
+ * reintentar—, pero dejaba la cola en estado de error y mandaba peticiones que
+ * el servidor iba a rechazar. Ahora sólo se recarga lo que esa persona ve.
+ */
+function puedeRecargar(modulo: ModuloApp): boolean {
+  const { usuario, modulosListos } = useAuthStore.getState();
+  return tieneModuloConfirmado(usuario, modulosListos, modulo);
+}
+
+/** Recarga cola y cuentas, pero sólo las que el usuario tiene concedidas. */
+function recargarVistasPermitidas(
+  loadCola: () => Promise<void>,
+  loadCuentas: () => Promise<void>,
+): Promise<unknown> {
+  return Promise.all([
+    puedeRecargar("despacho") ? loadCola() : undefined,
+    puedeRecargar("por_cobrar") ? loadCuentas() : undefined,
+  ]);
+}
 
 /**
  * Comandas, cola de despacho y cobro.
@@ -181,7 +210,7 @@ export const useComandaStore = create<ComandaState>((set, get) => ({
 
   anularComanda: async (comandaId, motivo) => {
     await api.anularComanda(comandaId, motivo);
-    await Promise.all([get().loadCola(), get().loadCuentas()]);
+    await recargarVistasPermitidas(get().loadCola, get().loadCuentas);
     void useFloorPlanStore.getState().refreshPlano();
   },
 
@@ -193,8 +222,10 @@ export const useComandaStore = create<ComandaState>((set, get) => ({
     // la detección. Ver `useAlertaCocinaBootstrap`.
     marcarComandaPropia(comanda.id);
     // Nace ya en la cola y la mesa pasa a ocupada server-side.
-    await Promise.all([get().loadCola(), get().loadCuentas()]);
-    if (comanda.mesaId) {
+    await recargarVistasPermitidas(get().loadCola, get().loadCuentas);
+    // `GET /mesas/:id/cuenta` está abierto a Mesas y a Por cobrar: el mesero
+    // que sólo toma pedidos no ve esa cuenta, así que no se le pide.
+    if (comanda.mesaId && (puedeRecargar("mesas") || puedeRecargar("por_cobrar"))) {
       void get().loadCuentaDeMesa(comanda.mesaId);
     }
     void useFloorPlanStore.getState().refreshPlano();
@@ -279,15 +310,28 @@ export function useComandaBootstrap(): void {
   const loadCola = useComandaStore((state) => state.loadCola);
   const loadCuentas = useComandaStore((state) => state.loadCuentas);
 
-  useEffect(() => {
-    if (colaStatus === "idle") void loadCola();
-  }, [colaStatus, loadCola]);
+  // Accesos temporales: la cola de despacho y las cuentas por cobrar son
+  // endpoints protegidos por módulo (`despacho`/`por_cobrar`) — un mesero sin
+  // ellos recibiría un 403 cada 25s si esto cargara sin más. `tieneModuloConfirmado`
+  // (a diferencia de `usePuedeVer`) es CONSERVADORA: mientras no se sepa con
+  // certeza qué módulos tiene (`modulosListos === false`), NO pide nada. Ver
+  // `src/lib/permisos.ts`.
+  const usuario = useAuthStore((state) => state.usuario);
+  const modulosListos = useAuthStore((state) => state.modulosListos);
+  const puedeDespacho = tieneModuloConfirmado(usuario, modulosListos, "despacho");
+  const puedeCobrar = tieneModuloConfirmado(usuario, modulosListos, "por_cobrar");
 
   useEffect(() => {
-    if (cuentasStatus === "idle") void loadCuentas();
-  }, [cuentasStatus, loadCuentas]);
+    if (puedeDespacho && colaStatus === "idle") void loadCola();
+  }, [puedeDespacho, colaStatus, loadCola]);
 
   useEffect(() => {
+    if (puedeCobrar && cuentasStatus === "idle") void loadCuentas();
+  }, [puedeCobrar, cuentasStatus, loadCuentas]);
+
+  useEffect(() => {
+    if (!puedeDespacho && !puedeCobrar) return;
+
     const POLL_INTERVAL_MS = 25_000;
 
     // A diferencia de `PwaUpdateBanner` (chequeo cada 20 MINUTOS, así que da
@@ -301,8 +345,8 @@ export function useComandaBootstrap(): void {
     function poll() {
       if (document.visibilityState === "hidden") return;
       const state = useComandaStore.getState();
-      if (state.colaStatus !== "loading") void loadCola();
-      if (state.cuentasStatus !== "loading") void loadCuentas();
+      if (puedeDespacho && state.colaStatus !== "loading") void loadCola();
+      if (puedeCobrar && state.cuentasStatus !== "loading") void loadCuentas();
     }
 
     const intervalId = window.setInterval(poll, POLL_INTERVAL_MS);
@@ -316,5 +360,5 @@ export function useComandaBootstrap(): void {
       window.clearInterval(intervalId);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [loadCola, loadCuentas]);
+  }, [puedeDespacho, puedeCobrar, loadCola, loadCuentas]);
 }

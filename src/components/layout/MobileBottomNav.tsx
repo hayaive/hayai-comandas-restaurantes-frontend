@@ -3,7 +3,10 @@ import { NavLink, useLocation } from "react-router-dom";
 import { MoreHorizontal, Plus } from "lucide-react";
 
 import { cn } from "@/lib/cn";
+import { useAuthStore } from "@/lib/useAuthStore";
+import { tieneModulo } from "@/lib/permisos";
 import { navItems } from "./navItems";
+import type { NavItem } from "./navItems";
 import { MobileMoreSheet } from "./MobileMoreSheet";
 import { NavBadge, useNavItemBadge } from "./NavBadge";
 
@@ -49,6 +52,20 @@ import { NavBadge, useNavItemBadge } from "./NavBadge";
  * sobre negro. El FAB conserva su propio gradiente de marca (`.hero-brand`,
  * ahora también marrón — ya no queda morado en ningún botón del producto),
  * distinto del marrón plano `bg-active`: es una acción, no un estado.
+ *
+ * ACCESOS TEMPORALES — por qué la grilla ya no es un `grid-cols-5` fijo:
+ * un mesero temporal puede tener un solo módulo concedido (típicamente sólo
+ * "mesero"). Con la grilla de 5 huecos fija, eso dejaba slots VACÍOS (mal:
+ * espacio muerto y descuadrado) o, peor, botones que SIGUEN llevando a
+ * pantallas de otros módulos y revientan en un 403 al tocarlos. La solución:
+ * cada slot fijo (Mesas/Comandas/[FAB Mesero]/Por cobrar) se omite si el
+ * usuario no tiene ese módulo, y la grilla se dimensiona al número real de
+ * slots que quedan (`gridColsClass`, 1 a 5 columnas — Tailwind necesita la
+ * clase completa en el código para el JIT, así que es un mapa, no un string
+ * interpolado). "Más" NUNCA se omite, aunque `moreItems` quede vacío: en
+ * mobile el Sidebar está oculto, así que ese botón es la ÚNICA forma de
+ * cambiar el tema o cerrar sesión — un mesero con un solo módulo lo sigue
+ * necesitando igual que el administrador.
  */
 
 const FAB_ROUTE = "/mesero";
@@ -60,44 +77,75 @@ const PRIMARY_ROUTES = ["/mesas", "/comandas", "/cuentas"];
 const [mesasItem, comandasItem, cuentasItem] = PRIMARY_ROUTES.map(
   (to) => navItems.find((item) => item.to === to)!,
 );
+const fabItem = navItems.find((item) => item.to === FAB_ROUTE)!;
 
-const moreItems = navItems.filter(
-  (item) => ![FAB_ROUTE, ...PRIMARY_ROUTES].includes(item.to),
-);
+const allMoreItems = navItems.filter((item) => ![FAB_ROUTE, ...PRIMARY_ROUTES].includes(item.to));
+
+/** Tailwind necesita la clase LITERAL en el código para que el JIT la genere. */
+const GRID_COLS_CLASS: Record<number, string> = {
+  1: "grid-cols-1",
+  2: "grid-cols-2",
+  3: "grid-cols-3",
+  4: "grid-cols-4",
+  5: "grid-cols-5",
+};
 
 export function MobileBottomNav() {
   const [moreOpen, setMoreOpen] = useState(false);
   const location = useLocation();
+  const usuario = useAuthStore((s) => s.usuario);
+  const modulosListos = useAuthStore((s) => s.modulosListos);
+
+  const puede = (item: NavItem) => tieneModulo(usuario, modulosListos, item.modulo);
+
+  const visiblePrimary = [mesasItem, comandasItem, cuentasItem].filter(puede);
+  const hasFab = puede(fabItem);
+  const moreItems = allMoreItems.filter(puede);
   const isMoreActive = moreItems.some((item) => location.pathname.startsWith(item.to));
+
+  // Mesas/Comandas antes del FAB, Por cobrar después — mismo orden visual de
+  // siempre, sólo que ahora cada uno puede faltar. "Más" cierra la fila
+  // siempre.
+  const before = visiblePrimary.filter((item) => item.to !== "/cuentas");
+  const after = visiblePrimary.filter((item) => item.to === "/cuentas");
+  const totalSlots = before.length + (hasFab ? 1 : 0) + after.length + 1;
 
   return (
     <>
       <nav
         aria-label="Navegación principal"
-        className="grid shrink-0 grid-cols-5 gap-1 border-t border-border bg-bg/90 px-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 backdrop-blur-md md:hidden"
+        className={cn(
+          "grid shrink-0 gap-1 border-t border-border bg-bg/90 px-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 backdrop-blur-md md:hidden",
+          GRID_COLS_CLASS[Math.min(5, Math.max(1, totalSlots))],
+        )}
       >
-        <NavTab item={mesasItem} />
-        <NavTab item={comandasItem} />
+        {before.map((item) => (
+          <NavTab key={item.to} item={item} />
+        ))}
 
-        <NavLink to={FAB_ROUTE} className="relative flex min-h-11 items-center justify-center">
-          {({ isActive }) => (
-            <>
-              <span
-                className={cn(
-                  "-mt-7 flex size-14 items-center justify-center rounded-[var(--radius-md)] text-white",
-                  "hero-brand shadow-[var(--shadow-token-lg)] ring-4 ring-bg",
-                  "transition-transform duration-150 active:scale-95",
-                  isActive && "ring-active",
-                )}
-              >
-                <Plus size={26} strokeWidth={2.5} />
-              </span>
-              <span className="sr-only">{FAB_LABEL}</span>
-            </>
-          )}
-        </NavLink>
+        {hasFab && (
+          <NavLink to={FAB_ROUTE} className="relative flex min-h-11 items-center justify-center">
+            {({ isActive }) => (
+              <>
+                <span
+                  className={cn(
+                    "-mt-7 flex size-14 items-center justify-center rounded-[var(--radius-md)] text-white",
+                    "hero-brand shadow-[var(--shadow-token-lg)] ring-4 ring-bg",
+                    "transition-transform duration-150 active:scale-95",
+                    isActive && "ring-active",
+                  )}
+                >
+                  <Plus size={26} strokeWidth={2.5} />
+                </span>
+                <span className="sr-only">{FAB_LABEL}</span>
+              </>
+            )}
+          </NavLink>
+        )}
 
-        <NavTab item={cuentasItem} />
+        {after.map((item) => (
+          <NavTab key={item.to} item={item} />
+        ))}
 
         <button
           type="button"

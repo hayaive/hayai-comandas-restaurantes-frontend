@@ -75,6 +75,171 @@ export type FuenteTasa = "bcv" | "manual" | "binance";
 export type MostrarPreciosEn = "usd" | "bs" | "ambas";
 
 /**
+ * Cada pantalla de staff que un `Usuario` puede tener concedida. Fuente del
+ * mapa ruta→módulo en `src/components/layout/navItems.ts` y de las casillas
+ * de la pantalla Meseros (`src/pages/MeserosPage.tsx`).
+ *
+ * `configuracion` y `meseros` NUNCA se ofrecen al crear/editar un acceso
+ * temporal (`CreateAccesoInput`/`UpdateAccesoInput` los excluyen a propósito):
+ * sólo el `administrador` los tiene, porque el backend los manda efectivos
+ * sólo para ese rol.
+ */
+export type ModuloApp =
+  | "mesas"
+  | "mesero"
+  | "despacho"
+  | "por_cobrar"
+  | "reservaciones"
+  | "checkin"
+  | "escanear"
+  | "productos"
+  | "ventas"
+  | "configuracion"
+  | "meseros";
+
+/** Los 11 módulos, en el orden en que aparece cada pantalla en la navegación. */
+export const TODOS_LOS_MODULOS: ModuloApp[] = [
+  "mesas",
+  "mesero",
+  "despacho",
+  "por_cobrar",
+  "reservaciones",
+  "checkin",
+  "escanear",
+  "productos",
+  "ventas",
+  "configuracion",
+  "meseros",
+];
+
+/**
+ * Los 9 módulos que se le pueden dar a quien no es administrador: todos menos
+ * Configuración y Meseros. Es EXACTAMENTE lo que la migración
+ * `20260918230000_accesos_temporales` le pone a todo el personal permanente
+ * que no es administrador — ver `modulosDe` en `src/lib/permisos.ts`, que se
+ * apoya en esa equivalencia para no dejar a nadie en blanco.
+ */
+export const MODULOS_ASIGNABLES: ModuloApp[] = TODOS_LOS_MODULOS.filter(
+  (m) => m !== "configuracion" && m !== "meseros",
+);
+
+export type DuracionAcceso = "hoy" | "2_dias" | "1_semana" | "1_mes";
+
+/**
+ * El usuario de la sesión. Vive aquí (y no sólo en `src/api/auth.ts`, que lo
+ * reexporta para no romper `import type { Usuario } from "@/api/auth"`)
+ * porque `ApiClient.canjearAcceso` también lo necesita, y `auth.ts` no puede
+ * importar de `types.ts` en un sentido y de vuelta: sería un ciclo.
+ *
+ * `modulos` viene YA EFECTIVO — el administrador recibe los 11 aunque el
+ * backend podría mandarlos calculados de otra forma; el frontend trata
+ * `rol === "administrador"` como "ve todo" de todas formas (ver
+ * `src/lib/permisos.ts`) por si algún día dejara de venir así.
+ *
+ * `accesoHasta`: `null` = personal permanente (administrador/encargado/etc.
+ * dados de alta a mano). Con fecha ISO = acceso temporal de mesero, vence ahí.
+ */
+export interface Usuario {
+  id: string;
+  restauranteId: string;
+  nombre: string;
+  usuario: string;
+  rol: string;
+  activo: boolean;
+  ultimoAccesoEn: string;
+  creadoEn: string;
+  actualizadoEn: string;
+  modulos: ModuloApp[];
+  accesoHasta: string | null;
+}
+
+/** `GET /accesos/vencimientos` — el vencimiento CONCRETO de cada atajo, para mostrarlo antes de confirmar. */
+export interface AccesoVencimientos {
+  hoy: string;
+  dosDias: string;
+  unaSemana: string;
+  unMes: string;
+}
+
+/** Una fila de `GET /accesos` — sólo los vivos, nunca enlace ni código. */
+export interface AccesoTemporal {
+  id: string;
+  nombre: string;
+  modulos: ModuloApp[];
+  accesoHasta: string;
+  ultimoAccesoEn: string | null;
+  /** `>= 10` es la señal de "alguien está probando códigos" que pide la pantalla de Meseros. */
+  fallosConsecutivos: number;
+  ultimoFalloEn: string | null;
+}
+
+export interface CreateAccesoInput {
+  /** 1–40 caracteres. */
+  nombre: string;
+  duracion: DuracionAcceso;
+  /** Al menos uno. Nunca `configuracion` ni `meseros`. */
+  modulos: ModuloApp[];
+}
+
+/**
+ * 201 de `POST /accesos`. `enlace` y `codigo` llegan UNA sola vez aquí —
+ * después no se pueden recuperar, sólo regenerar (`regenerarAcceso`, que
+ * también invalida el anterior).
+ */
+export interface AccesoCreadoResult {
+  acceso: {
+    id: string;
+    nombre: string;
+    modulos: ModuloApp[];
+    accesoHasta: string;
+    creadoEn: string;
+  };
+  enlace: string;
+  codigo: string;
+}
+
+export interface UpdateAccesoInput {
+  nombre?: string;
+  modulos?: ModuloApp[];
+  /** Extiende el vencimiento desde AHORA, no desde el vencimiento anterior. */
+  duracion?: DuracionAcceso;
+}
+
+/** `POST /accesos/:id/regenerar`. Por defecto regenera los dos. */
+export interface RegenerarAccesoInput {
+  enlace?: boolean;
+  codigo?: boolean;
+}
+
+/** Sólo trae las claves que se pidió regenerar — también de una sola vez. */
+export interface RegenerarAccesoResult {
+  enlace?: string;
+  codigo?: string;
+}
+
+/** `POST /auth/acceso/consultar` — público, sin sesión. */
+export interface ConsultarAccesoInput {
+  restaurante: string;
+  token: string;
+}
+
+export interface ConsultarAccesoResult {
+  restaurante: { nombre: string; logoUrl: string | null };
+  nombre: string;
+  accesoHasta: string;
+}
+
+/** `POST /auth/acceso` — público, sin sesión. */
+export interface CanjearAccesoInput extends ConsultarAccesoInput {
+  codigo: string;
+}
+
+export interface CanjearAccesoResult {
+  token: string;
+  usuario: Usuario;
+}
+
+/**
  * `GET /restaurante` — la configuración del negocio. Sesión de cualquier rol
  * puede leerla; sólo `administrador` puede tocar `PATCH /restaurante`.
  */
@@ -690,7 +855,9 @@ export type TemaPush =
   | "comanda_cocina"
   | "comanda_barra"
   | "cuenta_por_cobrar"
-  | "reservacion_nueva";
+  | "reservacion_nueva"
+  /** Sólo administrador: alguien está probando códigos en el enlace de un mesero temporal. */
+  | "acceso_sospechoso";
 
 /** `GET /push/vapid`. La clave pública VAPID, en base64url. */
 export interface ClaveVapid {
@@ -985,6 +1152,33 @@ export interface ApiClient {
    * decide hora de corte y zona horaria, ya no hace falta calcularlo aquí).
    */
   getReporteVentas(periodo?: PeriodoReporte, fecha?: string): Promise<ReporteVentas>;
+
+  // --- Meseros: accesos temporales ---------------------------------------
+  // Gestión sólo `administrador`. Canje (`consultarAcceso`/`canjearAcceso`)
+  // público, sin sesión — se llaman antes de tener token, así que no llevan
+  // `Authorization` (ver `httpClient.ts`: `request()` sólo lo agrega si hay
+  // uno guardado, nunca lo exige).
+  /** Vencimiento CONCRETO de cada atajo de duración, para mostrarlo antes de crear. */
+  getVencimientosAcceso(): Promise<AccesoVencimientos>;
+  /** `enlace`/`codigo` de la respuesta sólo se ven esta vez — guárdalos en la UI, no se pueden releer. */
+  createAcceso(input: CreateAccesoInput): Promise<AccesoCreadoResult>;
+  /** Sólo los accesos vivos (no vencidos, no revocados). */
+  listAccesos(): Promise<AccesoTemporal[]>;
+  /** `duracion` extiende el vencimiento desde ahora, no lo suma al anterior. */
+  updateAcceso(id: string, input: UpdateAccesoInput): Promise<AccesoTemporal>;
+  /** Por defecto regenera enlace y código; lo devuelto sólo se ve esta vez. */
+  regenerarAcceso(id: string, input?: RegenerarAccesoInput): Promise<RegenerarAccesoResult>;
+  /** Revoca el acceso de inmediato. */
+  deleteAcceso(id: string): Promise<void>;
+  /**
+   * Pantalla pública de canje, ANTES de teclear el código: nombre del
+   * restaurante/mesero y hasta cuándo vale. 404 si el enlace no existe, 410
+   * si ya venció (ambos se lanzan como `ApiError` — rama por status, no por
+   * texto del mensaje).
+   */
+  consultarAcceso(input: ConsultarAccesoInput): Promise<ConsultarAccesoResult>;
+  /** Canjea el código de 4 dígitos y abre sesión. 401 si el código no cuadra. */
+  canjearAcceso(input: CanjearAccesoInput): Promise<CanjearAccesoResult>;
 
   // --- Web Push ---
   /** La clave pública VAPID para `pushManager.subscribe`. */
