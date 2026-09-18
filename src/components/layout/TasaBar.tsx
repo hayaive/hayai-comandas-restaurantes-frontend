@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { IconButton } from "@/components/ui/IconButton";
 import { Input } from "@/components/ui/Input";
-import { useTasaStore } from "@/lib/useTasaStore";
+import { useTasaBootstrap, useTasaStore } from "@/lib/useTasaStore";
 import { formatDateTime, formatTasaValor } from "@/lib/format";
 import { ApiError } from "@/api";
 import type { DivisaTasa, TasaDivisa } from "@/api";
@@ -21,13 +21,11 @@ export function TasaBar() {
   const status = useTasaStore((s) => s.status);
   const refreshing = useTasaStore((s) => s.refreshing);
   const error = useTasaStore((s) => s.error);
-  const load = useTasaStore((s) => s.load);
   const actualizar = useTasaStore((s) => s.actualizar);
   const [detailOpen, setDetailOpen] = useState(false);
 
-  useEffect(() => {
-    if (status === "idle") void load();
-  }, [status, load]);
+  // Carga inicial + relectura periódica y al volver de segundo plano.
+  useTasaBootstrap();
 
   return (
     <>

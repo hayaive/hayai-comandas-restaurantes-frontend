@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { create } from "zustand";
 import { api, ApiError } from "@/api";
 import type { DivisaTasa, TasaVigente } from "@/api";
@@ -18,6 +19,11 @@ interface TasaState {
   error: string | null;
 
   load: () => Promise<void>;
+  /**
+   * Relectura de fondo, la que mantiene la tasa al día sin que nadie toque el
+   * botón. Ver `useTasaBootstrap`.
+   */
+  refresh: () => Promise<void>;
   /** Fuerza `POST /tasa/actualizar` (fetch inmediato desde la fuente externa). */
   actualizar: () => Promise<void>;
   /**
@@ -53,6 +59,26 @@ export const useTasaStore = create<TasaState>((set, get) => ({
     }
   },
 
+  refresh: async () => {
+    try {
+      const vigente = await api.getTasaVigente();
+      set({ vigente, status: "ready" });
+      // Red de seguridad, no el camino normal: quien habla con dolarapi.com es
+      // el cron de 6h del backend (`TasaSchedulerService`). Si ese ciclo no
+      // pudo —la API externa caída justo en su turno—, la vigente se queda con
+      // fecha de ayer y sólo el botón la destrabaría; eso es exactamente lo
+      // que no debe pasar. Se mide contra USD porque es la del BCV y
+      // `actualizarTasa` trae ambas divisas de una; en un día normal esta rama
+      // no corre nunca y el refresco es una sola lectura.
+      if (vigente.usd?.fecha !== vigente.fecha) {
+        set({ vigente: await api.actualizarTasa() });
+      }
+    } catch {
+      // Silencio deliberado: un refresco de fondo que falla no debe pintar un
+      // error ni tapar el último valor bueno. Se reintenta al siguiente ciclo.
+    }
+  },
+
   actualizar: async () => {
     set({ refreshing: true, error: null });
     try {
@@ -79,3 +105,47 @@ export const useTasaStore = create<TasaState>((set, get) => ({
     }
   },
 }));
+
+/**
+ * Cada cuánto se relee la tasa. Misma cifra que el chequeo de versión del PWA
+ * y por la misma razón: el BCV publica ~una vez por día hábil, así que 20 min
+ * es de sobra para que nadie cobre con una tasa vieja, y son un puñado de
+ * lecturas por turno en vez de charla por minuto.
+ */
+const REFRESH_INTERVAL_MS = 20 * 60 * 1000;
+
+/**
+ * Mantiene la tasa al día sola. Se monta una vez, en `TasaBar` (que vive en
+ * `AppShell`, así que está activo en toda pantalla de staff).
+ *
+ * El botón de sincronizar nunca actualizó el BCV: sólo refrescaba ESTA
+ * pantalla. El backend ya trae la tasa por su cuenta (cron cada 6h + fetch al
+ * arrancar si no hay tasa de hoy), pero el cliente la pedía una sola vez, al
+ * abrir la app — y estos aparatos se quedan abiertos el turno entero, así que
+ * el valor en pantalla envejecía hasta que alguien tocaba el botón.
+ *
+ * `visibilitychange` importa tanto como el intervalo: un celular bloqueado o
+ * en segundo plano no corre timers, y al desbloquearlo tiene que mostrar la
+ * tasa buena de inmediato, no esperar lo que quede del ciclo.
+ */
+export function useTasaBootstrap(): void {
+  const status = useTasaStore((state) => state.status);
+  const load = useTasaStore((state) => state.load);
+  const refresh = useTasaStore((state) => state.refresh);
+
+  useEffect(() => {
+    if (status === "idle") void load();
+  }, [status, load]);
+
+  useEffect(() => {
+    const interval = setInterval(() => void refresh(), REFRESH_INTERVAL_MS);
+    function onVisibilityChange() {
+      if (document.visibilityState === "visible") void refresh();
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [refresh]);
+}
