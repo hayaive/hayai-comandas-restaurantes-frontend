@@ -5,6 +5,7 @@ import type {
   ApiClient,
   Categoria,
   ClaveVapid,
+  ResultadoPruebaPush,
   Cobro,
   CobrarMesaInput,
   ColaDespachoItem,
@@ -739,6 +740,7 @@ export const httpApi: ApiClient = {
 
   // --- Web Push ---
   getClaveVapid: () => request<ClaveVapid>("/push/vapid"),
+  probarPush: () => request<ResultadoPruebaPush>("/push/probar", { method: "POST", ...json({}) }),
   crearSuscripcionPush: (input: SuscripcionPushInput) =>
     request<SuscripcionPushCreada>("/push/suscripciones", { method: "POST", ...json(input) }),
   listSuscripcionesPush: () => request<SuscripcionPush[]>("/push/suscripciones"),

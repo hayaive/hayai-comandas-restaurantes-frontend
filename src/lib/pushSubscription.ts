@@ -167,7 +167,12 @@ async function obtenerOSuscribir(clavePublica: string): Promise<PushSubscription
 
 export type ResultadoActivarPush =
   | { ok: true }
-  | { ok: false; motivo: "no-soportado" | "sin-permiso" | "error" };
+  | {
+      ok: false;
+      motivo: "no-soportado" | "sin-permiso" | "error";
+      /** Qué falló exactamente, para poder MOSTRARLO en vez de tragárselo. */
+      detalle?: string;
+    };
 
 /**
  * Pide permiso (si hace falta), obtiene la clave VAPID, suscribe al
@@ -191,8 +196,16 @@ export async function activarPush(temas: TemaPush[] = TEMAS_DESPACHO): Promise<R
     await enviarSuscripcion(suscripcion, temas);
     return { ok: true };
   } catch (error) {
+    // El mensaje sube hasta la pantalla. Antes sólo iba a `console.error` y el
+    // usuario veía el botón volver a su sitio sin explicación: una suscripción
+    // que falla y una que nunca se intentó se veían EXACTAMENTE igual, que es
+    // lo que hace imposible diagnosticar esto desde el salón.
     console.error("No se pudo activar el aviso push:", error);
-    return { ok: false, motivo: "error" };
+    return {
+      ok: false,
+      motivo: "error",
+      detalle: error instanceof Error ? error.message : String(error),
+    };
   }
 }
 
@@ -252,6 +265,8 @@ interface UsoPushSubscripcion {
   estado: EstadoPush;
   activando: boolean;
   activar: () => Promise<void>;
+  /** Por qué falló el último intento, o `null`. La pantalla DEBE mostrarlo. */
+  error: string | null;
 }
 
 /**
@@ -263,6 +278,7 @@ interface UsoPushSubscripcion {
 export function usePushSubscripcion(temas: TemaPush[] = TEMAS_DESPACHO): UsoPushSubscripcion {
   const [estado, setEstado] = useState<EstadoPush>("verificando");
   const [activando, setActivando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const recalcular = useCallback(async () => {
     if (necesitaInstalarseParaPush()) {
@@ -299,13 +315,23 @@ export function usePushSubscripcion(temas: TemaPush[] = TEMAS_DESPACHO): UsoPush
 
   const activar = useCallback(async () => {
     setActivando(true);
+    setError(null);
     try {
-      await activarPush(temas);
+      const resultado = await activarPush(temas);
+      if (!resultado.ok) {
+        setError(
+          resultado.motivo === "sin-permiso"
+            ? "El navegador denegó el permiso de notificaciones. Hay que concederlo desde la configuración del sitio."
+            : resultado.motivo === "no-soportado"
+              ? "Este navegador no admite notificaciones push."
+              : (resultado.detalle ?? "No se pudo activar el aviso."),
+        );
+      }
     } finally {
       setActivando(false);
       await recalcular();
     }
   }, [temas, recalcular]);
 
-  return { estado, activando, activar };
+  return { estado, activando, activar, error };
 }

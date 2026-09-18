@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { api, ApiError } from "@/api";
 import { Bell, BellOff, BellRing, RefreshCw, Receipt, Volume2, VolumeX } from "lucide-react";
 
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -37,6 +38,29 @@ export function ComandasPage() {
   const loadCola = useComandaStore((s) => s.loadCola);
   const alerta = useAlertaCocina();
   const push = usePushSubscripcion();
+  const [probando, setProbando] = useState(false);
+  const [diagnostico, setDiagnostico] = useState<string | null>(null);
+
+  /**
+   * Pide al servidor que empuje un push de prueba a este usuario y muestra el
+   * resultado tal cual. El backend ya devuelve una frase en español que dice
+   * dónde se rompió la cadena; aquí no se interpreta, se enseña.
+   */
+  async function probar() {
+    setProbando(true);
+    setDiagnostico(null);
+    try {
+      const r = await api.probarPush();
+      const detalle = r.fallos.map((f) => `· ${f.status}: ${f.que}`).join("\n");
+      setDiagnostico(detalle ? `${r.diagnostico}\n${detalle}` : r.diagnostico);
+    } catch (err) {
+      setDiagnostico(
+        err instanceof ApiError ? err.message : "No se pudo contactar al servidor para la prueba.",
+      );
+    } finally {
+      setProbando(false);
+    }
+  }
 
   useEffect(() => {
     void loadCola();
@@ -89,12 +113,21 @@ export function ComandasPage() {
               </Button>
             )}
             {push.estado === "suscrito" && (
-              <span
-                className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[12px] text-fg-muted"
-                title="Este dispositivo recibe avisos de pedidos nuevos aunque la app esté cerrada"
-              >
-                <BellRing size={14} /> Avisos activos
-              </span>
+              <>
+                <span
+                  className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[12px] text-fg-muted"
+                  title="Este dispositivo recibe avisos de pedidos nuevos aunque la app esté cerrada"
+                >
+                  <BellRing size={14} /> Avisos activos
+                </span>
+                {/* Sin esto, "no me llegan las notificaciones" es indiagnosticable
+                    desde el salón: una suscripción que nunca se registró, un
+                    service worker viejo y unas claves VAPID mal puestas se ven
+                    todos igual — no pasa nada. Esto dice cuál de los tres es. */}
+                <Button size="sm" onClick={() => void probar()} disabled={probando}>
+                  <BellRing size={14} /> {probando ? "Probando…" : "Probar aviso"}
+                </Button>
+              </>
             )}
             <Button
               size="sm"
@@ -134,6 +167,26 @@ export function ComandasPage() {
             la pantalla de inicio (iOS 16.4+) — en una pestaña normal nunca
             llega nada, por más permiso que se pida. Mejor decirlo que ofrecer
             un botón "Activar avisos" que jamás va a funcionar ahí. */}
+        {/* Activar los avisos fallaba EN SILENCIO: el botón volvía a su sitio
+            y no se distinguía de no haberlo tocado nunca. */}
+        {push.error && (
+          <p
+            role="alert"
+            className="rounded-[var(--radius-md)] border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[12px] leading-relaxed text-danger"
+          >
+            No se pudieron activar los avisos: {push.error}
+          </p>
+        )}
+
+        {diagnostico && (
+          <p
+            role="status"
+            className="whitespace-pre-line rounded-[var(--radius-md)] border border-border bg-surface-sunken px-3.5 py-2.5 text-[12px] leading-relaxed text-fg-muted"
+          >
+            {diagnostico}
+          </p>
+        )}
+
         {push.estado === "requiere-instalar-ios" && (
           <p
             role="status"

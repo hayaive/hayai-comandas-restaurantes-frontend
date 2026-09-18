@@ -4,6 +4,7 @@ import type {
   ApiClient,
   Categoria,
   ClaveVapid,
+  ResultadoPruebaPush,
   Cobro,
   CobroPago,
   CobrarMesaInput,
@@ -1762,6 +1763,18 @@ export const mockApi: ApiClient = {
   // --- Web Push ---------------------------------------------------------
   async getClaveVapid(): Promise<ClaveVapid> {
     return delay({ clavePublica: VAPID_PUBLICA_DEMO });
+  },
+
+  async probarPush(): Promise<ResultadoPruebaPush> {
+    // En modo demo no hay servidor que empuje nada: se responde con el mismo
+    // shape para que la pantalla se pueda probar, diciendo la verdad.
+    return delay({
+      configurado: false,
+      suscripciones: suscripcionesPush.length,
+      entregadas: 0,
+      fallos: [],
+      diagnostico: "Modo demo: no hay servidor real que envíe notificaciones push.",
+    });
   },
 
   async crearSuscripcionPush(input: SuscripcionPushInput) {

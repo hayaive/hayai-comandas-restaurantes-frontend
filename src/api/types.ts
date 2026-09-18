@@ -633,6 +633,22 @@ export interface ClaveVapid {
 }
 
 /**
+ * Respuesta de `POST /push/probar`. Está pensada para LEERSE en pantalla, no
+ * para ramificar lógica: `diagnostico` es una frase en español que dice dónde
+ * se rompió la cadena. El backend nunca devuelve el `endpoint` aquí — sigue
+ * siendo una capacidad de escritura hacia el teléfono de alguien.
+ */
+export interface ResultadoPruebaPush {
+  /** `false` cuando el servidor no tiene claves VAPID: no puede enviar nada. */
+  configurado: boolean;
+  /** Aparatos de este usuario registrados en el backend. Cero es el hallazgo. */
+  suscripciones: number;
+  entregadas: number;
+  fallos: { status: string; que: string }[];
+  diagnostico: string;
+}
+
+/**
  * Cuerpo de `POST /push/suscripciones`. `endpoint`/`p256dh`/`auth` salen de
  * `PushSubscription` (ver `src/lib/pushSubscription.ts` para cómo se
  * codifican). Es un upsert por `endpoint`: volver a mandar la misma
@@ -883,6 +899,13 @@ export interface ApiClient {
   // --- Web Push ---
   /** La clave pública VAPID para `pushManager.subscribe`. */
   getClaveVapid(): Promise<ClaveVapid>;
+  /**
+   * `POST /push/probar` — manda un push de prueba a los aparatos del usuario
+   * y devuelve en qué paso se rompió la cadena. Es la única forma de
+   * distinguir desde el salón entre "nunca me suscribí", "mi service worker
+   * es viejo" y "el servidor no puede enviar": los tres se ven igual.
+   */
+  probarPush(): Promise<ResultadoPruebaPush>;
   /** Upsert por `endpoint` (nunca lo devuelve): crea o renueva la suscripción de este dispositivo. */
   crearSuscripcionPush(input: SuscripcionPushInput): Promise<SuscripcionPushCreada>;
   /** Las suscripciones del restaurante — para una futura pantalla de administración, no usada por el flujo de Despacho. */
