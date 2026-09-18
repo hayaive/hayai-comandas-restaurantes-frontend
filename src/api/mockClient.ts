@@ -1,7 +1,9 @@
 import type {
+  ActualizarSuscripcionPushInput,
   AddComandaItemInput,
   ApiClient,
   Categoria,
+  ClaveVapid,
   Cobro,
   CobroPago,
   CobrarMesaInput,
@@ -30,7 +32,11 @@ import type {
   Reservacion,
   Salon,
   DivisaTasa,
+  SuscripcionPush,
+  SuscripcionPushCreada,
+  SuscripcionPushInput,
   TasaDivisa,
+  TemaPush,
   TurnoServicio,
   UpdateMesaInput,
   VentaPunto,
@@ -875,6 +881,48 @@ function estadoDeMesa(mesaId: string, bloqueada: boolean): EstadoMesa {
   return proximaReservaDeMesa(mesaId) ? "reservada" : "libre";
 }
 
+// ---------------------------------------------------------------------------
+// Seed: suscripciones Web Push
+//
+// No hay backend real que guarde nada de esto en modo demo, así que vive en
+// memoria y se pierde al recargar — igual que el resto del mock. La clave
+// VAPID de abajo es un PLACEHOLDER con la forma correcta (base64url, ~87
+// caracteres, primer byte 0x04 como exige un punto P-256 sin comprimir) pero
+// NO corresponde a un par de claves real: `pushManager.subscribe` puede
+// rechazarla en el navegador. No importa para el modo demo — sin backend real
+// tampoco hay quién mande el push — y `pushSubscription.ts` nunca deja que
+// ese rechazo rompa la pantalla.
+// ---------------------------------------------------------------------------
+
+const VAPID_PUBLICA_DEMO =
+  "BPlaceholderVapidPublicKeyForMockModeOnlyDoNotUseInProductionXXXXXXXXXXXXXXXXXXX";
+
+interface SuscripcionPushSeed {
+  id: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  expirationTime: number | null;
+  temas: TemaPush[];
+  etiqueta?: string;
+  agenteUsuario?: string;
+  creadaEn: string;
+  renovadaEn: string;
+}
+
+let suscripcionesPush: SuscripcionPushSeed[] = [];
+
+function toSuscripcionPush(row: SuscripcionPushSeed): SuscripcionPush {
+  return {
+    id: row.id,
+    etiqueta: row.etiqueta ?? null,
+    agenteUsuario: row.agenteUsuario ?? null,
+    temas: row.temas,
+    creadaEn: row.creadaEn,
+    renovadaEn: row.renovadaEn,
+  };
+}
+
 export const mockApi: ApiClient = {
   // --- Plano: salones, plantillas y mesas -------------------------------
   async listSalones() {
@@ -1709,5 +1757,71 @@ export const mockApi: ApiClient = {
 
   async getReporteVentas(periodo: PeriodoReporte = "dia", fecha?: string) {
     return delay(buildReporteVentas(periodo, fecha));
+  },
+
+  // --- Web Push ---------------------------------------------------------
+  async getClaveVapid(): Promise<ClaveVapid> {
+    return delay({ clavePublica: VAPID_PUBLICA_DEMO });
+  },
+
+  async crearSuscripcionPush(input: SuscripcionPushInput) {
+    if (!input.endpoint || !input.p256dh || !input.auth) {
+      throw new ApiError("La suscripción push está incompleta", 400);
+    }
+    const ahora = new Date().toISOString();
+    // Upsert por endpoint, igual que el backend real: el latido de cada
+    // arranque de la app (ver AppShell) vuelve a mandar la misma suscripción
+    // y no debe duplicarla.
+    const existente = suscripcionesPush.find((s) => s.endpoint === input.endpoint);
+    const fila: SuscripcionPushSeed = {
+      id: existente?.id ?? uid("push"),
+      endpoint: input.endpoint,
+      p256dh: input.p256dh,
+      auth: input.auth,
+      expirationTime: input.expirationTime ?? null,
+      temas: input.temas,
+      etiqueta: input.etiqueta,
+      agenteUsuario: typeof navigator !== "undefined" ? navigator.userAgent : undefined,
+      creadaEn: existente?.creadaEn ?? ahora,
+      renovadaEn: ahora,
+    };
+    suscripcionesPush = existente
+      ? suscripcionesPush.map((s) => (s.id === fila.id ? fila : s))
+      : [...suscripcionesPush, fila];
+    return delay({
+      id: fila.id,
+      temas: fila.temas,
+      etiqueta: fila.etiqueta ?? null,
+      creadaEn: fila.creadaEn,
+      renovadaEn: fila.renovadaEn,
+    } satisfies SuscripcionPushCreada);
+  },
+
+  async listSuscripcionesPush() {
+    return delay(suscripcionesPush.map(toSuscripcionPush));
+  },
+
+  async actualizarSuscripcionPush(id: string, input: ActualizarSuscripcionPushInput) {
+    const idx = suscripcionesPush.findIndex((s) => s.id === id);
+    if (idx === -1) throw new ApiError("Esa suscripción no existe", 404);
+    const actual = suscripcionesPush[idx];
+    const next: SuscripcionPushSeed = {
+      ...actual,
+      ...(input.temas !== undefined ? { temas: input.temas } : {}),
+      ...(input.etiqueta !== undefined ? { etiqueta: input.etiqueta } : {}),
+    };
+    suscripcionesPush = [
+      ...suscripcionesPush.slice(0, idx),
+      next,
+      ...suscripcionesPush.slice(idx + 1),
+    ];
+    return delay(undefined);
+  },
+
+  async eliminarSuscripcionPush(endpoint: string) {
+    // Idempotente a propósito, como el DELETE real (204 aunque no exista):
+    // desuscribirse dos veces por lo que sea no debe ser un error.
+    suscripcionesPush = suscripcionesPush.filter((s) => s.endpoint !== endpoint);
+    return delay(undefined);
   },
 };

@@ -26,6 +26,30 @@ export default defineConfig({
       // by owner's decision nobody is allowed to keep working on a stale
       // build — but the reload itself still only ever happens on that
       // explicit tap, never silently mid-order.
+      //
+      // `strategies: "injectManifest"` (not the default `generateSW`) because
+      // Web Push needs a `push`/`notificationclick` listener, and
+      // `generateSW` owns the entire SW file — there is no hook to add
+      // custom code to it. With `injectManifest`, `src/sw.ts` is OUR file;
+      // Workbox only injects the precache manifest into it at build time
+      // (the `self.__WB_MANIFEST` placeholder). Everything `generateSW` used
+      // to do for us — precache, SPA `navigateFallback`, the `/api/`
+      // network-only rule, outdated-cache cleanup, and (critically) the
+      // `SKIP_WAITING` message listener that `updateServiceWorker(true)`
+      // depends on — is now hand-written in `src/sw.ts`. See the comments
+      // there, especially the one on the `message` listener: without it,
+      // "Actualizar ahora" in `PwaUpdateBanner` would hang forever, because
+      // nothing would ever tell the waiting worker to activate.
+      strategies: "injectManifest",
+      srcDir: "src",
+      filename: "sw.ts",
+      injectManifest: {
+        // App shell + static build assets only (JS/CSS/fonts/images that
+        // `vite build` emits into dist/) — precached so the shell can boot
+        // offline/on a flaky Wi-Fi signal. Mismo patrón que el
+        // `workbox.globPatterns` de antes de `injectManifest`.
+        globPatterns: ["**/*.{js,css,html,svg,png,jpg,jpeg,ico,woff2}"],
+      },
       registerType: "prompt",
       injectRegister: null,
       manifest: {
@@ -68,34 +92,12 @@ export default defineConfig({
         ],
       },
       includeAssets: ["favicon.png", "logo.jpg", "pwa/apple-touch-icon.png"],
-      workbox: {
-        // App shell + static build assets only (JS/CSS/fonts/images that
-        // `vite build` emits into dist/) — precached so the shell can boot
-        // offline/on a flaky Wi-Fi signal.
-        globPatterns: ["**/*.{js,css,html,svg,png,jpg,jpeg,ico,woff2}"],
-        // SPA deep links (e.g. reopening straight into /comandas) resolve to
-        // the cached shell instead of a network 404 when offline.
-        navigateFallback: "/index.html",
-        // Comandas/mesas/productos/reservaciones/ventas are live operational
-        // data, not content — they must NEVER be served from a cache. There
-        // is deliberately no `runtimeCaching` entry that matches them, so
-        // every request that isn't a precached static asset falls straight
-        // through to the network exactly like it would with no service
-        // worker at all. `httpClient.ts`'s API base (`VITE_API_URL`) can be
-        // a different origin or a same-origin `/api/...` path depending on
-        // deployment, so the fallback pattern below covers `/api/` matches
-        // under either shape as an explicit, self-documenting NetworkOnly
-        // rule rather than relying only on "nothing else matches it".
-        runtimeCaching: [
-          {
-            urlPattern: /\/api\//,
-            handler: "NetworkOnly",
-          },
-        ],
-        // Old precache entries are dropped as soon as the new SW activates,
-        // so a stale app shell never lingers in the cache after an update.
-        cleanupOutdatedCaches: true,
-      },
+      // El resto de lo que `workbox.*` configuraba con `generateSW` (SPA
+      // `navigateFallback`, la regla NetworkOnly de `/api/`, y el cleanup de
+      // caches viejos) ahora vive escrito a mano en `src/sw.ts`, porque
+      // `injectManifest` no genera nada de eso automáticamente — sólo
+      // sustituye `self.__WB_MANIFEST` por la lista de precache. Ver los
+      // comentarios ahí para el porqué de cada pieza.
       devOptions: {
         // Keep the SW out of `vite dev` entirely — nobody needs "install
         // this app" prompts or stale-shell debugging while iterating.

@@ -615,6 +615,67 @@ export interface ReporteVentas {
   comparacion: { desde: string; hasta: string; total: VentaResumen };
 }
 
+/**
+ * Los "canales" en los que el backend agrupa los eventos que dispara por
+ * push. Hoy sólo emite los dos primeros (comanda nueva a cocina/barra); los
+ * otros dos están en el contrato pero el backend todavía no los envía — no
+ * asumir que suscribirse a ellos ya trae nada.
+ */
+export type TemaPush =
+  | "comanda_cocina"
+  | "comanda_barra"
+  | "cuenta_por_cobrar"
+  | "reservacion_nueva";
+
+/** `GET /push/vapid`. La clave pública VAPID, en base64url. */
+export interface ClaveVapid {
+  clavePublica: string;
+}
+
+/**
+ * Cuerpo de `POST /push/suscripciones`. `endpoint`/`p256dh`/`auth` salen de
+ * `PushSubscription` (ver `src/lib/pushSubscription.ts` para cómo se
+ * codifican). Es un upsert por `endpoint`: volver a mandar la misma
+ * suscripción (p. ej. el latido de cada arranque) actualiza `temas`/
+ * `etiqueta` en vez de duplicar la fila.
+ */
+export interface SuscripcionPushInput {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  expirationTime?: number | null;
+  temas: TemaPush[];
+  etiqueta?: string;
+}
+
+/**
+ * Respuesta de `POST /push/suscripciones` (201). El backend NUNCA devuelve
+ * `endpoint`: es el secreto que identifica el dispositivo ante el proveedor
+ * push, no hace falta releerlo y exponerlo sería un riesgo gratuito.
+ */
+export interface SuscripcionPushCreada {
+  id: string;
+  temas: TemaPush[];
+  etiqueta?: string | null;
+  creadaEn: string;
+  renovadaEn: string;
+}
+
+/** Una fila de `GET /push/suscripciones` — tampoco trae `endpoint`. */
+export interface SuscripcionPush {
+  id: string;
+  etiqueta?: string | null;
+  agenteUsuario?: string | null;
+  temas: TemaPush[];
+  creadaEn: string;
+  renovadaEn: string;
+}
+
+export interface ActualizarSuscripcionPushInput {
+  temas?: TemaPush[];
+  etiqueta?: string;
+}
+
 export interface CreateProductoInput {
   categoriaId: string;
   nombre: string;
@@ -818,4 +879,15 @@ export interface ApiClient {
    * decide hora de corte y zona horaria, ya no hace falta calcularlo aquí).
    */
   getReporteVentas(periodo?: PeriodoReporte, fecha?: string): Promise<ReporteVentas>;
+
+  // --- Web Push ---
+  /** La clave pública VAPID para `pushManager.subscribe`. */
+  getClaveVapid(): Promise<ClaveVapid>;
+  /** Upsert por `endpoint` (nunca lo devuelve): crea o renueva la suscripción de este dispositivo. */
+  crearSuscripcionPush(input: SuscripcionPushInput): Promise<SuscripcionPushCreada>;
+  /** Las suscripciones del restaurante — para una futura pantalla de administración, no usada por el flujo de Despacho. */
+  listSuscripcionesPush(): Promise<SuscripcionPush[]>;
+  actualizarSuscripcionPush(id: string, input: ActualizarSuscripcionPushInput): Promise<void>;
+  /** Por `endpoint`, no por id: es lo único que el navegador conoce al desuscribirse. */
+  eliminarSuscripcionPush(endpoint: string): Promise<void>;
 }

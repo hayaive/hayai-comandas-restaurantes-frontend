@@ -24,5 +24,10 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src"],
+  // `src/sw.ts` compila aparte (ver tsconfig.sw.json): necesita la lib
+  // "webworker" para `self`/`ServiceWorkerGlobalScope`, y esa lib es
+  // incompatible con "dom" en el mismo programa TS (ambas declaran `self`
+  // con tipos distintos — TS no deja mezclarlas).
+  "exclude": ["src/sw.ts"]
 }

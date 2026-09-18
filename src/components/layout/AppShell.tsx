@@ -5,6 +5,7 @@ import { MobileBottomNav } from "./MobileBottomNav";
 import { useFloorPlanBootstrap } from "@/lib/useFloorPlanStore";
 import { useComandaBootstrap } from "@/lib/useComandaStore";
 import { useAlertaCocinaBootstrap } from "@/lib/useAlertaCocina";
+import { usePushSubscriptionBootstrap } from "@/lib/pushSubscription";
 
 export function AppShell() {
   // El plano (salón, plantillas y mesas reales) lo leen Mesas, Mesero,
@@ -19,6 +20,13 @@ export function AppShell() {
   // colgara de esa pantalla, salir de ella desmontaría al único que escucha y
   // el cocinero parado en Mesas o en Cuentas no se enteraría de nada.
   useAlertaCocinaBootstrap();
+  // Revalida la suscripción push del dispositivo en cada arranque (sólo si
+  // ya hay permiso concedido) — el navegador puede rotar el endpoint sin
+  // avisar, y esto es lo único que le vuelve a avisar al backend. Ver
+  // `src/lib/pushSubscription.ts`. No sustituye la alarma in-app de arriba:
+  // esa suena con la app abierta en cualquier pantalla, esto es lo que
+  // llega con la app cerrada del todo.
+  usePushSubscriptionBootstrap();
 
   return (
     <div className="relative flex h-dvh w-full flex-col overflow-hidden bg-bg text-fg">

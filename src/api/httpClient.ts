@@ -1,8 +1,10 @@
 import type {
   ActivarPlantillaResult,
+  ActualizarSuscripcionPushInput,
   AddComandaItemInput,
   ApiClient,
   Categoria,
+  ClaveVapid,
   Cobro,
   CobrarMesaInput,
   ColaDespachoItem,
@@ -33,6 +35,9 @@ import type {
   Reservacion,
   Salon,
   DivisaTasa,
+  SuscripcionPush,
+  SuscripcionPushCreada,
+  SuscripcionPushInput,
   TasaDivisa,
   TasaVigente,
   TipoComanda,
@@ -731,4 +736,17 @@ export const httpApi: ApiClient = {
     if (fecha) params.set("fecha", fecha);
     return request<ReporteVentas>(`/reportes/ventas?${params.toString()}`);
   },
+
+  // --- Web Push ---
+  getClaveVapid: () => request<ClaveVapid>("/push/vapid"),
+  crearSuscripcionPush: (input: SuscripcionPushInput) =>
+    request<SuscripcionPushCreada>("/push/suscripciones", { method: "POST", ...json(input) }),
+  listSuscripcionesPush: () => request<SuscripcionPush[]>("/push/suscripciones"),
+  actualizarSuscripcionPush: (id, input: ActualizarSuscripcionPushInput) =>
+    request<void>(`/push/suscripciones/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      ...json(input),
+    }),
+  eliminarSuscripcionPush: (endpoint) =>
+    request<void>("/push/suscripciones", { method: "DELETE", ...json({ endpoint }) }),
 };

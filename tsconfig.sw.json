@@ -1,0 +1,27 @@
+{
+  // Proyecto TS separado sólo para `src/sw.ts`. No puede vivir en
+  // tsconfig.app.json: ese usa `"lib": [..., "DOM", ...]` para el resto de la
+  // app (React, `window`, etc.), y el service worker corre en
+  // `ServiceWorkerGlobalScope`, que necesita la lib "WebWorker" — mezclar
+  // "DOM" y "WebWorker" en un mismo programa TS falla porque ambas declaran
+  // el global `self` con tipos incompatibles.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "WebWorker"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true
+  },
+  "include": ["src/sw.ts"]
+}

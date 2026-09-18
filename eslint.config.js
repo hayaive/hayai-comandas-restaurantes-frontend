@@ -25,4 +25,13 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // `src/sw.ts` corre en `ServiceWorkerGlobalScope`, no en el navegador:
+    // `self`, `caches`, `clients` son globals distintos a los de
+    // `globals.browser` de arriba (que asume `window`/`document`).
+    files: ["src/sw.ts"],
+    languageOptions: {
+      globals: globals.serviceworker,
+    },
+  },
 );
