@@ -1,10 +1,23 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
+import { create } from "zustand";
+
+import { useComandaStore } from "./useComandaStore";
 
 /**
- * Alerta de la cola de despacho: cuando entra una comanda nueva mientras la
- * pantalla de cocina está abierta, suena una alarma de 3 segundos, vibra el
- * dispositivo y sale una notificación del sistema, para que nadie tenga que
- * estar mirando el monitor.
+ * Alerta de la cola de despacho: cuando entra una comanda nueva suena una
+ * alarma de 3 segundos, vibra el dispositivo y sale una notificación del
+ * sistema, para que nadie tenga que estar mirando el monitor.
+ *
+ * **Vive a nivel de app, no de pantalla.** Antes esto era un hook con estado
+ * local que montaba `ComandasPage`: al salir de esa pantalla el componente se
+ * desmontaba y no quedaba nadie escuchando, así que el cocinero que estaba en
+ * Mesas o en Cuentas no se enteraba de nada. Ahora el estado vive en un store
+ * y la detección corre en `useAlertaCocinaBootstrap`, montado una sola vez en
+ * `AppShell`. `ComandasPage` sólo pinta los controles, que actúan sobre esa
+ * misma instancia.
+ *
+ * El `AudioContext` y los osciladores son singletons de módulo por la misma
+ * razón: uno solo para toda la vida de la app, en vez de uno por montaje.
  *
  * Los tres canales son deliberadamente redundantes porque cada uno falla en un
  * escenario distinto: el audio no existe si el navegador aún no tuvo un gesto
@@ -13,30 +26,23 @@ import { useCallback, useEffect, useRef, useState } from "react";
  *
  * LÍMITE IMPORTANTE: la notificación NO es Web Push. Avisa mientras la app
  * sigue viva —aunque esté en segundo plano o con la pantalla apagada—, pero
- * con la app cerrada del todo no llega nada. Para eso haría falta suscripción
+ * con la app cerrada del todo no llega nada. Para eso hace falta suscripción
  * push con claves VAPID y endpoints en el backend que guarden la suscripción
- * y disparen el envío al crear la comanda; hoy no existen.
+ * y disparen el envío al crear la comanda.
  *
  * **Por qué se sintetiza en vez de usar un archivo.** No hay ningún asset de
  * audio en `public/` (sólo imágenes: favicon, logo, logo-mono), y agregar un
- * binario que no se puede escuchar ni verificar en esta sesión sería meter al
- * repo un archivo a ciegas. La Web Audio API genera el bip sin dependencias,
- * sin peso y sin red — y si algún día el dueño trae su propio sonido, el punto
- * de cambio es sólo `reproducir()`.
+ * binario que no se puede escuchar ni verificar sería meter al repo un archivo
+ * a ciegas. La Web Audio API genera la alarma sin dependencias, sin peso y sin
+ * red — y si algún día el dueño trae su propio sonido, el punto de cambio es
+ * sólo `reproducir()`.
  *
  * **Autoplay.** Los navegadores no dejan sonar nada hasta que el usuario haya
  * interactuado con la página: un `AudioContext` creado antes nace `suspended`.
- * Por eso:
- *
- * - el contexto se crea perezosamente, no al montar;
- * - se intenta `resume()` en el primer gesto real del usuario (pointer/tecla),
- *   que es el momento en que el navegador lo permite;
- * - todo va envuelto en try/catch y en `.catch()`, porque `resume()` devuelve
- *   una promesa que se RECHAZA si el gesto todavía no ocurrió. Sin eso, un
- *   rechazo no capturado ensucia la consola en cada comanda nueva.
- *
- * El resultado: si el navegador bloquea el audio, la app no truena y la cola
- * sigue funcionando; el sonido entra solo en cuanto alguien toca la pantalla.
+ * Por eso el contexto se crea perezosamente, se intenta `resume()` en el primer
+ * gesto real del usuario, y todo va envuelto en try/catch — `resume()` devuelve
+ * una promesa que se RECHAZA si el gesto todavía no ocurrió, y un rechazo sin
+ * capturar ensuciaría la consola en cada comanda nueva.
  */
 
 /**
@@ -83,28 +89,13 @@ const TONOS = construirTonos();
  * siente antes de lo que se oye.
  *
  * `navigator.vibrate` NO existe en iOS/Safari (ni instalado como PWA): ahí
- * simplemente no vibra y el audio sigue haciendo su trabajo. No hay API
- * alternativa que emularla, así que se degrada en silencio.
+ * simplemente no vibra y el audio sigue haciendo su trabajo.
  */
 const PATRON_VIBRACION = TONOS.flatMap(() => [PULSO_S * 1000, SILENCIO_S * 1000]);
 
 type ContextoConWebkit = typeof globalThis & {
   webkitAudioContext?: typeof AudioContext;
 };
-
-function crearContexto(): AudioContext | null {
-  const Ctor =
-    typeof AudioContext !== "undefined"
-      ? AudioContext
-      : (globalThis as ContextoConWebkit).webkitAudioContext;
-  if (!Ctor) return null;
-  try {
-    return new Ctor();
-  } catch {
-    // Safari en modo restringido, o un entorno sin salida de audio.
-    return null;
-  }
-}
 
 /** Lo que se anuncia en la notificación. Sin esto sólo suena y vibra. */
 export interface DetalleAlerta {
@@ -116,31 +107,28 @@ export interface DetalleAlerta {
 
 export type PermisoNotificacion = "default" | "granted" | "denied" | "no-soportado";
 
-export interface AlertaCocina {
-  /** Dispara la alarma. No lanza nunca: si algo está bloqueado, no suena. */
-  reproducir: (detalle?: DetalleAlerta) => void;
-  /** Corta la alarma en curso — para el botón de "ya voy" de la cocina. */
-  detener: () => void;
-  /** `true` mientras los 3 segundos siguen sonando. */
-  sonando: boolean;
-  activa: boolean;
-  alternar: () => void;
-  /**
-   * Estado del permiso de notificaciones del navegador. `no-soportado` cuando
-   * la API no existe (navegador viejo, o iOS sin instalar la PWA).
-   */
-  permisoNotificaciones: PermisoNotificacion;
-  /**
-   * Pide el permiso. DEBE llamarse desde un gesto real del usuario: los
-   * navegadores ignoran (o penalizan) la petición automática al cargar.
-   */
-  pedirPermisoNotificaciones: () => void;
-  /**
-   * `true` cuando el navegador todavía no dejó sonar nada porque falta un
-   * gesto del usuario. La UI lo usa para avisar en vez de mentir con un icono
-   * de "sonido activo" que no suena.
-   */
-  bloqueadaPorNavegador: boolean;
+// --- Singletons de audio -------------------------------------------------
+// Fuera del store a propósito: son recursos del navegador, no estado que la UI
+// deba re-renderizar. El store sólo guarda lo que se pinta.
+
+let contexto: AudioContext | null = null;
+let osciladores: OscillatorNode[] = [];
+let finTimer: ReturnType<typeof setTimeout> | null = null;
+
+function obtenerContexto(): AudioContext | null {
+  if (contexto) return contexto;
+  const Ctor =
+    typeof AudioContext !== "undefined"
+      ? AudioContext
+      : (globalThis as ContextoConWebkit).webkitAudioContext;
+  if (!Ctor) return null;
+  try {
+    contexto = new Ctor();
+  } catch {
+    // Safari en modo restringido, o un entorno sin salida de audio.
+    contexto = null;
+  }
+  return contexto;
 }
 
 function leerPermiso(): PermisoNotificacion {
@@ -154,11 +142,6 @@ function leerPermiso(): PermisoNotificacion {
  * la única vía que sigue mostrándose con la pestaña en segundo plano o la
  * pantalla apagada — que es justo el caso del teléfono en el bolsillo del
  * cocinero. `new Notification()` queda de respaldo para el navegador sin SW.
- *
- * ALCANCE: esto NO es Web Push. Avisa mientras la app sigue viva (aunque esté
- * de fondo); con la app cerrada del todo haría falta suscripción push con
- * claves VAPID y un endpoint en el backend que las guarde y dispare el envío
- * — trabajo de servidor que no existe todavía.
  */
 async function notificar(detalle: DetalleAlerta): Promise<void> {
   if (leerPermiso() !== "granted") return;
@@ -183,42 +166,223 @@ async function notificar(detalle: DetalleAlerta): Promise<void> {
   }
 }
 
-function vibrar(): void {
+function vibrar(patron: number | number[]): void {
   try {
-    navigator.vibrate?.(PATRON_VIBRACION);
+    navigator.vibrate?.(patron);
   } catch {
     /* Algunos navegadores lanzan si el patrón excede su límite. */
   }
 }
 
-export function useAlertaCocina(): AlertaCocina {
-  const contextRef = useRef<AudioContext | null>(null);
-  /** Osciladores en vuelo, para poder cortar los 3 segundos a mitad. */
-  const osciladoresRef = useRef<OscillatorNode[]>([]);
-  const finTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [activa, setActiva] = useState(true);
-  const [bloqueada, setBloqueada] = useState(false);
-  const [sonando, setSonando] = useState(false);
-  const [permiso, setPermiso] = useState<PermisoNotificacion>(leerPermiso);
+// --- Store ---------------------------------------------------------------
 
-  const obtenerContexto = useCallback((): AudioContext | null => {
-    if (!contextRef.current) contextRef.current = crearContexto();
-    return contextRef.current;
-  }, []);
+interface AlertaCocinaState {
+  activa: boolean;
+  /** `true` mientras los 3 segundos siguen sonando. */
+  sonando: boolean;
+  /**
+   * `true` cuando el navegador todavía no dejó sonar nada porque falta un
+   * gesto del usuario. La UI lo usa para avisar en vez de mentir con un icono
+   * de "sonido activo" que no suena.
+   */
+  bloqueadaPorNavegador: boolean;
+  permisoNotificaciones: PermisoNotificacion;
+
+  /** Dispara la alarma. No lanza nunca: si algo está bloqueado, no suena. */
+  reproducir: (detalle?: DetalleAlerta) => void;
+  /** Corta la alarma en curso — para el botón de "ya voy" de la cocina. */
+  detener: () => void;
+  alternar: () => void;
+  /**
+   * Pide el permiso de notificaciones. DEBE llamarse desde un gesto real del
+   * usuario: los navegadores ignoran (o penalizan) la petición automática.
+   */
+  pedirPermisoNotificaciones: () => void;
+  /** Intenta sacar el `AudioContext` de `suspended`. Se llama en cada gesto. */
+  desbloquear: () => void;
+}
+
+export const useAlertaCocinaStore = create<AlertaCocinaState>((set, get) => ({
+  activa: true,
+  sonando: false,
+  bloqueadaPorNavegador: false,
+  permisoNotificaciones: leerPermiso(),
+
+  detener: () => {
+    for (const osc of osciladores) {
+      try {
+        osc.stop();
+      } catch {
+        /* Ya había terminado solo. */
+      }
+    }
+    osciladores = [];
+    if (finTimer) {
+      clearTimeout(finTimer);
+      finTimer = null;
+    }
+    // `vibrate(0)` es la forma de cancelar un patrón en curso.
+    vibrar(0);
+    set({ sonando: false });
+  },
+
+  reproducir: (detalle) => {
+    if (!get().activa) return;
+
+    // Vibración y notificación NO dependen del AudioContext: si el navegador
+    // tiene el audio bloqueado por falta de gesto, el teléfono igual avisa.
+    vibrar(PATRON_VIBRACION);
+    if (detalle) void notificar(detalle);
+
+    const ctx = obtenerContexto();
+    if (!ctx) return;
+
+    const emitir = () => {
+      try {
+        // Una alarma nueva reemplaza a la que sigue sonando en vez de
+        // superponerse: dos patrones a destiempo suenan a ruido, no a alerta.
+        get().detener();
+        const ahora = ctx.currentTime;
+        for (const tono of TONOS) {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = "square";
+          osc.frequency.value = tono.frecuencia;
+          // Rampa de entrada y salida: un gain que salta de 0 a 1 de golpe
+          // produce un "click" audible al principio y al final del tono.
+          const inicio = ahora + tono.inicio;
+          const fin = inicio + tono.duracion;
+          gain.gain.setValueAtTime(0.0001, inicio);
+          gain.gain.exponentialRampToValueAtTime(0.22, inicio + 0.01);
+          gain.gain.exponentialRampToValueAtTime(0.0001, fin);
+          osc.connect(gain).connect(ctx.destination);
+          osc.start(inicio);
+          osc.stop(fin + 0.02);
+          osciladores.push(osc);
+        }
+        finTimer = setTimeout(() => {
+          osciladores = [];
+          finTimer = null;
+          set({ sonando: false });
+        }, DURACION_ALERTA_S * 1000);
+        set({ sonando: true, bloqueadaPorNavegador: false });
+      } catch {
+        /* Nada que hacer: el sonido es un extra, no puede romper la pantalla. */
+      }
+    };
+
+    if (ctx.state === "suspended") {
+      // Puede rechazarse si el usuario todavía no interactuó: se marca como
+      // bloqueada y se sigue, en vez de propagar un rechazo sin capturar.
+      ctx
+        .resume()
+        .then(emitir)
+        .catch(() => set({ bloqueadaPorNavegador: true }));
+      return;
+    }
+    emitir();
+  },
+
+  alternar: () => {
+    const siguiente = !get().activa;
+    set({ activa: siguiente });
+    // Encender el sonido ES un gesto del usuario: aprovéchalo para
+    // desbloquear el contexto en el mismo toque.
+    if (siguiente) get().desbloquear();
+  },
+
+  pedirPermisoNotificaciones: () => {
+    if (typeof Notification === "undefined") {
+      set({ permisoNotificaciones: "no-soportado" });
+      return;
+    }
+    Notification.requestPermission()
+      .then((permiso) => set({ permisoNotificaciones: permiso }))
+      .catch(() => {
+        /* El usuario cerró el diálogo: el permiso sigue como estaba. */
+      });
+  },
+
+  desbloquear: () => {
+    const ctx = obtenerContexto();
+    if (!ctx) return;
+    ctx
+      .resume()
+      .then(() => set({ bloqueadaPorNavegador: false }))
+      .catch(() => {
+        /* Sigue bloqueado; se reintenta en el próximo gesto. */
+      });
+  },
+}));
+
+/** Los controles que pinta `ComandasPage`. Leen y actúan sobre el store único. */
+export function useAlertaCocina() {
+  return useAlertaCocinaStore();
+}
+
+/**
+ * Detecta comandas nuevas y dispara la alerta. Se monta UNA sola vez, en
+ * `AppShell`, para que suene desde cualquier pantalla.
+ *
+ * OJO con la latencia: `useComandaBootstrap` refresca la cola cada 25s, así
+ * que fuera de la pantalla de despacho el aviso puede llegar con ese retraso.
+ * Estando en Despacho, su propio poll de 6s manda y es prácticamente
+ * inmediato. Bajar el intervalo global sería más red desde cada dispositivo
+ * del local a cambio de segundos que la cocina no nota.
+ */
+export function useAlertaCocinaBootstrap(): void {
+  const cola = useComandaStore((s) => s.cola);
+  const status = useComandaStore((s) => s.colaStatus);
+
+  /**
+   * `null` como valor inicial distingue "todavía no cargué nada" de "la cola
+   * está vacía": sin esa distinción, la primera carga con pedidos ya en cola
+   * dispararía la alarma al abrir la app.
+   */
+  const idsConocidos = useRef<Set<string> | null>(null);
+
+  useEffect(() => {
+    if (status !== "ready") return;
+    const actuales = new Set(cola.map((c) => c.comandaId));
+    const previos = idsConocidos.current;
+    idsConocidos.current = actuales;
+    if (previos === null) return;
+
+    // Suena sólo cuando ENTRA una comanda que no estaba, no cada vez que la
+    // lista cambia: despachar una también cambia la lista, y premiar eso con
+    // una alarma entrenaría a la cocina a ignorarla.
+    const nuevas = cola.filter((c) => !previos.has(c.comandaId));
+    if (nuevas.length === 0) return;
+
+    // El cocinero mira la notificación desde el bolsillo: tiene que poder
+    // decidir si va o no sin desbloquear el teléfono, así que lleva mesa y
+    // cuántos productos. Con varias de golpe se resume en vez de apilar N
+    // notificaciones que se tapan entre sí.
+    const primera = nuevas[0];
+    const destino =
+      primera.tipo === "para_llevar" ? "Para llevar" : `Mesa ${primera.mesaEtiqueta ?? "?"}`;
+    const productos = primera.items.length;
+    useAlertaCocinaStore.getState().reproducir(
+      nuevas.length === 1
+        ? {
+            titulo: `Pedido nuevo · ${destino}`,
+            cuerpo: `Comanda #${primera.numeroDia} · ${productos} ${
+              productos === 1 ? "producto" : "productos"
+            }`,
+            tag: primera.comandaId,
+          }
+        : {
+            titulo: `${nuevas.length} pedidos nuevos`,
+            cuerpo: `Empezando por ${destino} · comanda #${primera.numeroDia}`,
+            tag: "cola-despacho",
+          },
+    );
+  }, [cola, status]);
 
   // Primer gesto del usuario: el único momento en que el navegador permite
   // sacar el contexto de `suspended`. `once` para no dejar listeners colgando.
   useEffect(() => {
-    function desbloquear() {
-      const ctx = obtenerContexto();
-      if (!ctx) return;
-      ctx
-        .resume()
-        .then(() => setBloqueada(false))
-        .catch(() => {
-          /* Sigue bloqueado; se reintenta en el próximo gesto. */
-        });
-    }
+    const desbloquear = () => useAlertaCocinaStore.getState().desbloquear();
     const opciones = { once: true } as const;
     window.addEventListener("pointerdown", desbloquear, opciones);
     window.addEventListener("keydown", desbloquear, opciones);
@@ -226,145 +390,5 @@ export function useAlertaCocina(): AlertaCocina {
       window.removeEventListener("pointerdown", desbloquear);
       window.removeEventListener("keydown", desbloquear);
     };
-  }, [obtenerContexto]);
-
-  // Cerrar el contexto al desmontar: la pantalla de cocina vive horas abiertas
-  // y no tiene por qué dejar un AudioContext vivo al navegar a otra ruta.
-  useEffect(() => {
-    return () => {
-      // Sin esto, salir de la pantalla a mitad de la alarma dejaba el timer
-      // vivo y la vibración corriendo hasta agotar el patrón.
-      if (finTimerRef.current) clearTimeout(finTimerRef.current);
-      try {
-        navigator.vibrate?.(0);
-      } catch {
-        /* Sin soporte: no había nada que cancelar. */
-      }
-      contextRef.current?.close().catch(() => {
-        /* Ya estaba cerrado. */
-      });
-      contextRef.current = null;
-    };
   }, []);
-
-  const detener = useCallback(() => {
-    for (const osc of osciladoresRef.current) {
-      try {
-        osc.stop();
-      } catch {
-        /* Ya había terminado solo. */
-      }
-    }
-    osciladoresRef.current = [];
-    if (finTimerRef.current) {
-      clearTimeout(finTimerRef.current);
-      finTimerRef.current = null;
-    }
-    try {
-      // `vibrate(0)` es la forma de cancelar un patrón en curso.
-      navigator.vibrate?.(0);
-    } catch {
-      /* Sin soporte: no había nada que cancelar. */
-    }
-    setSonando(false);
-  }, []);
-
-  const reproducir = useCallback(
-    (detalle?: DetalleAlerta) => {
-      if (!activa) return;
-
-      // Vibración y notificación NO dependen del AudioContext: si el navegador
-      // tiene el audio bloqueado por falta de gesto, el teléfono igual avisa.
-      vibrar();
-      if (detalle) void notificar(detalle);
-
-      const ctx = obtenerContexto();
-      if (!ctx) return;
-
-      const emitir = () => {
-        try {
-          // Una alarma nueva reemplaza a la que sigue sonando en vez de
-          // superponerse: dos patrones a destiempo suenan a ruido, no a alerta.
-          detener();
-          const ahora = ctx.currentTime;
-          for (const tono of TONOS) {
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.type = "square";
-            osc.frequency.value = tono.frecuencia;
-            // Rampa de entrada y salida: un gain que salta de 0 a 1 de golpe
-            // produce un "click" audible al principio y al final del tono.
-            const inicio = ahora + tono.inicio;
-            const fin = inicio + tono.duracion;
-            gain.gain.setValueAtTime(0.0001, inicio);
-            gain.gain.exponentialRampToValueAtTime(0.22, inicio + 0.01);
-            gain.gain.exponentialRampToValueAtTime(0.0001, fin);
-            osc.connect(gain).connect(ctx.destination);
-            osc.start(inicio);
-            osc.stop(fin + 0.02);
-            osciladoresRef.current.push(osc);
-          }
-          setSonando(true);
-          finTimerRef.current = setTimeout(() => {
-            osciladoresRef.current = [];
-            finTimerRef.current = null;
-            setSonando(false);
-          }, DURACION_ALERTA_S * 1000);
-          setBloqueada(false);
-        } catch {
-          /* Nada que hacer: el sonido es un extra, no puede romper la pantalla. */
-        }
-      };
-
-      if (ctx.state === "suspended") {
-        // Puede rechazarse si el usuario todavía no interactuó: se marca como
-        // bloqueada y se sigue, en vez de propagar un rechazo sin capturar.
-        ctx
-          .resume()
-          .then(emitir)
-          .catch(() => setBloqueada(true));
-        return;
-      }
-      emitir();
-    },
-    [activa, detener, obtenerContexto],
-  );
-
-  const pedirPermisoNotificaciones = useCallback(() => {
-    if (typeof Notification === "undefined") {
-      setPermiso("no-soportado");
-      return;
-    }
-    Notification.requestPermission()
-      .then(setPermiso)
-      .catch(() => {
-        /* El usuario cerró el diálogo: el permiso sigue como estaba. */
-      });
-  }, []);
-
-  const alternar = useCallback(() => {
-    setActiva((previa) => {
-      const siguiente = !previa;
-      // Encender el sonido ES un gesto del usuario: aprovéchalo para
-      // desbloquear el contexto en el mismo clic.
-      if (siguiente) {
-        obtenerContexto()
-          ?.resume()
-          .then(() => setBloqueada(false))
-          .catch(() => setBloqueada(true));
-      }
-      return siguiente;
-    });
-  }, [obtenerContexto]);
-
-  return {
-    reproducir,
-    detener,
-    sonando,
-    activa,
-    alternar,
-    permisoNotificaciones: permiso,
-    pedirPermisoNotificaciones,
-    bloqueadaPorNavegador: bloqueada && activa,
-  };
 }

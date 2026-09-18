@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { Bell, BellOff, RefreshCw, Receipt, Volume2, VolumeX } from "lucide-react";
 
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -48,51 +48,10 @@ export function ComandasPage() {
     return () => clearInterval(interval);
   }, [loadCola]);
 
-  // Suena sólo cuando ENTRA una comanda que no estaba, no cada vez que la
-  // lista cambia: despachar una también cambia la lista, y premiar eso con un
-  // bip entrenaría a la cocina a ignorar el sonido.
-  //
-  // `null` como valor inicial distingue "todavía no cargué nada" de "la cola
-  // está vacía": sin esa distinción, la primera carga con pedidos ya en cola
-  // dispararía la alarma al abrir la pantalla.
-  // Se depende de `reproducir` (estable vía `useCallback`) y no del objeto
-  // `alerta`, que es nuevo en cada render y volvería a disparar este efecto
-  // sin motivo.
-  const { reproducir } = alerta;
-  const idsConocidos = useRef<Set<string> | null>(null);
-  useEffect(() => {
-    if (status !== "ready") return;
-    const actuales = new Set(cola.map((c) => c.comandaId));
-    const previos = idsConocidos.current;
-    idsConocidos.current = actuales;
-    if (previos === null) return;
-    const nuevas = cola.filter((c) => !previos.has(c.comandaId));
-    if (nuevas.length === 0) return;
-
-    // El cocinero mira la notificación desde el bolsillo: tiene que poder
-    // decidir si va o no sin desbloquear el teléfono, así que lleva mesa y
-    // cuántos productos. Con varias de golpe se resume en vez de apilar N
-    // notificaciones que se tapan entre sí.
-    const primera = nuevas[0];
-    const destino =
-      primera.tipo === "para_llevar" ? "Para llevar" : `Mesa ${primera.mesaEtiqueta ?? "?"}`;
-    const productos = primera.items.length;
-    reproducir(
-      nuevas.length === 1
-        ? {
-            titulo: `Pedido nuevo · ${destino}`,
-            cuerpo: `Comanda #${primera.numeroDia} · ${productos} ${
-              productos === 1 ? "producto" : "productos"
-            }`,
-            tag: primera.comandaId,
-          }
-        : {
-            titulo: `${nuevas.length} pedidos nuevos`,
-            cuerpo: `Empezando por ${destino} · comanda #${primera.numeroDia}`,
-            tag: "cola-despacho",
-          },
-    );
-  }, [cola, status, reproducir]);
+  // La detección de comandas nuevas ya NO vive aquí: se mudó a
+  // `useAlertaCocinaBootstrap`, montado en `AppShell`, para que la alarma
+  // suene desde cualquier pantalla y no sólo con esta abierta. Aquí quedan
+  // sólo los controles, que actúan sobre ese mismo store.
 
   const cargandoInicial = status === "loading" && cola.length === 0;
 

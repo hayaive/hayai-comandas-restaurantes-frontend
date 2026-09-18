@@ -4,6 +4,7 @@ import { TasaBar } from "./TasaBar";
 import { MobileBottomNav } from "./MobileBottomNav";
 import { useFloorPlanBootstrap } from "@/lib/useFloorPlanStore";
 import { useComandaBootstrap } from "@/lib/useComandaStore";
+import { useAlertaCocinaBootstrap } from "@/lib/useAlertaCocina";
 
 export function AppShell() {
   // El plano (salón, plantillas y mesas reales) lo leen Mesas, Mesero,
@@ -14,6 +15,10 @@ export function AppShell() {
   // navegación (Sidebar + MobileBottomNav), visibles desde cualquier
   // pantalla — ver el comentario del hook en `useComandaStore.ts`.
   useComandaBootstrap();
+  // La alarma de pedidos nuevos vive aquí y no en la pantalla de despacho: si
+  // colgara de esa pantalla, salir de ella desmontaría al único que escucha y
+  // el cocinero parado en Mesas o en Cuentas no se enteraría de nada.
+  useAlertaCocinaBootstrap();
 
   return (
     <div className="relative flex h-dvh w-full flex-col overflow-hidden bg-bg text-fg">
