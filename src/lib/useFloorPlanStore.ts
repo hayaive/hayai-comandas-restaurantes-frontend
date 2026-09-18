@@ -181,6 +181,82 @@ const MOVE_DEBOUNCE_MS = 400;
 const TEXT_DEBOUNCE_MS = 600;
 const STEPPER_DEBOUNCE_MS = 350;
 
+/** `"M-16"` → `{ prefix: "M-", n: 16 }`. `null` si no termina en número. */
+function splitLabel(label: string): { prefix: string; n: number } | null {
+  const match = /^(.*?)(\d+)$/.exec(label.trim());
+  if (!match) return null;
+  const n = Number(match[2]);
+  return Number.isSafeInteger(n) ? { prefix: match[1], n } : null;
+}
+
+/** El prefijo más usado del conjunto; empata a favor del primero visto. */
+function dominantPrefix(parts: { prefix: string }[]): string | null {
+  const counts = new Map<string, number>();
+  for (const { prefix } of parts) counts.set(prefix, (counts.get(prefix) ?? 0) + 1);
+  let best: string | null = null;
+  let bestCount = 0;
+  for (const [prefix, count] of counts) {
+    if (count > bestCount) {
+      best = prefix;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+const DEFAULT_LABEL_PREFIX = "M";
+
+/**
+ * Por dónde sigue la numeración del plano en edición.
+ *
+ * Se toma el MAYOR número dibujado en ESA plantilla y se le suma uno: si la
+ * última es la M-16, la siguiente es la M-17. Antes se usaba
+ * `tables.length + 1`, que no es lo mismo en cuanto hay un hueco — borrar la
+ * M-15 y la M-16 dejaba 14 mesas y el contador volvía a proponer "M-15", que
+ * el backend rechaza con 409 porque quitar una mesa del plano NO borra su
+ * identidad ni libera su etiqueta (eso es `deleteTablePermanently`).
+ *
+ * El número es por plantilla, así que una distribución nueva arranca vacía y
+ * vuelve sola a 1. El prefijo, en cambio, se copia: primero del propio plano
+ * ("M-", "B-", "T-"…) y si está vacío del resto del restaurante, para que esa
+ * "mesa 1" de la plantilla nueva sea la M-1 que ya existe y no una identidad
+ * paralela con otro nombre.
+ */
+function nextTableNumber(
+  templates: FloorPlanTemplate[],
+  plantillaId: string,
+): { prefix: string; from: number } {
+  const own = (templates.find((tpl) => tpl.id === plantillaId)?.tables ?? [])
+    .map((t) => splitLabel(t.label))
+    .filter((part): part is { prefix: string; n: number } => part !== null);
+  const everywhere = templates
+    .flatMap((tpl) => tpl.tables)
+    .map((t) => splitLabel(t.label))
+    .filter((part): part is { prefix: string; n: number } => part !== null);
+
+  const prefix = dominantPrefix(own) ?? dominantPrefix(everywhere) ?? DEFAULT_LABEL_PREFIX;
+  const last = own.reduce((max, part) => (part.prefix === prefix ? Math.max(max, part.n) : max), 0);
+  return { prefix, from: last + 1 };
+}
+
+/** La identidad que ya lleva esa etiqueta, esté en la plantilla que esté. */
+function findMesaIdByLabel(templates: FloorPlanTemplate[], label: string): string | undefined {
+  const needle = label.trim().toLowerCase();
+  for (const tpl of templates) {
+    const match = tpl.tables.find((t) => t.label.trim().toLowerCase() === needle);
+    if (match) return match.id;
+  }
+  return undefined;
+}
+
+/**
+ * Cuántas etiquetas se prueban antes de rendirse. Una etiqueta puede estar
+ * tomada por una mesa que no se dibuja en NINGUNA plantilla (se quitó del
+ * plano pero su identidad sigue viva) y el cliente no tiene endpoint para
+ * enumerarlas: eso sólo se sabe por el 409 del backend.
+ */
+const MAX_LABEL_ATTEMPTS = 25;
+
 interface FloorPlanState {
   salones: Salon[];
   salonId: string | null;
@@ -468,42 +544,71 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
     if (!plantillaId) return;
 
     const tables = state.templates.find((tpl) => tpl.id === plantillaId)?.tables ?? [];
-    // La etiqueta es única en TODO el restaurante, no sólo en esta plantilla.
-    const taken = new Set(
-      state.templates.flatMap((tpl) => tpl.tables.map((t) => t.label.toLowerCase())),
-    );
-    let n = tables.length + 1;
-    while (taken.has(`m-${n}`)) n += 1;
-    const etiqueta = `M-${n}`;
 
     const size = DEFAULT_SIZE_BY_SHAPE[shape];
     const half = size / 2;
     const x = clamp(140 + ((tables.length * 47) % 900), half, CANVAS_WIDTH - half);
     const y = clamp(140 + ((tables.length * 83) % 480), half, CANVAS_HEIGHT - half);
+    const layout = {
+      posX: round2(x - half),
+      posY: round2(y - half),
+      ancho: size,
+      alto: size,
+      forma: (shape === "circle" ? "redonda" : "cuadrada") as PlantillaMesa["forma"],
+      capacidad: 4,
+    };
 
-    try {
-      const row = await api.createPlantillaMesa(plantillaId, {
-        etiqueta,
-        posX: round2(x - half),
-        posY: round2(y - half),
-        ancho: size,
-        alto: size,
-        forma: shape === "circle" ? "redonda" : "cuadrada",
-        capacidad: 4,
-      });
-      set((current) => ({
-        rawByKey: { ...current.rawByKey, [rowKey(plantillaId, row.mesaId)]: row },
-        templates: current.templates.map((tpl) =>
-          tpl.id === plantillaId
-            ? { ...tpl, tables: [...tpl.tables, toRestaurantTable(row, undefined)] }
-            : tpl,
-        ),
-        selectedTableId: row.mesaId,
-        error: null,
-      }));
-    } catch (error) {
-      set({ error: messageOf(error) });
+    const { prefix, from } = nextTableNumber(state.templates, plantillaId);
+    const inThisPlan = new Set(tables.map((t) => t.label.trim().toLowerCase()));
+
+    for (let n = from; n < from + MAX_LABEL_ATTEMPTS; n += 1) {
+      const etiqueta = `${prefix}${n}`;
+      // Por construcción `from` va por encima del plano, pero una etiqueta
+      // escrita a mano ("M-20" en un plano que llega a la 8) puede cruzarse.
+      if (inThisPlan.has(etiqueta.toLowerCase())) continue;
+
+      // La etiqueta es única en TODO el restaurante: si esa mesa ya existe en
+      // otra distribución, esto la trae a ésta en vez de intentar clonar su
+      // número. Es lo que deja que una plantilla nueva empiece en la 1 — es la
+      // misma mesa física, sólo colocada de otra forma.
+      const mesaId = findMesaIdByLabel(state.templates, etiqueta);
+
+      try {
+        const row = await api.createPlantillaMesa(
+          plantillaId,
+          mesaId ? { mesaId, ...layout } : { etiqueta, ...layout },
+        );
+        set((current) => {
+          // `PATCH …/mesas/:id` no trae la identidad; al reusar una mesa se
+          // recupera de lo ya cargado para que el canvas no pinte "?".
+          const mesa =
+            row.mesa ?? Object.values(current.rawByKey).find((r) => r.mesaId === row.mesaId)?.mesa;
+          const stored = mesa ? { ...row, mesa } : row;
+          return {
+            rawByKey: { ...current.rawByKey, [rowKey(plantillaId, stored.mesaId)]: stored },
+            templates: current.templates.map((tpl) =>
+              tpl.id === plantillaId
+                ? { ...tpl, tables: [...tpl.tables, toRestaurantTable(stored, undefined)] }
+                : tpl,
+            ),
+            selectedTableId: stored.mesaId,
+            error: null,
+          };
+        });
+        return;
+      } catch (error) {
+        // 409 al crear identidad = la etiqueta la tiene una mesa que no se
+        // dibuja en ninguna plantilla. Es invisible desde aquí, así que la
+        // única salida es correr el número y volver a probar.
+        if (error instanceof ApiError && error.status === 409 && !mesaId) continue;
+        set({ error: messageOf(error) });
+        return;
+      }
     }
+
+    set({
+      error: `No se pudo numerar la mesa nueva: de ${prefix}${from} en adelante todas las etiquetas están ocupadas. Renombra o elimina alguna mesa antes de agregar otra.`,
+    });
   },
 
   removeTable: async (tableId) => {
