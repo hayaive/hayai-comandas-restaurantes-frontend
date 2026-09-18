@@ -511,6 +511,8 @@ export const httpApi: ApiClient = {
       method: "POST",
       ...json({}),
     }),
+  listMesas: (salonId) =>
+    request<Mesa[]>(`/mesas${salonId ? `?salonId=${encodeURIComponent(salonId)}` : ""}`),
   createPlantillaMesa: (plantillaId, input: CreatePlantillaMesaInput) =>
     request<PlantillaMesa>(`/plantillas/${encodeURIComponent(plantillaId)}/mesas`, {
       method: "POST",

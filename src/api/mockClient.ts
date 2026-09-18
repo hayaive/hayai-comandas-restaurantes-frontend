@@ -952,6 +952,18 @@ export const mockApi: ApiClient = {
     });
   },
 
+  async listMesas(salonId?: string) {
+    // `mesas` sólo guarda las vivas — `deleteMesa` las saca del array, que es
+    // el equivalente al `eliminada_en` del backend. Quitar una mesa del plano
+    // (`deletePlantillaMesa`) no la toca: sigue aquí, con su etiqueta tomada.
+    return delay(
+      mesas
+        .filter((m) => !salonId || m.salonId === salonId)
+        .slice()
+        .sort((a, b) => a.etiqueta.localeCompare(b.etiqueta, undefined, { numeric: true })),
+    );
+  },
+
   async createPlantillaMesa(plantillaId: string, input: CreatePlantillaMesaInput) {
     plantillaById(plantillaId);
     let mesaId = input.mesaId;

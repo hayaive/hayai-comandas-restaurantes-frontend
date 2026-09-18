@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { create } from "zustand";
 import { api, ApiError } from "@/api";
 import type {
+  Mesa,
   MesaEstado,
   PlantillaDetalle,
   PlantillaMesa,
@@ -239,9 +240,24 @@ function nextTableNumber(
   return { prefix, from: last + 1 };
 }
 
-/** La identidad que ya lleva esa etiqueta, esté en la plantilla que esté. */
-function findMesaIdByLabel(templates: FloorPlanTemplate[], label: string): string | undefined {
+/**
+ * La identidad que ya lleva esa etiqueta.
+ *
+ * Manda el registro de mesas (`GET /mesas`), no lo dibujado: una mesa quitada
+ * del plano sigue viva y con su etiqueta tomada, pero no aparece en ninguna
+ * plantilla. Buscarla sólo en `templates` —como se hacía— la dejaba invisible
+ * y el número saltaba por encima de ella (plano vacío tras quitar M-1, M-2 y
+ * M-3 → la siguiente salía M-4). `templates` queda de respaldo por si el
+ * registro no se pudo cargar.
+ */
+function findMesaIdByLabel(
+  mesas: Mesa[],
+  templates: FloorPlanTemplate[],
+  label: string,
+): string | undefined {
   const needle = label.trim().toLowerCase();
+  const mesa = mesas.find((m) => m.etiqueta.trim().toLowerCase() === needle);
+  if (mesa) return mesa.id;
   for (const tpl of templates) {
     const match = tpl.tables.find((t) => t.label.trim().toLowerCase() === needle);
     if (match) return match.id;
@@ -268,6 +284,11 @@ interface FloorPlanState {
   editingTemplateId: string;
   /** `plantilla_mesa` cruda, para no perder campos que la UI no representa. */
   rawByKey: Record<string, PlantillaMesa>;
+  /**
+   * TODAS las identidades vivas del salón, dibujadas o no. No se pinta: sirve
+   * para numerar mesas nuevas sin chocar con una etiqueta que sigue ocupada.
+   */
+  mesas: Mesa[];
 
   selectedTableId: string | null;
   /** Sólo controla el espaciado del patrón de puntos del canvas — el ajuste a grilla se quitó. */
@@ -340,6 +361,7 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
   activeTemplateId: "",
   editingTemplateId: "",
   rawByKey: {},
+  mesas: [],
   selectedTableId: null,
   gridSize: 20,
   status: "idle",
@@ -357,6 +379,7 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
           salonId: null,
           templates: [],
           rawByKey: {},
+          mesas: [],
           activeTemplateId: "",
           editingTemplateId: "",
           status: "ready",
@@ -365,9 +388,13 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
       }
       const salonId = salones[0].id;
       const plantillas = await api.listPlantillas(salonId);
-      const [detalles, plano] = await Promise.all([
+      const [detalles, plano, mesas] = await Promise.all([
         Promise.all(plantillas.map((p) => api.getPlantilla(p.id))),
         api.getPlano(salonId),
+        // El registro sólo alimenta la numeración: si falla, el plano tiene
+        // que cargar igual. Sin él `addTable` cae al respaldo de siempre
+        // (mirar lo dibujado), que es peor pero no rompe nada.
+        api.listMesas(salonId).catch(() => [] as Mesa[]),
       ]);
 
       const indexed = indexPlano(plano);
@@ -389,6 +416,7 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
         salonId,
         templates,
         rawByKey,
+        mesas,
         activeTemplateId,
         editingTemplateId,
         selectedTableId: null,
@@ -567,11 +595,12 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
       // escrita a mano ("M-20" en un plano que llega a la 8) puede cruzarse.
       if (inThisPlan.has(etiqueta.toLowerCase())) continue;
 
-      // La etiqueta es única en TODO el restaurante: si esa mesa ya existe en
-      // otra distribución, esto la trae a ésta en vez de intentar clonar su
-      // número. Es lo que deja que una plantilla nueva empiece en la 1 — es la
-      // misma mesa física, sólo colocada de otra forma.
-      const mesaId = findMesaIdByLabel(state.templates, etiqueta);
+      // La etiqueta es única en TODO el restaurante: si esa mesa ya existe
+      // —dibujada en otra distribución o simplemente quitada de todos los
+      // planos— esto la trae a ésta en vez de intentar clonar su número. Es lo
+      // que deja que una plantilla nueva empiece en la 1 y que una mesa que se
+      // quitó vuelva con su mismo número: es la misma mesa física.
+      const mesaId = findMesaIdByLabel(state.mesas, state.templates, etiqueta);
 
       try {
         const row = await api.createPlantillaMesa(
@@ -586,6 +615,12 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
           const stored = mesa ? { ...row, mesa } : row;
           return {
             rawByKey: { ...current.rawByKey, [rowKey(plantillaId, stored.mesaId)]: stored },
+            // Identidad recién nacida: entra al registro para que el siguiente
+            // `addTable` de esta misma sesión ya la vea.
+            mesas:
+              mesa && !current.mesas.some((m) => m.id === mesa.id)
+                ? [...current.mesas, mesa]
+                : current.mesas,
             templates: current.templates.map((tpl) =>
               tpl.id === plantillaId
                 ? { ...tpl, tables: [...tpl.tables, toRestaurantTable(stored, undefined)] }
@@ -657,6 +692,7 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
     const rawSnapshot = Object.fromEntries(
       Object.entries(state.rawByKey).filter(([, row]) => row.mesaId === tableId),
     );
+    const mesaSnapshot = state.mesas.find((m) => m.id === tableId);
 
     set((current) => ({
       templates: current.templates.map((tpl) => ({
@@ -666,6 +702,10 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
       rawByKey: Object.fromEntries(
         Object.entries(current.rawByKey).filter(([, row]) => row.mesaId !== tableId),
       ),
+      // Éste sí libera la etiqueta (`eliminada_en` deja de ser null y el
+      // índice parcial la suelta), así que sale del registro y su número
+      // vuelve a estar disponible para una mesa nueva.
+      mesas: current.mesas.filter((m) => m.id !== tableId),
       selectedTableId: current.selectedTableId === tableId ? null : current.selectedTableId,
       error: null,
     }));
@@ -681,6 +721,12 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
           return { ...tpl, tables: [...tpl.tables, entry.table] };
         }),
         rawByKey: { ...current.rawByKey, ...rawSnapshot },
+        // La mesa sigue viva en el backend: su etiqueta nunca se liberó y
+        // tiene que volver al registro o el numerador la daría por libre.
+        mesas:
+          mesaSnapshot && !current.mesas.some((m) => m.id === tableId)
+            ? [...current.mesas, mesaSnapshot]
+            : current.mesas,
       }));
     }
   },
@@ -742,6 +788,9 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
                 row.mesaId === tableId ? [key, { ...row, mesa }] : [key, row],
               ),
             ),
+            // El registro guarda etiquetas: si no se actualiza aquí, la vieja
+            // seguiría "ocupada" y la nueva libre para el numerador.
+            mesas: state.mesas.map((m) => (m.id === tableId ? mesa : m)),
             error: null,
           }));
         } catch (error) {

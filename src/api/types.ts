@@ -696,6 +696,15 @@ export interface ApiClient {
   updatePlantilla(plantillaId: string, input: UpdatePlantillaInput): Promise<Plantilla>;
   deletePlantilla(plantillaId: string): Promise<void>;
   activarPlantilla(plantillaId: string): Promise<ActivarPlantillaResult>;
+  /**
+   * Las identidades de mesa VIVAS del restaurante (`eliminada_en IS NULL`),
+   * estén dibujadas en un plano o no. Es la única forma de ver una mesa que
+   * se quitó de todas las distribuciones pero sigue existiendo: su etiqueta
+   * continúa ocupada (índice parcial `unique (restaurante_id, lower(etiqueta))
+   * where eliminada_en is null`) y sin esta lista el editor no puede saberlo
+   * más que por el 409 al intentar crearla.
+   */
+  listMesas(salonId?: string): Promise<Mesa[]>;
   createPlantillaMesa(
     plantillaId: string,
     input: CreatePlantillaMesaInput,
