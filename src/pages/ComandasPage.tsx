@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { RefreshCw, Receipt, Volume2, VolumeX } from "lucide-react";
+import { Bell, BellOff, RefreshCw, Receipt, Volume2, VolumeX } from "lucide-react";
 
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/Button";
@@ -66,8 +66,32 @@ export function ComandasPage() {
     const previos = idsConocidos.current;
     idsConocidos.current = actuales;
     if (previos === null) return;
-    const hayNuevas = [...actuales].some((id) => !previos.has(id));
-    if (hayNuevas) reproducir();
+    const nuevas = cola.filter((c) => !previos.has(c.comandaId));
+    if (nuevas.length === 0) return;
+
+    // El cocinero mira la notificación desde el bolsillo: tiene que poder
+    // decidir si va o no sin desbloquear el teléfono, así que lleva mesa y
+    // cuántos productos. Con varias de golpe se resume en vez de apilar N
+    // notificaciones que se tapan entre sí.
+    const primera = nuevas[0];
+    const destino =
+      primera.tipo === "para_llevar" ? "Para llevar" : `Mesa ${primera.mesaEtiqueta ?? "?"}`;
+    const productos = primera.items.length;
+    reproducir(
+      nuevas.length === 1
+        ? {
+            titulo: `Pedido nuevo · ${destino}`,
+            cuerpo: `Comanda #${primera.numeroDia} · ${productos} ${
+              productos === 1 ? "producto" : "productos"
+            }`,
+            tag: primera.comandaId,
+          }
+        : {
+            titulo: `${nuevas.length} pedidos nuevos`,
+            cuerpo: `Empezando por ${destino} · comanda #${primera.numeroDia}`,
+            tag: "cola-despacho",
+          },
+    );
   }, [cola, status, reproducir]);
 
   const cargandoInicial = status === "loading" && cola.length === 0;
@@ -81,6 +105,22 @@ export function ComandasPage() {
         }
         actions={
           <>
+            {/* Mientras la alarma suena, callarla es la acción urgente: el
+                cocinero ya la oyó y necesita apagarla sin buscar el toggle. */}
+            {alerta.sonando && (
+              <Button size="sm" variant="primary" onClick={alerta.detener}>
+                <BellOff size={14} /> Silenciar
+              </Button>
+            )}
+            {alerta.permisoNotificaciones === "default" && (
+              <Button
+                size="sm"
+                onClick={alerta.pedirPermisoNotificaciones}
+                title="Recibe un aviso en el teléfono aunque la pantalla esté en otra app"
+              >
+                <Bell size={14} /> Activar avisos
+              </Button>
+            )}
             <Button
               size="sm"
               onClick={alerta.alternar}
