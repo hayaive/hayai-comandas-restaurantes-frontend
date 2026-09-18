@@ -6,8 +6,13 @@ import { useFloorPlanBootstrap } from "@/lib/useFloorPlanStore";
 import { useComandaBootstrap } from "@/lib/useComandaStore";
 import { useAlertaCocinaBootstrap } from "@/lib/useAlertaCocina";
 import { usePushSubscriptionBootstrap } from "@/lib/pushSubscription";
+import { useRestauranteBootstrap } from "@/lib/useRestauranteStore";
 
 export function AppShell() {
+  // Nombre, logo y moneda de visualización del negocio: se cargan una sola
+  // vez aquí y de ahí los lee toda la app (DualPrice, el ticket, la tarjeta
+  // de WhatsApp) — ver `useRestauranteStore.ts`.
+  useRestauranteBootstrap();
   // El plano (salón, plantillas y mesas reales) lo leen Mesas, Mesero,
   // Reservaciones y Comandas. Se carga una sola vez aquí, en el shell de staff,
   // para que ninguna pantalla trabaje con mesas sin `mesaId` real.

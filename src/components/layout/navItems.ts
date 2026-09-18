@@ -6,6 +6,7 @@ import {
   Package,
   QrCode,
   Receipt,
+  Settings,
   UtensilsCrossed,
   Wallet,
 } from "lucide-react";
@@ -32,4 +33,8 @@ export const navItems: NavItem[] = [
   { to: "/escanear", label: "Escanear", icon: Camera },
   { to: "/productos", label: "Productos", icon: Package },
   { to: "/ventas", label: "Ventas", icon: DollarSign },
+  // No está en `PRIMARY_ROUTES` de `MobileBottomNav`, así que cae sola en el
+  // menú "Más" de mobile — se calcula por descarte, no hace falta tocar ese
+  // archivo para que aparezca ahí.
+  { to: "/configuracion", label: "Configuración", icon: Settings },
 ];

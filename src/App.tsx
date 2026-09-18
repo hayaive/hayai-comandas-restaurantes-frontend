@@ -9,6 +9,7 @@ import { CuentasPorCobrarPage } from "@/pages/CuentasPorCobrarPage";
 import { VentasPage } from "@/pages/VentasPage";
 import { ReservacionesPage } from "@/pages/ReservacionesPage";
 import { ProductosPage } from "@/pages/ProductosPage";
+import { ConfiguracionPage } from "@/pages/ConfiguracionPage";
 import { CheckInPage } from "@/pages/CheckInPage";
 import { EscanearPage } from "@/pages/EscanearPage";
 import { SelfSeatPage } from "@/pages/SelfSeatPage";
@@ -33,6 +34,7 @@ export function App() {
             <Route path="/ventas" element={<VentasPage />} />
             <Route path="/reservaciones" element={<ReservacionesPage />} />
             <Route path="/productos" element={<ProductosPage />} />
+            <Route path="/configuracion" element={<ConfiguracionPage />} />
             <Route path="/checkin" element={<CheckInPage />} />
             <Route path="/escanear" element={<EscanearPage />} />
             <Route path="*" element={<NotFoundPage />} />

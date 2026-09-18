@@ -31,6 +31,7 @@ import type {
   ProductoVendido,
   ReporteVentas,
   Reservacion,
+  Restaurante,
   Salon,
   DivisaTasa,
   SuscripcionPush,
@@ -45,6 +46,7 @@ import type {
   UpdatePlantillaInput,
   UpdatePlantillaMesaInput,
   UpdateProductoInput,
+  UpdateRestauranteInput,
   UploadImagenResult,
 } from "./types";
 import { ApiError } from "./types";
@@ -78,6 +80,9 @@ function money(value: number): string {
 // the mock rejects the same files the real API would.
 const TIPOS_IMAGEN_PERMITIDOS = new Set(["image/jpeg", "image/png", "image/webp"]);
 const TAMANO_MAXIMO_IMAGEN_BYTES = 5 * 1024 * 1024;
+/** El logo del restaurante tiene su propio límite, más bajo que las fotos de
+ * producto (decisión del dueño, ver diseño de J.O.R.B.I §6). */
+const TAMANO_MAXIMO_LOGO_BYTES = 1 * 1024 * 1024;
 
 function todayAt(hours: number, minutes = 0): string {
   const d = new Date();
@@ -331,6 +336,30 @@ function shortCode(): string {
 // estado libre/ocupada/reservada NO almacenado sino derivado de las comandas y
 // reservaciones vivas — igual que hace la vista `v_mesa_estado` en producción.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Seed: restaurante (configuración del negocio)
+//
+// `nombre`/`logoUrl`/`mostrarPreciosEn` son justo los tres campos editables
+// desde la pantalla de Configuración; el resto viaja en la respuesta real de
+// `GET /restaurante` pero no se toca desde ahí (ver los comentarios de cada
+// campo en `Restaurante`, `src/api/types.ts`).
+// ---------------------------------------------------------------------------
+
+let restaurante: Restaurante = {
+  id: "restaurante-demo",
+  slug: "coffee-and-cake-demo",
+  nombre: "Coffee & Cake",
+  rif: "J-12345678-9",
+  logoUrl: null,
+  monedaBase: "USD",
+  mostrarPreciosEn: "ambas",
+  zonaHoraria: "America/Caracas",
+  horaCorteDia: "04:00:00",
+  duracionReservaMin: 90,
+  permiteAutoseleccion: true,
+  activo: true,
+};
 
 const SALON_ID = "sal-principal";
 const PLAN_WIDTH = 1200;
@@ -925,6 +954,44 @@ function toSuscripcionPush(row: SuscripcionPushSeed): SuscripcionPush {
 }
 
 export const mockApi: ApiClient = {
+  // --- Restaurante (configuración del negocio) --------------------------
+  async getRestaurante() {
+    return delay({ ...restaurante });
+  },
+
+  async updateRestaurante(input: UpdateRestauranteInput) {
+    if (input.nombre !== undefined) {
+      // Mismo CHECK que `restaurante_nombre_acotado` en el backend: recorta y
+      // exige 1–60 caracteres, no una cadena en blanco disfrazada de nombre.
+      const trimmed = input.nombre.trim();
+      if (trimmed.length < 1 || trimmed.length > 60) {
+        throw new ApiError("El nombre debe tener entre 1 y 60 caracteres", 422);
+      }
+      restaurante = { ...restaurante, nombre: trimmed };
+    }
+    if (input.logoUrl !== undefined) {
+      restaurante = { ...restaurante, logoUrl: input.logoUrl };
+    }
+    if (input.mostrarPreciosEn !== undefined) {
+      restaurante = { ...restaurante, mostrarPreciosEn: input.mostrarPreciosEn };
+    }
+    return delay({ ...restaurante });
+  },
+
+  async uploadLogo(archivo: File): Promise<UploadImagenResult> {
+    if (!TIPOS_IMAGEN_PERMITIDOS.has(archivo.type)) {
+      throw new ApiError("Solo se permiten imágenes JPG, PNG o WEBP", 400);
+    }
+    if (archivo.size > TAMANO_MAXIMO_LOGO_BYTES) {
+      throw new ApiError("El logo no puede pesar más de 1MB", 413);
+    }
+    // Igual que `uploadProductoImagen`: no hay backend real que persista el
+    // archivo, así que se crea una URL de blob local sólo para que la
+    // previsualización funcione — vive en memoria de esta pestaña.
+    const url = URL.createObjectURL(archivo);
+    return delay({ url }, 400);
+  },
+
   // --- Plano: salones, plantillas y mesas -------------------------------
   async listSalones() {
     return delay(salones.filter((s) => s.activo));

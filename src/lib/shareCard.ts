@@ -1,5 +1,7 @@
 import type { Reservacion } from "@/api";
+import { resolveMediaUrl } from "@/api/mediaUrl";
 import { formatDateTime } from "@/lib/format";
+import { useRestauranteStore } from "@/lib/useRestauranteStore";
 
 /**
  * Compositor de la tarjeta de reserva que se comparte por WhatsApp.
@@ -97,7 +99,15 @@ export async function buildReservationShareCard(
   const { qrCanvas, reservacion, restauranteNombre, exportScale } = opts;
 
   await ensureFontsReady();
-  const logo = await loadImage("/logo.jpg");
+  // `getState()` en vez del hook: esta función no es un componente, se llama
+  // desde un `useEffect` de `QrCodeModal` — mismo patrón que
+  // `facturaMesaData.ts` usa para leer el mismo store fuera de un render.
+  const logoUrlConfigurado = useRestauranteStore.getState().restaurante?.logoUrl ?? null;
+  // Sin logo configurado, sigue cayendo al estático local (mismo origen que
+  // la app, comportamiento sin cambios). Con uno configurado, vive en el
+  // origen del BACKEND — `resolveMediaUrl` lo resuelve contra `VITE_API_URL`.
+  const logoSrc = logoUrlConfigurado ? resolveMediaUrl(logoUrlConfigurado)! : "/logo.jpg";
+  const logo = await loadImage(logoSrc);
 
   // Pase 1 — medir. Un <canvas> no puede "crecer" después de dibujar sin
   // perder lo ya pintado, así que el alto final (que depende del nombre del
@@ -268,7 +278,16 @@ function renderCard(ctx: CanvasRenderingContext2D, params: RenderParams): number
       const qrSize = SHARE_CARD_QR_LOGICAL_SIZE;
       const qrX = panelX + (QR_PANEL - qrSize) / 2;
       const qrY = panelY + (QR_PANEL - qrSize) / 2;
+      // Un QR no es una foto: si el navegador interpola al dibujarlo, los
+      // bordes entre módulos se vuelven gris y el escáner deja de resolverlos.
+      // `QrCodeModal` ya pide el canvas al tamaño exacto para que no haya
+      // reescalado, pero esto es la segunda línea de defensa y es gratis: si
+      // por lo que sea las medidas no cuadran al píxel, prefiero módulos
+      // dentados a módulos difuminados — lo primero se escanea, lo segundo no.
+      const suavizadoPrevio = ctx.imageSmoothingEnabled;
+      ctx.imageSmoothingEnabled = false;
       ctx.drawImage(qrCanvas, qrX, qrY, qrSize, qrSize);
+      ctx.imageSmoothingEnabled = suavizadoPrevio;
     }
     y += QR_PANEL + 24;
   }
@@ -630,9 +649,26 @@ async function ensureFontsReady(): Promise<void> {
   }
 }
 
+/**
+ * `crossOrigin = "anonymous"` es OBLIGATORIO desde que el logo puede venir
+ * configurado (Configuración → `Restaurante.logoUrl`): esa imagen vive en el
+ * origen del BACKEND, no en el de esta app, y `app.useStaticAssets` del lado
+ * del servidor no manda cabeceras CORS por defecto. Dibujar una imagen
+ * cross-origin SIN esto en un `<canvas>` lo "contamina" (`canvas.toBlob()`
+ * lanza `SecurityError` más abajo, silenciosamente, sólo al intentar
+ * exportar) — el error no sale aquí, sale más tarde y es confuso de rastrear
+ * si no se sabe de esto de antemano. El backend necesita las cabeceras CORS
+ * en su handler de estáticos; esto solo es la mitad del arreglo que le toca
+ * al frontend, ver diseño §7.2.
+ *
+ * Para el estático local (`/logo.jpg`, mismo origen que esta app) el atributo
+ * es un no-op inofensivo: una petición same-origin no depende de cabeceras
+ * CORS para pasar, así que no hace falta ramificar según el origen.
+ */
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
+    img.crossOrigin = "anonymous";
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error(`No se pudo cargar ${src}.`));
     img.src = src;

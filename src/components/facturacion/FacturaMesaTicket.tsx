@@ -2,12 +2,13 @@ import { Coffee } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import {
-  formatBsEquivalent,
   formatDateTime,
+  formatPrecioCobro,
   formatTasaValor,
   formatTime,
   formatUsd,
 } from "@/lib/format";
+import type { MostrarPreciosEn } from "@/api";
 
 /**
  * Factura/recibo de cobro de una mesa — pensado para imprimirse en una
@@ -55,6 +56,21 @@ import {
  * NIT/dirección/teléfono — `Restaurante` no los tiene hoy). `mensajeFooter`
  * es la única excepción: un texto libre *opcional* con un default de UX, no
  * un campo del backend.
+ *
+ * ------------------------------------------------------------------------
+ * `mostrarPreciosEn` (Configuración) — SIGUE usando `tasaValor`, nunca la
+ * vigente
+ * ------------------------------------------------------------------------
+ * La pantalla de Configuración agregó `Restaurante.mostrarPreciosEn`
+ * ("usd" | "bs" | "ambas"): en qué moneda se DIBUJA cada línea. Eso es
+ * ortogonal a lo de arriba — decide SI se imprime el equivalente en
+ * bolívares, no CON QUÉ TASA. La tasa sigue siendo siempre `data.tasaValor`,
+ * la congelada del cobro; este componente no importa `useTasaStore` ni lee
+ * la tasa vigente en ningún punto, a propósito. Ver `formatPrecioCobro` en
+ * `src/lib/format.ts` — es la función gemela de `formatPrecioVivo` (la que sí
+ * usa la vigente, para cuentas sin cobrar), y existen como dos funciones
+ * separadas precisamente para que este componente no pueda mezclar las dos
+ * tasas por accidente.
  */
 
 export interface FacturaMesaItem {
@@ -107,6 +123,13 @@ export interface FacturaMesaData {
   cerradaEn?: string | null;
   restauranteNombre: string;
   restauranteRif?: string | null;
+  /**
+   * `Restaurante.mostrarPreciosEn` — en qué moneda se imprime cada línea.
+   * `undefined`/ausente cae a `"ambas"`, el comportamiento que el ticket ya
+   * tenía antes de que existiera esta preferencia (así un caller viejo que
+   * no la pase no cambia nada).
+   */
+  mostrarPreciosEn?: MostrarPreciosEn;
   /** Texto libre opcional para el pie. No es un campo del backend — default de UX. */
   mensajeFooter?: string;
 }
@@ -133,19 +156,38 @@ export function FacturaMesaTicket({
   const impuesto = withValue(data.impuesto);
   const propina = withValue(data.propina);
   const variasComandas = data.comandas.length > 1;
+  const vista = data.mostrarPreciosEn ?? "ambas";
 
   /**
-   * El ticket se imprime en bolívares: es la moneda con la que el cliente
-   * paga. La conversión usa `tasaValor`, la tasa CONGELADA en el cobro —no la
-   * vigente de hoy—, así que reimprimir una factura vieja da exactamente las
-   * mismas cifras que el día que se cobró.
-   *
-   * Sin tasa registrada ese día no hay nada que convertir y se cae al USD
-   * original: es lo único honesto que se puede imprimir, y es preferible a
-   * repetir "tasa no disponible" en cada línea.
+   * Cada línea del ticket, en la vista de precios configurada
+   * (`mostrarPreciosEn`). Usa `formatPrecioCobro` — no `formatPrecioVivo` —
+   * porque la conversión aquí SIEMPRE va con `data.tasaValor`, la tasa
+   * CONGELADA en el cobro, no la vigente de hoy: reimprimir una factura vieja
+   * tiene que dar exactamente las mismas cifras que el día que se cobró (ver
+   * la nota grande en `src/lib/format.ts`). Sin tasa registrada ese día,
+   * `formatPrecioCobro` ya degrada solo a USD en vez de repetir "tasa no
+   * disponible" en cada renglón.
    */
-  const money = (usd: string | number): string =>
-    data.tasaValor ? formatBsEquivalent(usd, data.tasaValor) : formatUsd(usd);
+  const money = (usd: string | number): string => formatPrecioCobro(usd, vista, data.tasaValor);
+
+  /**
+   * La fila de TOTAL es la única que NO pasa por `money()`: usa
+   * `data.totalBs`, ya calculado y congelado por el backend al cobrar, en vez
+   * de convertir `data.total` aquí (que podría quedar a un céntimo de
+   * distancia por redondeo — ver el comentario junto a la fila más abajo).
+   * Por eso necesita su propia versión de la degradación sin tasa, para
+   * decidir si esa fila se imprime en Bs o cae a USD.
+   */
+  const vistaTotalEfectiva: MostrarPreciosEn =
+    (vista === "bs" || vista === "ambas") && !data.tasaValor ? "usd" : vista;
+  const totalPrincipal =
+    vistaTotalEfectiva === "usd" ? formatUsd(data.total) : (totalBsFmt ?? formatUsd(data.total));
+  // La referencia en dólares (y la nota de tasa) sólo se imprime en vista
+  // "ambas": es justo la que promete mostrar las dos monedas. En "usd" no hay
+  // bolívares que referenciar, y en "bs" el dueño pidió explícitamente sólo
+  // bolívares — imprimir un monto en USD ahí, aunque sea "de referencia",
+  // sería colar la moneda que pidió no mostrar.
+  const mostrarReferenciaUsd = vistaTotalEfectiva === "ambas" && Boolean(data.tasaValor);
 
   return (
     <div
@@ -241,9 +283,10 @@ export function FacturaMesaTicket({
           diferir en céntimos de la que quedó registrada, y en el recibo del
           cliente manda la del cobro. Las líneas de arriba sí se convierten
           —el backend no las guarda en Bs— y por redondeo su suma puede
-          quedar a un céntimo de este total. */}
-      <Row l="TOTAL" r={totalBsFmt ?? money(data.total)} bold large />
-      {data.tasaValor && (
+          quedar a un céntimo de este total. Con vista "usd" el principal es
+          el dólar y no hay nada de esto que mostrar. */}
+      <Row l="TOTAL" r={totalPrincipal} bold large />
+      {mostrarReferenciaUsd && (
         <>
           {/* El menú está en dólares: la referencia deja auditar el ticket
               contra la carta sin llenar cada línea de dos monedas. */}

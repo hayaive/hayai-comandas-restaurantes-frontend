@@ -34,6 +34,7 @@ import type {
   ReporteDia,
   ReporteVentas,
   Reservacion,
+  Restaurante,
   Salon,
   DivisaTasa,
   SuscripcionPush,
@@ -46,6 +47,7 @@ import type {
   UpdatePlantillaInput,
   UpdatePlantillaMesaInput,
   UpdateProductoInput,
+  UpdateRestauranteInput,
   UploadImagenResult,
 } from "./types";
 import { ApiError } from "./types";
@@ -494,6 +496,16 @@ function toReservacion(raw: ReservacionResponse): Reservacion {
 }
 
 export const httpApi: ApiClient = {
+  // --- Restaurante (configuración del negocio) ---
+  getRestaurante: () => request<Restaurante>("/restaurante"),
+  updateRestaurante: (input: UpdateRestauranteInput) =>
+    request<Restaurante>("/restaurante", { method: "PATCH", ...json(input) }),
+  uploadLogo: (archivo: File) => {
+    const formData = new FormData();
+    formData.append("archivo", archivo);
+    return request<UploadImagenResult>("/uploads/logo", { method: "POST", body: formData });
+  },
+
   // --- Plano: salones, plantillas y mesas ---
   listSalones: () => request<Salon[]>("/salones"),
   listPlantillas: (salonId) =>

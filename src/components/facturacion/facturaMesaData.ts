@@ -1,4 +1,5 @@
 import type { Cobro } from "@/api";
+import { useRestauranteStore } from "@/lib/useRestauranteStore";
 import type { FacturaMesaData } from "./FacturaMesaTicket";
 
 /**
@@ -15,17 +16,15 @@ import type { FacturaMesaData } from "./FacturaMesaTicket";
  * `propina`, `total`, `totalBs`, `tasaValor`) ya vienen calculados y
  * congelados por el servidor, y `cobro.comandas` son las comandas que cubre.
  * Aquí no se suma ni una cifra.
+ *
+ * `restauranteNombre`/`restauranteRif`/`mostrarPreciosEn` salen ahora de
+ * `useRestauranteStore` (`GET /restaurante`, cargado una vez en `AppShell`) en
+ * vez de la variable de entorno `VITE_RESTAURANTE_NOMBRE` que se usaba antes
+ * de que este endpoint existiera. `getState()` en vez del hook porque esta
+ * función corre fuera de un componente React (se llama desde el handler que
+ * abre `FacturaMesaModal`, no durante un render) — mismo patrón que usa
+ * `shareCard.ts` para leer el logo configurado.
  */
-
-/**
- * Dos campos que el ticket necesita y el backend NO expone hoy (no hay
- * `GET /restaurante` en `CONTRACT.md`; `Restaurante.nombre`/`rif` existen en el
- * esquema pero ningún endpoint los devuelve). Se toman de la config del
- * frontend en vez de inventar un endpoint: cuando el backend lo exponga, este
- * default se reemplaza por la llamada real y nada más cambia.
- */
-const RESTAURANTE_NOMBRE = import.meta.env.VITE_RESTAURANTE_NOMBRE ?? "Coffee & Cake";
-const RESTAURANTE_RIF = import.meta.env.VITE_RESTAURANTE_RIF ?? null;
 
 export interface FacturaMesaContexto {
   /** Etiqueta de la mesa. `cobro.mesa` sólo viene en `GET /cobros/:id`. */
@@ -42,6 +41,7 @@ export function cobroAFacturaMesa(
   cobro: Cobro,
   contexto: FacturaMesaContexto = {},
 ): FacturaMesaData {
+  const restaurante = useRestauranteStore.getState().restaurante;
   return {
     mesaEtiqueta: contexto.mesaEtiqueta ?? cobro.mesa?.etiqueta ?? "—",
     clienteNombre: contexto.clienteNombre ?? null,
@@ -83,7 +83,13 @@ export function cobroAFacturaMesa(
     totalBs: cobro.totalBs,
     tasaValor: cobro.tasaValor,
     cerradaEn: cobro.cobradoEn,
-    restauranteNombre: RESTAURANTE_NOMBRE,
-    restauranteRif: RESTAURANTE_RIF,
+    // Fallback "Coffee & Cake" sólo por si el ticket se imprime en el
+    // instante entre que la app arranca y `GET /restaurante` responde (la
+    // ventana en la que `useRestauranteBootstrap` ya está cargando pero el
+    // store sigue en `null`) — nunca debería salir en un ticket real, cobrar
+    // exige haber navegado la app ya con el store cargado.
+    restauranteNombre: restaurante?.nombre ?? "Coffee & Cake",
+    restauranteRif: restaurante?.rif ?? null,
+    mostrarPreciosEn: restaurante?.mostrarPreciosEn ?? "ambas",
   };
 }

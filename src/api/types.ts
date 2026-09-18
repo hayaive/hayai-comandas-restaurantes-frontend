@@ -60,6 +60,71 @@ export type Moneda = "USD" | "BS";
 export type FuenteTasa = "bcv" | "manual" | "binance";
 
 /**
+ * En qué moneda se DIBUJAN los precios (UI, ticket, tarjeta de WhatsApp).
+ * Puro formato de presentación: cambiarla no toca ni un dato guardado.
+ *
+ * ⚠️ NO es `Moneda`, y sus valores van en minúscula A PROPÓSITO (decisión de
+ * J.O.R.B.I, ver `VistaPrecios` en el schema del backend). `Moneda` es el
+ * dominio del COBRO ('USD'/'BS') y el sistema hace `moneda === 'USD' ? monto
+ * : monto.div(tasa)` en varios sitios. Si este tipo reusara esos mismos
+ * literales, pasar `mostrarPreciosEn` donde se espera un `Moneda` compilaría
+ * sin queja (TypeScript es estructural) y dividiría un total entre la tasa
+ * por decisión de un ajuste puramente visual. Con 'usd'|'bs'|'ambas' el
+ * compilador lo rechaza solo, gratis.
+ */
+export type MostrarPreciosEn = "usd" | "bs" | "ambas";
+
+/**
+ * `GET /restaurante` — la configuración del negocio. Sesión de cualquier rol
+ * puede leerla; sólo `administrador` puede tocar `PATCH /restaurante`.
+ */
+export interface Restaurante {
+  id: string;
+  slug: string;
+  /** Acotado 1–60 caracteres por el backend (`restaurante_nombre_acotado`). */
+  nombre: string;
+  rif: string | null;
+  /**
+   * `/uploads/restaurante/<uuid>.<ext>`, o `null` si el dueño todavía no
+   * subió ninguno — la UI cae a las iniciales del nombre, nunca a un `<img>`
+   * roto. Resolver siempre con `resolveMediaUrl` antes de pintarlo.
+   */
+  logoUrl: string | null;
+  /**
+   * Moneda en la que están fijados los precios del menú (siempre 'USD' hoy,
+   * clavado por un CHECK del backend). NO es un ajuste editable: no se
+   * expone en la pantalla de Configuración. Para "en qué moneda se VE", el
+   * campo es `mostrarPreciosEn`.
+   */
+  monedaBase: Moneda;
+  mostrarPreciosEn: MostrarPreciosEn;
+  /**
+   * Fuera del DTO de `PATCH /restaurante` a propósito: cambiar la hora de
+   * corte reasigna a qué día contable pertenece lo que se está vendiendo, y
+   * eso es una conversación aparte de esta pantalla. Forma exacta sin
+   * verificar contra el backend real — no se lee en ningún sitio del
+   * frontend todavía.
+   */
+  horaCorteDia: string;
+  /** Fuera del DTO de `PATCH /restaurante`: cambiarla mueve el QR ya impreso. */
+  zonaHoraria: string;
+  duracionReservaMin: number;
+  permiteAutoseleccion: boolean;
+  activo: boolean;
+}
+
+/**
+ * `PATCH /restaurante`. EXACTAMENTE estos tres campos — `slug`, `monedaBase`,
+ * `horaCorteDia` y `zonaHoraria` no son editables aquí (ver los comentarios
+ * en `Restaurante`). `logoUrl: null` limpia el logo configurado.
+ */
+export interface UpdateRestauranteInput {
+  nombre?: string;
+  logoUrl?: string | null;
+  mostrarPreciosEn?: MostrarPreciosEn;
+}
+
+/**
  * OJO: `monto` viaja como **number**, no como string. Es la única cifra
  * monetaria del contrato que lo hace — el backend valida `@IsPositive()` sobre
  * un number y rechaza el Decimal-as-string con 400.
@@ -765,6 +830,19 @@ export class ApiError extends Error {
 }
 
 export interface ApiClient {
+  // --- Restaurante (configuración del negocio) ---
+  /** Sesión de cualquier rol. */
+  getRestaurante(): Promise<Restaurante>;
+  /** Sólo `administrador`. Devuelve el objeto completo para refrescar el store de una vez. */
+  updateRestaurante(input: UpdateRestauranteInput): Promise<Restaurante>;
+  /**
+   * Sube el logo (jpg/png/webp, **1MB max** — distinto de los 5MB de las
+   * fotos de producto) y devuelve su URL pública; guárdala como `logoUrl` en
+   * el `updateRestaurante` que sigue. Desacoplado del PATCH, igual que
+   * `uploadProductoImagen`. Sólo `administrador`.
+   */
+  uploadLogo(archivo: File): Promise<UploadImagenResult>;
+
   // --- Plano: salones, plantillas y mesas ---
   listSalones(): Promise<Salon[]>;
   listPlantillas(salonId: string): Promise<Plantilla[]>;

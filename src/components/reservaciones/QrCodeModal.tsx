@@ -5,13 +5,19 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { formatDateTime, selfSeatUrl } from "@/lib/format";
 import { buildReservationShareCard, SHARE_CARD_QR_LOGICAL_SIZE } from "@/lib/shareCard";
+import { useRestauranteStore } from "@/lib/useRestauranteStore";
 import type { Reservacion } from "@/api";
 
-/** Mismo default que usa `src/components/facturacion/facturaMesaData.ts` —
- * no hay un `GET /restaurante` que lo exponga hoy, así que ambos puntos del
- * producto que necesitan el nombre para imprimir/compartir leen la misma
- * variable de entorno con el mismo fallback. */
-const RESTAURANTE_NOMBRE = import.meta.env.VITE_RESTAURANTE_NOMBRE ?? "Coffee & Cake";
+/**
+ * El nombre sale ahora de `GET /restaurante` (pantalla de Configuración), no
+ * de `VITE_RESTAURANTE_NOMBRE`: esa era una variable de BUILD y cambiarla
+ * exigía recompilar. El fallback sólo cubre la ventana entre que arranca la
+ * app y responde el bootstrap del store; nunca debería verse en una tarjeta
+ * real, porque para llegar aquí hay que haber navegado a Reservaciones.
+ */
+function nombreDelRestaurante(): string {
+  return useRestauranteStore.getState().restaurante?.nombre ?? "Coffee & Cake";
+}
 
 export interface QrCodeModalProps {
   reservacion: Reservacion | null;
@@ -34,7 +40,30 @@ export function QrCodeModal({ reservacion, onClose }: QrCodeModalProps) {
   // como miniatura, y ahí un canvas 1:1 sale visiblemente borroso. Tope en 3x
   // para no generar un PNG innecesariamente pesado.
   const exportScale = useMemo(() => Math.min(3, Math.max(2, window.devicePixelRatio || 1)), []);
-  const qrPixelSize = SHARE_CARD_QR_LOGICAL_SIZE * exportScale;
+
+  /**
+   * ⚠️ El `size` que se le pide a `QRCodeCanvas` NO es el tamaño de su canvas.
+   * `qrcode.react` lo multiplica por su cuenta:
+   *
+   *     canvas.height = canvas.width = size * window.devicePixelRatio
+   *
+   * Si le pidiéramos directamente los píxeles que necesita la tarjeta, en un
+   * teléfono con `devicePixelRatio` 3 el canvas saldría 3× más grande que el
+   * hueco donde se dibuja, y `drawImage` lo reduciría CON SUAVIZADO — que
+   * convierte los bordes de los módulos en gris difuminado y deja el QR
+   * ilegible para cualquier escáner. En un escritorio (`dpr` 1) salía 1:1 y
+   * por eso el fallo sólo aparecía en móvil.
+   *
+   * Dividir aquí por el mismo `dpr` cancela esa multiplicación: el canvas
+   * queda EXACTAMENTE del tamaño que la tarjeta va a pintar, así que no hay
+   * reescalado de por medio, sea cual sea el `dpr` (incluso los fraccionarios
+   * de algunos Android, donde ni el suavizado desactivado salvaría los
+   * módulos).
+   */
+  const qrPixelSize = useMemo(() => {
+    const dpr = window.devicePixelRatio || 1;
+    return (SHARE_CARD_QR_LOGICAL_SIZE * exportScale) / dpr;
+  }, [exportScale]);
 
   useEffect(() => {
     if (!reservacion) {
@@ -57,7 +86,7 @@ export function QrCodeModal({ reservacion, onClose }: QrCodeModalProps) {
         const blob = await buildReservationShareCard({
           qrCanvas,
           reservacion,
-          restauranteNombre: RESTAURANTE_NOMBRE,
+          restauranteNombre: nombreDelRestaurante(),
           exportScale,
         });
         if (cancelled) return;
@@ -228,7 +257,7 @@ export function QrCodeModal({ reservacion, onClose }: QrCodeModalProps) {
  * en el fallback `wa.me` — usa `formatDateTime`, el mismo formateador que ya
  * existe en el proyecto, en vez de escribir uno nuevo. */
 function buildMensajeWhatsapp(reservacion: Reservacion): string {
-  return `Hola ${reservacion.clienteNombre}, esta es tu reserva en ${RESTAURANTE_NOMBRE} para el ${formatDateTime(
+  return `Hola ${reservacion.clienteNombre}, esta es tu reserva en ${nombreDelRestaurante()} para el ${formatDateTime(
     reservacion.iniciaEn,
   )}. Preséntala al llegar: ${selfSeatUrl(reservacion.codigoPublico)}`;
 }
