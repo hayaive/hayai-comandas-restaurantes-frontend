@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { BellRing, Check, Clock, User, X } from "lucide-react";
+import { Ban, BellRing, Check, Clock, User, X } from "lucide-react";
 
 import { CardBody, CardHeader } from "@/components/ui/Card";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { MotionCard } from "@/components/ui/MotionCard";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -41,6 +42,16 @@ export function ComandaCard({ comanda }: { comanda: ComandaEnCola }) {
   const [error, setError] = useState<string | null>(null);
   const despachar = useComandaStore((s) => s.despachar);
   const anularItem = useComandaStore((s) => s.anularItem);
+  const anularComanda = useComandaStore((s) => s.anularComanda);
+  /**
+   * Qué confirmación está abierta. Anular es IRREVERSIBLE —el backend marca
+   * `cancelado_en` y no expone forma de volver atrás— y esta tarjeta se toca
+   * en un tablet compartido, en cocina, con las manos ocupadas: un roce que
+   * borre el plato de un cliente no se puede deshacer.
+   */
+  const [confirmando, setConfirmando] = useState<
+    { tipo: "item"; id: string; nombre: string } | { tipo: "comanda" } | null
+  >(null);
 
   const atrasada = comanda.minutosEnCola >= MINUTOS_ATRASO;
   const vivos = comanda.items.filter((item) => !item.cancelado);
@@ -138,15 +149,7 @@ export function ComandaCard({ comanda }: { comanda: ComandaEnCola }) {
                       size="sm"
                       disabled={busy}
                       onClick={() =>
-                        void ejecutar(
-                          () =>
-                            anularItem(
-                              comanda.comandaId,
-                              item.id,
-                              "Anulado desde la cola de despacho",
-                            ),
-                          "No se pudo anular el ítem",
-                        )
+                        setConfirmando({ tipo: "item", id: item.id, nombre: item.nombre })
                       }
                     />
                   )}
@@ -175,22 +178,69 @@ export function ComandaCard({ comanda }: { comanda: ComandaEnCola }) {
           </p>
         )}
 
-        <Button
-          variant="primary"
-          size="lg"
-          className="w-full"
-          disabled={busy}
-          onClick={() =>
-            void ejecutar(
-              () => despachar(comanda.comandaId),
-              "No se pudo despachar la comanda",
-            )
-          }
-        >
-          {busy ? <BellRing size={16} /> : <Check size={16} />}
-          {busy ? "Despachando…" : "Despachar"}
-        </Button>
+        <div className="flex flex-col gap-2">
+          <Button
+            variant="primary"
+            size="lg"
+            className="w-full"
+            disabled={busy}
+            onClick={() =>
+              void ejecutar(
+                () => despachar(comanda.comandaId),
+                "No se pudo despachar la comanda",
+              )
+            }
+          >
+            {busy ? <BellRing size={16} /> : <Check size={16} />}
+            {busy ? "Despachando…" : "Despachar"}
+          </Button>
+          {/* Secundario y discreto a propósito: cancelar el pedido entero es lo
+              raro, y en un tablet de cocina no puede competir en peso visual
+              con "Despachar", que es lo que se toca cien veces por turno. */}
+          <Button
+            variant="secondary"
+            size="sm"
+            className="w-full"
+            disabled={busy}
+            onClick={() => setConfirmando({ tipo: "comanda" })}
+          >
+            <Ban size={14} /> Cancelar pedido
+          </Button>
+        </div>
       </CardBody>
+
+      <ConfirmDialog
+        open={confirmando !== null}
+        onClose={() => setConfirmando(null)}
+        busy={busy}
+        title={confirmando?.tipo === "comanda" ? "Cancelar el pedido" : "Anular el ítem"}
+        description={
+          confirmando?.tipo === "comanda"
+            ? `Se anula la comanda #${comanda.numeroDia} completa y sale de la cola. No se puede deshacer.`
+            : `Se anula «${confirmando?.tipo === "item" ? confirmando.nombre : ""}» del pedido. No se puede deshacer.`
+        }
+        confirmLabel={confirmando?.tipo === "comanda" ? "Cancelar pedido" : "Anular ítem"}
+        motivoLabel="Motivo"
+        motivoPorDefecto={
+          confirmando?.tipo === "comanda"
+            ? "Cancelado desde la cola de despacho"
+            : "Anulado desde la cola de despacho"
+        }
+        onConfirm={async (motivo) => {
+          const objetivo = confirmando;
+          if (!objetivo) return;
+          await ejecutar(
+            () =>
+              objetivo.tipo === "comanda"
+                ? anularComanda(comanda.comandaId, motivo)
+                : anularItem(comanda.comandaId, objetivo.id, motivo),
+            objetivo.tipo === "comanda"
+              ? "No se pudo cancelar el pedido"
+              : "No se pudo anular el ítem",
+          );
+          setConfirmando(null);
+        }}
+      />
     </MotionCard>
   );
 }
