@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { create } from "zustand";
 import { api, ApiError } from "@/api";
 import type {
@@ -225,3 +226,65 @@ export const useComandaStore = create<ComandaState>((set, get) => ({
     set({ cobrosDelDia: delBackend, historicoCompleto: true });
   },
 }));
+
+/**
+ * Carga `cola` y `cuentas` una sola vez por sesión y las refresca con un
+ * poll periódico — se monta en `AppShell` (mismo patrón que
+ * `useFloorPlanBootstrap`), porque los badges de "Despacho" y "Por cobrar"
+ * viven en la navegación, presente en TODA pantalla de staff, no sólo en
+ * Comandas o Cuentas. Sin esto el número sólo se actualizaría cuando el
+ * usuario ya está parado en esa pantalla, que es justo cuando el badge deja
+ * de hacer falta.
+ *
+ * Intervalo: 25s, dentro del rango pedido (20-30s). La pantalla de Despacho
+ * pollea cada 6s porque ahí la cocina está mirando la cola activamente y
+ * cada segundo de más es un pedido que tarda en aparecer; un badge de conteo
+ * no toma decisiones por sí solo, sólo dice "hay algo pendiente, entra a
+ * ver" — no necesita esa frescura, y pollear cada 6s desde CUALQUIER
+ * pantalla de la app sería tráfico de red que nadie pidió.
+ */
+export function useComandaBootstrap(): void {
+  const colaStatus = useComandaStore((state) => state.colaStatus);
+  const cuentasStatus = useComandaStore((state) => state.cuentasStatus);
+  const loadCola = useComandaStore((state) => state.loadCola);
+  const loadCuentas = useComandaStore((state) => state.loadCuentas);
+
+  useEffect(() => {
+    if (colaStatus === "idle") void loadCola();
+  }, [colaStatus, loadCola]);
+
+  useEffect(() => {
+    if (cuentasStatus === "idle") void loadCuentas();
+  }, [cuentasStatus, loadCuentas]);
+
+  useEffect(() => {
+    const POLL_INTERVAL_MS = 25_000;
+
+    // A diferencia de `PwaUpdateBanner` (chequeo cada 20 MINUTOS, así que da
+    // igual si un tick cae con la pestaña oculta), acá el intervalo es corto
+    // y toca dos endpoints, así que sí vale la pena saltarse el tick cuando
+    // nadie está mirando la pantalla — una tablet de host bloqueada no
+    // necesita refrescar un badge cada 25s. El `visibilitychange` sigue el
+    // mismo patrón: al volver a primer plano se refresca de inmediato en vez
+    // de esperar el resto del intervalo, que podría dejar el número minutos
+    // desactualizado.
+    function poll() {
+      if (document.visibilityState === "hidden") return;
+      const state = useComandaStore.getState();
+      if (state.colaStatus !== "loading") void loadCola();
+      if (state.cuentasStatus !== "loading") void loadCuentas();
+    }
+
+    const intervalId = window.setInterval(poll, POLL_INTERVAL_MS);
+
+    function onVisibilityChange() {
+      if (document.visibilityState === "visible") poll();
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [loadCola, loadCuentas]);
+}

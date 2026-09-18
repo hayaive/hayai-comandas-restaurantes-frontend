@@ -3,12 +3,17 @@ import { Sidebar } from "./Sidebar";
 import { TasaBar } from "./TasaBar";
 import { MobileBottomNav } from "./MobileBottomNav";
 import { useFloorPlanBootstrap } from "@/lib/useFloorPlanStore";
+import { useComandaBootstrap } from "@/lib/useComandaStore";
 
 export function AppShell() {
   // El plano (salón, plantillas y mesas reales) lo leen Mesas, Mesero,
   // Reservaciones y Comandas. Se carga una sola vez aquí, en el shell de staff,
   // para que ninguna pantalla trabaje con mesas sin `mesaId` real.
   useFloorPlanBootstrap();
+  // Cola de despacho y cuentas por cobrar: alimentan los badges de
+  // navegación (Sidebar + MobileBottomNav), visibles desde cualquier
+  // pantalla — ver el comentario del hook en `useComandaStore.ts`.
+  useComandaBootstrap();
 
   return (
     <div className="relative flex h-dvh w-full flex-col overflow-hidden bg-bg text-fg">

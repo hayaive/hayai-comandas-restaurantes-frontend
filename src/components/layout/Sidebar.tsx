@@ -8,6 +8,7 @@ import { IconButton } from "@/components/ui/IconButton";
 import { useAuthStore } from "@/lib/useAuthStore";
 import { useInstallPrompt } from "@/lib/useInstallPrompt";
 import { navItems } from "./navItems";
+import { NavBadge, useNavItemBadge } from "./NavBadge";
 
 /**
  * The desktop/tablet navigation rail.
@@ -49,24 +50,8 @@ export function Sidebar() {
       </div>
 
       <nav aria-label="Navegación principal" className="flex flex-1 flex-col gap-1 px-2 lg:px-3">
-        {navItems.map(({ to, label, icon: Icon }) => (
-          <NavLink
-            key={to}
-            to={to}
-            className={({ isActive }) =>
-              cn(
-                "flex items-center gap-3 rounded-[var(--radius-md)] px-2 py-2.5 text-[13px] font-medium",
-                "transition-colors duration-150 lg:px-3",
-                "flex-col justify-center lg:flex-row lg:justify-start",
-                isActive
-                  ? "bg-active text-active-fg"
-                  : "text-fg-muted hover:bg-surface-hover hover:text-fg",
-              )
-            }
-          >
-            <Icon size={20} strokeWidth={2} className="shrink-0" />
-            <span className="text-[10.5px] lg:text-[13px]">{label}</span>
-          </NavLink>
+        {navItems.map((item) => (
+          <SidebarNavLink key={item.to} item={item} />
         ))}
       </nav>
 
@@ -86,5 +71,37 @@ export function Sidebar() {
         />
       </div>
     </aside>
+  );
+}
+
+function SidebarNavLink({ item }: { item: (typeof navItems)[number] }) {
+  const { to, label, icon: Icon } = item;
+  const badge = useNavItemBadge(to);
+
+  return (
+    <NavLink
+      to={to}
+      className={({ isActive }) =>
+        cn(
+          "flex items-center gap-3 rounded-[var(--radius-md)] px-2 py-2.5 text-[13px] font-medium",
+          "transition-colors duration-150 lg:px-3",
+          "flex-col justify-center lg:flex-row lg:justify-start",
+          isActive
+            ? "bg-active text-active-fg"
+            : "text-fg-muted hover:bg-surface-hover hover:text-fg",
+        )
+      }
+    >
+      <span className="relative inline-flex shrink-0">
+        <Icon size={20} strokeWidth={2} />
+        {badge && <NavBadge count={badge.count} />}
+      </span>
+      <span className="text-[10.5px] lg:text-[13px]">{label}</span>
+      {/* El label ya es texto visible (a diferencia de la tab bar mobile), así
+          que el nombre accesible del link ya lo incluye por sí solo — este
+          `sr-only` sólo AGREGA el conteo, no repite el label, para que no se
+          anuncie dos veces. */}
+      {badge && <span className="sr-only">, {badge.srSuffix}</span>}
+    </NavLink>
   );
 }

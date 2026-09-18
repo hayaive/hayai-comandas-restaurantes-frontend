@@ -5,6 +5,7 @@ import { MoreHorizontal, Plus } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { navItems } from "./navItems";
 import { MobileMoreSheet } from "./MobileMoreSheet";
+import { NavBadge, useNavItemBadge } from "./NavBadge";
 
 /**
  * Barra de navegación inferior, exclusiva de mobile (`md:hidden`) — sustituye
@@ -12,21 +13,34 @@ import { MobileMoreSheet } from "./MobileMoreSheet";
  * horizontal crítico y no es cómodo de alcanzar con el pulgar.
  *
  * Máximo 5 opciones visibles, patrón FAB-en-tab-bar:
- *   Mesas · Comandas · [Agregar Orden] · Reservaciones · Más
+ *   Mesas · Comandas · [Agregar Orden] · Por cobrar · Más
  *
- * Por qué estas 3 pantallas fijas (+ el FAB): Mesas, Comandas y
- * Reservaciones son el ciclo de servicio que el mesero/host recorre en cada
- * mesa — junto con "Agregar Orden" (Mesero) son las cuatro que se tocan
- * constantemente durante el turno. Con el límite de 5 slots totales y la
- * regla de agrupar el resto detrás de "Más", ese quinto slot lo ocupa el
- * propio botón "Más" en vez de una cuarta pantalla — ahí quedan Check-in,
- * Escanear, Productos y Ventas (uso más esporádico o de un rol específico:
- * host en la puerta, cajero al cerrar, administración del catálogo).
+ * Por qué estas 3 pantallas fijas (+ el FAB): Mesas, Comandas y Por cobrar
+ * son el ciclo de servicio que el mesero/host recorre en cada mesa —sentar,
+ * despachar lo que sale de cocina, cobrar— junto con "Agregar Orden"
+ * (Mesero) son las cuatro que se tocan constantemente durante el turno.
+ * Reservaciones, que ocupaba este tercer slot antes, se movió a "Más": es
+ * una consulta puntual (host en la puerta), no un paso que se repite por
+ * cada mesa en cada turno, y Por cobrar SÍ lo es — además ahora lleva un
+ * badge con las cuentas pendientes (igual que Comandas con su cola), y ese
+ * aviso sólo cumple su función si la pantalla está entre las fijas, visible
+ * sin abrir "Más". Con el límite de 5 slots totales y la regla de agrupar el
+ * resto detrás de "Más", ese quinto slot lo ocupa el propio botón "Más" en
+ * vez de una cuarta pantalla — ahí quedan Reservaciones, Check-in, Escanear,
+ * Productos y Ventas (uso más esporádico o de un rol específico: host en la
+ * puerta, cajero al cerrar, administración del catálogo).
  *
  * Se renderiza en el flujo normal del layout (no `position: fixed`), igual
  * que `TasaBar` y `BottomToolbar` — así el AppShell reserva su espacio
  * automáticamente dentro del `flex-col` acotado por `h-dvh`, sin necesitar
  * padding-bottom calculado a mano en cada pantalla con scroll.
+ *
+ * SÓLO ICONOS: los rótulos se quitaron de la vista a pedido del cliente —en
+ * un teléfono angosto cinco etiquetas de 10.5px se truncaban y ensuciaban más
+ * de lo que orientaban. Siguen en el árbol como `sr-only`, que es lo que le da
+ * nombre accesible a cada pestaña; sin eso un lector de pantalla anunciaría
+ * sólo "enlace". Cada slot conserva 44px de alto mínimo para que el objetivo
+ * de toque no encoja con el texto.
  *
  * REDISEÑO: la barra ya no es el bloque negro del sistema anterior; ahora es
  * la misma superficie translúcida del resto del chrome. La pestaña activa
@@ -40,10 +54,10 @@ import { MobileMoreSheet } from "./MobileMoreSheet";
 const FAB_ROUTE = "/mesero";
 const FAB_LABEL = "Agregar Orden";
 
-const PRIMARY_ROUTES = ["/mesas", "/comandas", "/reservaciones"];
-// Orden explícito Mesas → Comandas → (FAB) → Reservaciones, independiente
-// del orden de declaración en `navItems`.
-const [mesasItem, comandasItem, reservacionesItem] = PRIMARY_ROUTES.map(
+const PRIMARY_ROUTES = ["/mesas", "/comandas", "/cuentas"];
+// Orden explícito Mesas → Comandas → (FAB) → Por cobrar, independiente del
+// orden de declaración en `navItems`.
+const [mesasItem, comandasItem, cuentasItem] = PRIMARY_ROUTES.map(
   (to) => navItems.find((item) => item.to === to)!,
 );
 
@@ -65,10 +79,7 @@ export function MobileBottomNav() {
         <NavTab item={mesasItem} />
         <NavTab item={comandasItem} />
 
-        <NavLink
-          to={FAB_ROUTE}
-          className="relative flex flex-col items-center justify-end gap-1 pb-0.5"
-        >
+        <NavLink to={FAB_ROUTE} className="relative flex min-h-11 items-center justify-center">
           {({ isActive }) => (
             <>
               <span
@@ -81,19 +92,12 @@ export function MobileBottomNav() {
               >
                 <Plus size={26} strokeWidth={2.5} />
               </span>
-              <span
-                className={cn(
-                  "text-center text-[10.5px] font-medium",
-                  isActive ? "text-fg" : "text-fg-muted",
-                )}
-              >
-                {FAB_LABEL}
-              </span>
+              <span className="sr-only">{FAB_LABEL}</span>
             </>
           )}
         </NavLink>
 
-        <NavTab item={reservacionesItem} />
+        <NavTab item={cuentasItem} />
 
         <button
           type="button"
@@ -101,15 +105,15 @@ export function MobileBottomNav() {
           aria-haspopup="dialog"
           aria-expanded={moreOpen}
           className={cn(
-            "flex flex-col items-center justify-center gap-1 rounded-[var(--radius-md)] px-1 py-1.5",
-            "text-[10.5px] font-medium transition-colors duration-150",
+            "flex min-h-11 items-center justify-center rounded-[var(--radius-md)] px-1 py-1.5",
+            "transition-colors duration-150",
             isMoreActive
               ? "bg-active text-active-fg"
               : "text-fg-muted hover:bg-surface-hover hover:text-fg",
           )}
         >
-          <MoreHorizontal size={20} />
-          Más
+          <MoreHorizontal size={22} />
+          <span className="sr-only">Más</span>
         </button>
       </nav>
 
@@ -120,21 +124,35 @@ export function MobileBottomNav() {
 
 function NavTab({ item }: { item: (typeof navItems)[number] }) {
   const { to, label, icon: Icon } = item;
+  const badge = useNavItemBadge(to);
   return (
     <NavLink
       to={to}
       className={({ isActive }) =>
         cn(
-          "flex flex-col items-center justify-center gap-1 rounded-[var(--radius-md)] px-1 py-1.5",
-          "text-[10.5px] font-medium transition-colors duration-150",
+          "flex min-h-11 items-center justify-center rounded-[var(--radius-md)] px-1 py-1.5",
+          "transition-colors duration-150",
           isActive
             ? "bg-active text-active-fg"
             : "text-fg-muted hover:bg-surface-hover hover:text-fg",
         )
       }
     >
-      <Icon size={20} />
-      <span className="truncate">{label}</span>
+      <span className="relative inline-flex">
+        <Icon size={22} />
+        {badge && <NavBadge count={badge.count} />}
+      </span>
+      {/* El texto se va de la pantalla, no del árbol: sin él la pestaña queda
+          sin nombre accesible y un lector de pantalla sólo anunciaría "enlace".
+          La píldora marrón sigue diciendo cuál está activa. El conteo se suma
+          al mismo nodo `sr-only` en vez de vivir en un `<span>` propio junto
+          al `NavBadge` (que es `aria-hidden`) — así el lector de pantalla lo
+          anuncia UNA vez, como parte del nombre del link ("Por cobrar, 3
+          cuentas pendientes"), no como un adorno visual suelto. */}
+      <span className="sr-only">
+        {label}
+        {badge ? `, ${badge.srSuffix}` : ""}
+      </span>
     </NavLink>
   );
 }
