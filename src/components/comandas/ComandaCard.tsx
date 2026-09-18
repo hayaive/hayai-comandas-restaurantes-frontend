@@ -32,6 +32,28 @@ import { useComandaStore } from "@/lib/useComandaStore";
  *
  * Despachar la saca de la cola pero NO la borra: queda viva en la cuenta
  * cobrable de su mesa.
+ *
+ * ## Escala tipográfica (pedido del dueño, sep-2026)
+ *
+ * Esta tarjeta se lee de pie, a uno o dos metros, con las manos ocupadas y en
+ * plena hora pico — no es una tabla de escritorio. Por eso se sale a
+ * propósito de la escala "Operate" por defecto de `DESIGN.md` (que asume
+ * lectura de cerca y densidad) sólo en esta tarjeta:
+ *
+ * - **Cantidad** en su propia "columna" (chip aparte, `text-xl`/`2xl` mono
+ *   bold): es lo primero que el cocinero necesita leer, antes que el nombre.
+ * - **Nombre del ítem** a `text-lg`/`xl` (antes `text-sm`) y sin `truncate`:
+ *   nunca se corta.
+ * - **Nota de ítem y nota general** son la información que, si se pierde,
+ *   sale mal el plato — van en un chip de color (mismo tono `reserved` que
+ *   ya usaba la nota general) para que destaquen del nombre, y tampoco
+ *   truncan.
+ * - **Mesa** sube a la escala "Large display" del sistema
+ *   (`text-2xl sm:text-3xl font-semibold`, la misma clase que ya usa el
+ *   logo de Login) porque es lo primero que busca el cocinero.
+ * - El **reloj de atraso** deja de ser sólo texto rojo y pasa a chip
+ *   (fondo + borde `danger-soft`) para que "atrasado" se note sin tener que
+ *   leer el número.
  */
 
 /** A partir de este rato en cola, la tarjeta se marca como atrasada. */
@@ -70,25 +92,41 @@ export function ComandaCard({ comanda }: { comanda: ComandaEnCola }) {
 
   return (
     <MotionCard interactive={false} lift>
-      <CardHeader>
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="font-mono text-base font-semibold tabular-nums text-fg">
+      {/* `flex-wrap` a propósito: la mesa ahora es mucho más grande y, junto
+          con el número de comanda y el chip de minutos, no siempre entra en
+          una sola línea en un teléfono angosto — que baje de línea es mejor
+          que truncar o achicar lo primero que busca el cocinero. */}
+      <CardHeader className="flex-wrap gap-y-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
+          {/* Mesa / Para llevar: lo más visible de la tarjeta (pedido
+              explícito del dueño), a la escala "Large display" del sistema —
+              la misma que usa el logo del login. */}
+          {/* `break-words` y NO `truncate`: es lo que el cocinero busca primero,
+              y a este tamaño "Barra exterior 3" o "Para llevar" se cortarían con
+              "…" en un teléfono. Mejor que baje de línea. */}
+          <span className="break-words font-mono text-2xl font-semibold tracking-tight tabular-nums text-fg sm:text-3xl">
             {comanda.tipo === "para_llevar"
               ? "Para llevar"
               : (comanda.mesaEtiqueta ?? "Sin mesa")}
           </span>
-          <Badge tone="neutral">#{comanda.numeroDia}</Badge>
+          <Badge tone="neutral" className="shrink-0 px-2.5 py-1 text-sm font-semibold">
+            #{comanda.numeroDia}
+          </Badge>
         </div>
         <span
           className={cn(
-            "flex shrink-0 items-center gap-1 font-mono text-[12px] tabular-nums",
-            atrasada ? "font-semibold text-danger" : "text-fg-subtle",
+            "flex shrink-0 items-center gap-1.5 rounded-[var(--radius-sm)] px-2.5 py-1.5 font-mono text-sm font-semibold tabular-nums sm:text-base",
+            // El chip rojo (no sólo texto rojo) es lo que hace que "atrasado"
+            // se note de un vistazo, sin tener que leer el número de minutos.
+            atrasada
+              ? "border border-danger/30 bg-danger-soft text-danger"
+              : "text-fg-subtle",
           )}
           // El reloj de la tarjeta es el dato operativo de la pantalla: cuánto
           // lleva esperando este pedido, no a qué hora entró.
           title={`Entró a las ${formatTime(comanda.creadaEn)}`}
         >
-          <Clock size={13} />
+          <Clock size={16} />
           {comanda.minutosEnCola} min
         </span>
       </CardHeader>
@@ -96,12 +134,15 @@ export function ComandaCard({ comanda }: { comanda: ComandaEnCola }) {
       <CardBody className="flex flex-1 flex-col gap-4">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-fg-muted">
           <User size={15} className="shrink-0" />
-          <span className="truncate">{comanda.meseroNombre ?? "Sin mesero asignado"}</span>
+          {/* Sin truncate: el nombre del mesero no es tan crítico como el de
+              un plato, pero no hay razón para cortarlo cuando puede bajar de
+              línea sin costo. */}
+          <span className="break-words">{comanda.meseroNombre ?? "Sin mesero asignado"}</span>
           <span className="shrink-0 text-fg-subtle">· {comanda.comensales} pers.</span>
         </div>
 
         {comanda.notas && (
-          <p className="rounded-[var(--radius-md)] border border-status-reserved/40 bg-status-reserved-soft px-3 py-2 text-[12px] leading-relaxed text-status-reserved-fg">
+          <p className="break-words rounded-[var(--radius-md)] border border-status-reserved/40 bg-status-reserved-soft px-3.5 py-2.5 text-sm font-semibold leading-relaxed text-status-reserved-fg sm:text-base">
             {comanda.notas}
           </p>
         )}
@@ -111,48 +152,91 @@ export function ComandaCard({ comanda }: { comanda: ComandaEnCola }) {
             Sin ítems
           </p>
         ) : (
+          // Tipo lista, no párrafo: cada ítem es una fila con tres columnas
+          // fijas (cantidad / plato+nota / destino+acción) en vez de una
+          // cadena "3× Nombre" corrida — así se escanea de un vistazo, no se
+          // lee palabra por palabra.
           <ul className="flex flex-col divide-y divide-border">
             {comanda.items.map((item) => {
               const destino = DESTINO_META[item.destino];
               return (
-                <li key={item.id} className="flex items-center gap-2 py-2.5">
-                  <div className="min-w-0 flex-1">
+                <li key={item.id} className="flex items-start gap-3 py-3.5 first:pt-0 last:pb-0">
+                  {/* Columna de cantidad: separada y destacada a propósito —
+                      en cocina se lee primero "cuántos" y después "qué es". */}
+                  <span
+                    className={cn(
+                      "flex h-11 min-w-11 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border px-2 font-mono text-xl font-bold tabular-nums sm:text-2xl",
+                      item.cancelado
+                        ? "border-border bg-surface-hover text-fg-subtle"
+                        : "border-accent/25 bg-accent-soft text-accent",
+                    )}
+                    aria-hidden="true"
+                  >
+                    {item.cantidad}×
+                  </span>
+
+                  <div className="min-w-0 flex-1 space-y-1.5 pt-0.5">
                     <p
                       className={cn(
-                        "truncate text-sm font-medium",
+                        "break-words text-lg font-semibold leading-snug sm:text-xl",
                         // Los cancelados se quedan a la vista, tachados: la
                         // cocina tiene que ver que algo se anuló por si ya lo
                         // había empezado.
                         item.cancelado ? "text-fg-subtle line-through" : "text-fg",
                       )}
                     >
-                      {item.cantidad}× {item.nombre}
+                      <span className="sr-only">{item.cantidad} </span>
+                      {item.nombre}
                     </p>
                     {item.nota && (
-                      <p className="truncate text-[11px] text-fg-subtle">* {item.nota}</p>
+                      // La nota es justo lo que no se puede perder ("sin
+                      // cebolla", "alérgico al maní"): chip de color, nunca
+                      // truncada, en vez de una línea gris a 11px.
+                      <p
+                        className={cn(
+                          "break-words rounded-[var(--radius-sm)] border px-2.5 py-1.5 text-sm font-semibold leading-snug sm:text-base",
+                          item.cancelado
+                            ? "border-border bg-surface-hover text-fg-subtle line-through"
+                            : "border-status-reserved/40 bg-status-reserved-soft text-status-reserved-fg",
+                        )}
+                      >
+                        {item.nota}
+                      </p>
                     )}
                   </div>
-                  {destino && (
-                    <Badge tone={destino.tone} className="shrink-0">
-                      {destino.label}
-                    </Badge>
-                  )}
-                  {item.cancelado ? (
-                    <Badge tone="neutral" className="shrink-0">
-                      Anulado
-                    </Badge>
-                  ) : (
-                    <IconButton
-                      icon={<X size={13} />}
-                      label={`Anular ${item.nombre}`}
-                      variant="danger"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() =>
-                        setConfirmando({ tipo: "item", id: item.id, nombre: item.nombre })
-                      }
-                    />
-                  )}
+
+                  {/* Columna de destino + acción: la misma cola la miran
+                      cocina y barra, así que el destino tiene que verse tan
+                      bien como la cantidad, no ir metido como texto chico. */}
+                  <div className="flex shrink-0 flex-col items-end gap-2 pt-0.5">
+                    {destino && (
+                      <Badge
+                        tone={destino.tone}
+                        className={cn(
+                          "px-3 py-1.5 text-sm font-semibold",
+                          item.cancelado && "opacity-60",
+                        )}
+                      >
+                        {destino.label}
+                      </Badge>
+                    )}
+                    {item.cancelado ? (
+                      <Badge tone="neutral" className="px-3 py-1.5 text-sm font-semibold">
+                        Anulado
+                      </Badge>
+                    ) : (
+                      <IconButton
+                        icon={<X size={16} />}
+                        label={`Anular ${item.nombre}`}
+                        variant="danger"
+                        size="md"
+                        disabled={busy}
+                        onClick={() =>
+                          setConfirmando({ tipo: "item", id: item.id, nombre: item.nombre })
+                        }
+                      />
+                    )}
+                  </div>
                 </li>
               );
             })}

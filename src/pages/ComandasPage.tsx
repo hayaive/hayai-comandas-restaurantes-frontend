@@ -228,7 +228,13 @@ export function ComandasPage() {
               </span>
             }
           >
-            <StaggerGrid className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {/* Las tarjetas ahora llevan mucho más texto (nombres y notas sin
+                truncar, tipografía más grande) — a `sm` (640px) dos columnas
+                las dejaba angostísimas. Una sola columna hasta `lg` (1024px,
+                lo típico de un tablet en horizontal), dos hasta `2xl`, y
+                recién a partir de ahí tres; en el teléfono sigue siendo una
+                sola columna. */}
+            <StaggerGrid className="grid grid-cols-1 gap-5 lg:grid-cols-2 2xl:grid-cols-3">
               {cola.map((comanda) => (
                 <ComandaCard key={comanda.comandaId} comanda={comanda} />
               ))}
