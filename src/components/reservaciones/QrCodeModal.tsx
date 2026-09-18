@@ -133,7 +133,10 @@ export function QrCodeModal({ reservacion, onClose }: QrCodeModalProps) {
 
   async function handleShare() {
     if (cardState.status !== "ready" || !reservacion) return;
-    const mensaje = buildMensajeWhatsapp(reservacion);
+    // Dos textos: con la imagen adjunta el QR ya lleva la reserva y el enlace
+    // sobra; si la imagen no viaja (escritorio), el enlace es lo único útil.
+    const mensajeConImagen = buildMensajeWhatsapp(reservacion, false);
+    const mensajeSinImagen = buildMensajeWhatsapp(reservacion, true);
     const file = new File([cardState.blob], `reserva-${reservacion.codigoCorto}.png`, {
       type: "image/png",
     });
@@ -153,19 +156,19 @@ export function QrCodeModal({ reservacion, onClose }: QrCodeModalProps) {
         await navigator.share({
           files: [file],
           title: `Reserva de ${reservacion.clienteNombre}`,
-          text: mensaje,
+          text: mensajeConImagen,
         });
         setShareNotice(null);
       } catch (error) {
         // AbortError = la persona cerró el selector sin elegir nada; no es
         // un fallo real y no amerita mensaje ni fallback.
         if (error instanceof Error && error.name === "AbortError") return;
-        openWhatsappFallback(reservacion, mensaje);
+        openWhatsappFallback(reservacion, mensajeSinImagen);
       }
       return;
     }
 
-    openWhatsappFallback(reservacion, mensaje);
+    openWhatsappFallback(reservacion, mensajeSinImagen);
   }
 
   function openWhatsappFallback(target: Reservacion, mensaje: string) {
@@ -256,10 +259,25 @@ export function QrCodeModal({ reservacion, onClose }: QrCodeModalProps) {
 /** Texto que acompaña la imagen en `navigator.share` y el cuerpo del mensaje
  * en el fallback `wa.me` — usa `formatDateTime`, el mismo formateador que ya
  * existe en el proyecto, en vez de escribir uno nuevo. */
-function buildMensajeWhatsapp(reservacion: Reservacion): string {
-  return `Hola ${reservacion.clienteNombre}, esta es tu reserva en ${nombreDelRestaurante()} para el ${formatDateTime(
+/**
+ * El texto que acompaña la reserva en WhatsApp.
+ *
+ * Con la imagen adjunta NO lleva la URL (pedido del dueño): el mensaje sale
+ * como pie de la tarjeta, y el QR de esa tarjeta ya contiene la reserva, así
+ * que el enlace sólo ensuciaba el pie y hacía que WhatsApp generara una vista
+ * previa encima de la imagen.
+ *
+ * Sin imagen SÍ la lleva. Es el caso de escritorio, donde WhatsApp no acepta
+ * imágenes desde la web y sale sólo el texto: sin el enlace el cliente
+ * recibiría un saludo sin nada con qué presentarse en la puerta.
+ */
+function buildMensajeWhatsapp(reservacion: Reservacion, conEnlace: boolean): string {
+  const saludo = `Hola ${reservacion.clienteNombre}, esta es tu reserva en ${nombreDelRestaurante()} para el ${formatDateTime(
     reservacion.iniciaEn,
-  )}. Preséntala al llegar: ${selfSeatUrl(reservacion.codigoPublico)}`;
+  )}.`;
+  return conEnlace
+    ? `${saludo} Preséntala al llegar: ${selfSeatUrl(reservacion.codigoPublico)}`
+    : `${saludo} Muestra este código al llegar.`;
 }
 
 /**
