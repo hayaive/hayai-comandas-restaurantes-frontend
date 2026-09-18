@@ -1,7 +1,13 @@
 import { Coffee } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { formatDateTime, formatTasaValor, formatTime, formatUsd } from "@/lib/format";
+import {
+  formatBsEquivalent,
+  formatDateTime,
+  formatTasaValor,
+  formatTime,
+  formatUsd,
+} from "@/lib/format";
 
 /**
  * Factura/recibo de cobro de una mesa — pensado para imprimirse en una
@@ -34,8 +40,14 @@ import { formatDateTime, formatTasaValor, formatTime, formatUsd } from "@/lib/fo
  * `FacturaMesaData.comandas` agrupa varias comandas de la misma mesa bajo un
  * solo cobro; `FacturaMesaData.{subtotal,descuento,impuesto,propina,total,
  * totalBs,tasaValor}` son los CONSOLIDADOS de todas ellas — este componente
- * nunca sube esas cifras (no duplica aritmética de dinero que le corresponde
- * al backend), sólo las imprime. Cuando el endpoint real de cobro consolidado
+ * nunca los recalcula, sólo los imprime.
+ *
+ * La única aritmética que sí hace es la conversión a bolívares de cada línea
+ * y de los subtotales, y es inevitable: el backend congela el cobro en Bs
+ * únicamente a nivel de `totalBs`, no por línea. Se usa `tasaValor` —la tasa
+ * congelada de ESE cobro, no la vigente— así que es determinista y reimprimir
+ * una factura vieja da las mismas cifras. El TOTAL nunca se convierte aquí:
+ * sale de `totalBs`, que es el que quedó registrado. Cuando el endpoint real de cobro consolidado
  * quede definido, la adaptación es un mapeo hacia esta interfaz en un solo
  * lugar, no un rediseño del componente.
  *
@@ -122,6 +134,19 @@ export function FacturaMesaTicket({
   const propina = withValue(data.propina);
   const variasComandas = data.comandas.length > 1;
 
+  /**
+   * El ticket se imprime en bolívares: es la moneda con la que el cliente
+   * paga. La conversión usa `tasaValor`, la tasa CONGELADA en el cobro —no la
+   * vigente de hoy—, así que reimprimir una factura vieja da exactamente las
+   * mismas cifras que el día que se cobró.
+   *
+   * Sin tasa registrada ese día no hay nada que convertir y se cae al USD
+   * original: es lo único honesto que se puede imprimir, y es preferible a
+   * repetir "tasa no disponible" en cada línea.
+   */
+  const money = (usd: string | number): string =>
+    data.tasaValor ? formatBsEquivalent(usd, data.tasaValor) : formatUsd(usd);
+
   return (
     <div
       id={id}
@@ -186,11 +211,11 @@ export function FacturaMesaTicket({
               <div key={item.id} className="mb-1">
                 <p className="uppercase">{item.nombreSnap}</p>
                 {item.nota && <p className="text-[10px]">* {item.nota}</p>}
-                <div className="flex justify-between">
+                <div className="flex justify-between gap-2">
                   <span>
-                    {formatCantidad(item.cantidad)} x {formatUsd(item.precioUnitarioSnap)}
+                    {formatCantidad(item.cantidad)} x {money(item.precioUnitarioSnap)}
                   </span>
-                  <span>{formatUsd(item.totalLinea)}</span>
+                  <span className="tabular-nums">{money(item.totalLinea)}</span>
                 </div>
               </div>
             ))
@@ -203,23 +228,31 @@ export function FacturaMesaTicket({
 
       {/* Totales consolidados de TODAS las comandas de arriba. */}
       <div className="flex flex-col gap-0.5">
-        <Row l="Subtotal" r={formatUsd(data.subtotal)} />
-        {descuento && <Row l="Descuento" r={`-${formatUsd(descuento)}`} />}
-        {impuesto && <Row l="Impuesto" r={formatUsd(impuesto)} />}
-        {propina && <Row l="Propina" r={formatUsd(propina)} />}
+        <Row l="Subtotal" r={money(data.subtotal)} />
+        {descuento && <Row l="Descuento" r={`-${money(descuento)}`} />}
+        {impuesto && <Row l="Impuesto" r={money(impuesto)} />}
+        {propina && <Row l="Propina" r={money(propina)} />}
       </div>
 
       <Sep />
 
-      <Row l="TOTAL" r={formatUsd(data.total)} bold large />
-      {totalBsFmt && (
+      {/* El total que manda es `totalBs`: lo calculó y congeló el backend al
+          cobrar. Convertir `total` aquí daría una cifra propia que podría
+          diferir en céntimos de la que quedó registrada, y en el recibo del
+          cliente manda la del cobro. Las líneas de arriba sí se convierten
+          —el backend no las guarda en Bs— y por redondeo su suma puede
+          quedar a un céntimo de este total. */}
+      <Row l="TOTAL" r={totalBsFmt ?? money(data.total)} bold large />
+      {data.tasaValor && (
         <>
-          <Row l="Total Bs" r={totalBsFmt} bold />
-          {data.tasaValor && (
-            <p className="mt-0.5 text-[10px] text-black/70">
-              Tasa del día: {formatTasaValor(data.tasaValor)}
-            </p>
-          )}
+          {/* El menú está en dólares: la referencia deja auditar el ticket
+              contra la carta sin llenar cada línea de dos monedas. */}
+          <p className="text-right text-[10px] text-black/70 tabular-nums">
+            ({formatUsd(data.total)})
+          </p>
+          <p className="mt-0.5 text-[10px] text-black/70">
+            Tasa del día: {formatTasaValor(data.tasaValor)}
+          </p>
         </>
       )}
 

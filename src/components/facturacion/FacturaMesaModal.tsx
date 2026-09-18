@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Printer } from "lucide-react";
 
@@ -12,6 +12,33 @@ import {
 } from "./FacturaMesaTicket";
 
 const PRINT_TARGET_ID = "factura-print";
+
+/**
+ * El tamaño del papel en el diálogo de impresión lo decide `@page { size }` y
+ * NADA más: no lee variables CSS ni se puede condicionar por clase, hay que
+ * escribir la regla con el ancho puesto. `global.css` sólo declaraba
+ * `@page { margin: 0 }`, así que el navegador asumía su default —Carta/A4— y
+ * mandaba el ticket de 58mm centrado en una hoja enorme.
+ *
+ * El alto va en `auto` a propósito: el rollo térmico es continuo, no tiene
+ * páginas. Fijarle una altura cortaría el recibo largo o escupiría papel en
+ * blanco en el corto.
+ *
+ * Se inyecta y se retira con el modal para no dejarle este `@page` puesto al
+ * resto de la app, que sí imprime en hoja normal.
+ */
+function usePrintPageSize(width: FacturaPaperWidth, enabled: boolean): void {
+  useEffect(() => {
+    if (!enabled) return;
+    const style = document.createElement("style");
+    style.setAttribute("data-factura-print", "");
+    style.textContent = `@page { size: ${width} auto; margin: 0; }`;
+    document.head.appendChild(style);
+    return () => {
+      style.remove();
+    };
+  }, [width, enabled]);
+}
 
 export interface FacturaMesaModalProps {
   open: boolean;
@@ -46,6 +73,8 @@ export interface FacturaMesaModalProps {
  */
 export function FacturaMesaModal({ open, onClose, data }: FacturaMesaModalProps) {
   const [paperWidth, setPaperWidth] = useState<FacturaPaperWidth>("58mm");
+
+  usePrintPageSize(paperWidth, open && data != null);
 
   return (
     <>
