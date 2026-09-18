@@ -40,6 +40,9 @@ import type { Producto } from "@/api";
  * Mobile fuses the search and the cart into a single "2. Pedido" card, so
  * there are only two steps there: the waiter wants the order growing right
  * above the search box while typing, not in a card further down the screen.
+ * Inside that card the order is lines → search → total + CTA, so the total is
+ * the last thing before sending and the search sits between what was added
+ * and what it costs.
  * See `useIsDesktopViewport` below for why that fusion is JS-driven instead
  * of pure responsive CSS.
  *
@@ -402,7 +405,13 @@ export function MeseroPage() {
    * no queden empujados fuera de pantalla cuando la lista de resultados (que
    * puede crecer hasta 380px con su propio scroll) está abierta debajo.
    */
-  const cartBlock = (
+  /**
+   * El carrito va partido en dos porque en mobile el buscador se mete EN MEDIO:
+   * las líneas arriba (para ver entrar lo que se toca), el buscador debajo, y
+   * el total con el botón de enviar cerrando el card. En desktop los dos
+   * bloques van pegados, como siempre.
+   */
+  const cartLinesBlock = (
     <>
       {cart.length === 0 ? (
         <p className="rounded-[var(--radius-md)] border border-dashed border-border px-3 py-6 text-center text-sm text-fg-subtle">
@@ -448,7 +457,11 @@ export function MeseroPage() {
           ))}
         </ul>
       )}
+    </>
+  );
 
+  const cartTotalBlock = (
+    <>
       <div className="flex items-center justify-between border-t border-border pt-4">
         <span className="text-sm font-medium text-fg-muted">Total</span>
         <DualPrice
@@ -537,7 +550,10 @@ export function MeseroPage() {
                       </span>
                     )}
                   </CardHeader>
-                  <CardBody className="flex flex-col gap-4">{cartBlock}</CardBody>
+                  <CardBody className="flex flex-col gap-4">
+                    {cartLinesBlock}
+                    {cartTotalBlock}
+                  </CardBody>
                 </Card>
               </div>
             </div>
@@ -555,10 +571,11 @@ export function MeseroPage() {
                   )}
                 </CardHeader>
                 <CardBody className="flex flex-col gap-5">
-                  {cartBlock}
+                  {cartLinesBlock}
                   <div className="flex flex-col gap-4 border-t border-border pt-5">
                     {renderSearchBlock("mobile")}
                   </div>
+                  <div className="flex flex-col gap-4">{cartTotalBlock}</div>
                 </CardBody>
               </Card>
             </div>
