@@ -81,7 +81,25 @@ interface PushPayload {
   etiqueta?: string;
   /** Ruta a abrir/enfocar al tocar la notificación. Default `/comandas`. */
   ruta?: string;
+  /** Id de la comanda; si viene, es la etiqueta natural del aviso. */
+  comandaId?: string;
+  /**
+   * Nombre y logo configurados del negocio. Viajan en el payload porque este
+   * worker no tiene sesión y no puede pedirlos a la API. `logoUrl` llega ya
+   * ABSOLUTA desde el backend, o `null` si no hay logo configurado.
+   */
+  restauranteNombre?: string | null;
+  logoUrl?: string | null;
 }
+
+/**
+ * La misma cadencia que la alarma in-app de `useAlertaCocina.ts`: pulso de
+ * 220 ms y hueco de 80 ms, diez veces, 3 segundos en total. Duplicada aquí a
+ * propósito — este worker es un bundle aparte (lib WebWorker) y no puede
+ * importar ese módulo sin arrastrar React y zustand dentro del service worker.
+ * Si cambia una, cambia la otra.
+ */
+const PATRON_VIBRACION = Array.from({ length: 10 }).flatMap(() => [220, 80]);
 
 self.addEventListener("push", (event) => {
   let payload: PushPayload = {};
@@ -94,15 +112,34 @@ self.addEventListener("push", (event) => {
     payload = {};
   }
 
-  const titulo = payload.titulo ?? "Hayai Comandas";
-  const opciones: NotificationOptions = {
+  // El nombre del negocio va delante del título: en la pantalla de bloqueo
+  // conviven avisos de muchas apps y "Nueva comanda" a secas no dice de dónde.
+  const titulo = payload.restauranteNombre
+    ? `${payload.restauranteNombre} · ${payload.titulo ?? "Nueva comanda"}`
+    : (payload.titulo ?? "Hayai Comandas");
+
+  const tag = payload.comandaId ? `comanda-${payload.comandaId}` : payload.etiqueta;
+
+  const opciones: NotificationOptions & { vibrate?: number[]; renotify?: boolean } = {
     body: payload.cuerpo,
-    icon: "/logo.jpg",
+    icon: payload.logoUrl ?? "/logo.jpg",
     badge: "/logo-mono.png",
-    tag: payload.etiqueta,
+    tag,
     // Igual que en `useAlertaCocina.ts`: sin esto, Android la descarta sola
     // en pocos segundos y con la app cerrada nadie la vuelve a ver.
     requireInteraction: true,
+    // ⭐ Con la app cerrada o la pantalla apagada ésta es la ÚNICA forma de
+    // vibrar: Chrome bloquea `navigator.vibrate` en una página oculta, así que
+    // la vibración que hace la app abierta no existe aquí. Tiene que pedirla
+    // la propia notificación.
+    vibrate: PATRON_VIBRACION,
+    // Explícito: un aviso de cocina silencioso es un aviso perdido.
+    silent: false,
+    // Si llega otro push con la misma etiqueta, reemplaza al anterior — y SIN
+    // `renotify` lo hace en silencio, sin sonar ni vibrar. Pero `renotify`
+    // SIN etiqueta hace que `showNotification` lance TypeError y no se muestre
+    // NADA, así que sólo se pide cuando hay etiqueta.
+    ...(tag ? { renotify: true } : {}),
     data: { ruta: payload.ruta ?? "/comandas" },
   };
 

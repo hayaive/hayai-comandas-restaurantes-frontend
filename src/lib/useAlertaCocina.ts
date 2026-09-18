@@ -145,7 +145,7 @@ function leerPermiso(): PermisoNotificacion {
  */
 async function notificar(detalle: DetalleAlerta): Promise<void> {
   if (leerPermiso() !== "granted") return;
-  const opciones: NotificationOptions = {
+  const opciones: NotificationOptions & { vibrate?: number[]; renotify?: boolean } = {
     body: detalle.cuerpo,
     icon: "/logo.jpg",
     badge: "/logo-mono.png",
@@ -153,6 +153,17 @@ async function notificar(detalle: DetalleAlerta): Promise<void> {
     // Sin esto, en Android la notificación se va sola en pocos segundos y el
     // cocinero que estaba de espaldas no se entera de que llegó.
     requireInteraction: true,
+    // La notificación pide su PROPIA vibración, además del `navigator.vibrate`
+    // de `reproducir()`: con la pantalla apagada o la app en segundo plano,
+    // Chrome bloquea `navigator.vibrate` en una página oculta, y justo ése es
+    // el caso del teléfono en el bolsillo. Sin esto no vibraba nada.
+    vibrate: PATRON_VIBRACION,
+    silent: false,
+    // Varios pedidos a la vez comparten la etiqueta "cola-despacho": sin
+    // `renotify`, el segundo lote REEMPLAZABA al primero en silencio, sin
+    // vibrar. `renotify` sin etiqueta hace lanzar a `showNotification`, así
+    // que sólo se pide cuando hay una.
+    ...(detalle.tag ? { renotify: true } : {}),
   };
   try {
     const registro = await navigator.serviceWorker?.ready;
