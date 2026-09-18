@@ -721,6 +721,13 @@ export const httpApi: ApiClient = {
         { method: "POST", ...json({ mesaId }) },
       ),
     ),
+  checkinReservacionPublica: async (codigoPublico) =>
+    toReservacion(
+      await request<ReservacionResponse>(
+        `/publico/reserva/${encodeURIComponent(codigoPublico)}/checkin`,
+        { method: "POST", ...json({}) },
+      ),
+    ),
 
   // --- Reportes ---
   // `/reportes/dia` y `/reportes/productos` también devuelven filas crudas de

@@ -954,6 +954,18 @@ export interface ApiClient {
   sentarReservacion(id: string): Promise<Reservacion>;
   buscarReservacionPorCodigo(codigo: string): Promise<Reservacion | null>;
   asignarMesaReservacion(codigoPublico: string, mesaId: string, mesaEtiqueta: string): Promise<Reservacion>;
+  /**
+   * `POST /publico/reserva/:codigoPublico/checkin` — sienta al cliente usando
+   * SÓLO su código público.
+   *
+   * ⚠️ Existe porque `sentarReservacion(id)` NO sirve tras un escaneo: la
+   * reserva llega de `GET /publico/reserva/:codigo`, que devuelve una forma
+   * sanitizada SIN `id` (un endpoint público no filtra identificadores
+   * internos). Pasar ese `id` ausente construía `/reservaciones/undefined/
+   * sentar`, y Postgres respondía 22P02 al intentar convertir "undefined" a
+   * uuid — el "Valor con formato inválido" que veía el anfitrión al escanear.
+   */
+  checkinReservacionPublica(codigoPublico: string): Promise<Reservacion>;
 
   // --- Reportes ---
   getReporteDia(fecha: string): Promise<ReporteDia>;

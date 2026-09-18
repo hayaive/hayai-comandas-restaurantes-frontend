@@ -109,7 +109,17 @@ export const useReservationStore = create<ReservationState>((set, get) => ({
     // sigue siendo correcto igualmente: `v_mesa_estado` cuenta una reserva
     // sentada como ocupación por sí sola, así que el `refreshPlano` de abajo
     // CONFIRMA este estado en vez de devolver la mesa a "libre".
-    const sentada = conMesaEtiqueta(await api.sentarReservacion(reservacion.id));
+    //
+    // ⚠️ Se sienta por CÓDIGO PÚBLICO, no por id. `buscarReservacionPorCodigo`
+    // pega a `GET /publico/reserva/:codigo`, que devuelve una forma sanitizada
+    // SIN `id` —un endpoint público no filtra identificadores internos—, así
+    // que `reservacion.id` aquí es `undefined`. Llamar a `sentarReservacion`
+    // con eso construía `/reservaciones/undefined/sentar` y Postgres devolvía
+    // 22P02 al intentar convertir "undefined" a uuid: el anfitrión escaneaba
+    // un QR perfectamente válido y la app le decía "Valor con formato
+    // inválido". El endpoint público de check-in hace exactamente lo mismo
+    // resolviendo la reserva por su código.
+    const sentada = conMesaEtiqueta(await api.checkinReservacionPublica(codigo));
     set({ reservaciones: get().reservaciones.map((r) => (r.id === sentada.id ? sentada : r)) });
     useFloorPlanStore.getState().setStatus(mesaId, "occupied", sentada.clienteNombre);
     void useFloorPlanStore.getState().refreshPlano();

@@ -1780,6 +1780,19 @@ export const mockApi: ApiClient = {
     return delay(next);
   },
 
+  async checkinReservacionPublica(codigoPublico: string) {
+    const idx = reservaciones.findIndex((r) => r.codigoPublico === codigoPublico);
+    if (idx === -1) throw new ApiError("La reservación no existe", 404);
+    const actual = reservaciones[idx];
+    if (actual.estado !== "pendiente" && actual.estado !== "confirmada") {
+      throw new ApiError("Esa reservación no está lista para el check-in", 409);
+    }
+    if (!actual.mesaId) throw new ApiError("Elige una mesa antes de hacer check-in", 400);
+    const next: Reservacion = { ...actual, estado: "sentada" };
+    reservaciones = [...reservaciones.slice(0, idx), next, ...reservaciones.slice(idx + 1)];
+    return delay(next);
+  },
+
   // --- Reportes -------------------------------------------------------
   async getReporteDia(fecha: string) {
     const delDia = cobros.filter((c) => c.fechaOperativa === fecha.slice(0, 10) && !c.anuladoEn);
