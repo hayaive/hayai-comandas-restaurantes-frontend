@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -66,6 +66,7 @@ export function MeseroPage() {
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [productQuery, setProductQuery] = useState("");
+  const productSearchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (productStatus === "idle") void loadProductos();
@@ -113,6 +114,13 @@ export function MeseroPage() {
 
   function addToCart(producto: Producto) {
     setFeedback(null);
+    // Un producto por búsqueda: al elegirlo se vacía la caja, lo que además
+    // apaga la lista de resultados (`filteredProductos` devuelve [] sin
+    // query). El mesero encadena "escribo, toco, escribo" sin tener que
+    // borrar a mano lo anterior, y el foco se queda en el buscador para que
+    // pueda seguir tecleando.
+    setProductQuery("");
+    productSearchRef.current?.focus();
     setCart((prev) => {
       const idx = prev.findIndex((line) => line.productoId === producto.id);
       if (idx === -1) {
@@ -288,6 +296,7 @@ export function MeseroPage() {
                   {selectedTable && (
                     <>
                       <Input
+                        ref={productSearchRef}
                         label="Buscar producto"
                         placeholder="Ej. Tequeños"
                         value={productQuery}
