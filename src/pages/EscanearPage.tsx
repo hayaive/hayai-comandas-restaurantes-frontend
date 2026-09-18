@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, Armchair, Camera, CheckCircle2, QrCode, User } from "lucide-react";
+import { AlertTriangle, Armchair, Camera, CheckCircle2, User } from "lucide-react";
 import QrScanner from "qr-scanner";
 import { Card, CardBody } from "@/components/ui/Card";
 import { IconTile } from "@/components/ui/IconTile";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { TableCardsPicker } from "@/components/floor-plan/TableCardsPicker";
 import { api, ApiError } from "@/api";
 import type { Reservacion } from "@/api";
 import { useReservationStore } from "@/lib/useReservationStore";
+import { useActiveTemplate } from "@/lib/useFloorPlanStore";
+import type { RestaurantTable } from "@/lib/types";
 import { formatDateTime } from "@/lib/format";
 
 /**
@@ -51,6 +54,8 @@ function extraerCodigoPublico(texto: string): string {
 
 export function EscanearPage() {
   const checkInByCode = useReservationStore((s) => s.checkInByCode);
+  const assignTable = useReservationStore((s) => s.assignTable);
+  const activeTemplate = useActiveTemplate();
   const videoRef = useRef<HTMLVideoElement>(null);
   const scannerRef = useRef<QrScanner | null>(null);
   const busyRef = useRef(false);
@@ -61,6 +66,8 @@ export function EscanearPage() {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [buscando, setBuscando] = useState(false);
   const [resultado, setResultado] = useState<Resultado | null>(null);
+  const [asignando, setAsignando] = useState(false);
+  const [asignarError, setAsignarError] = useState<string | null>(null);
 
   /**
    * Se busca primero de forma sólo-lectura para poder mostrar el detalle de la
@@ -157,6 +164,7 @@ export function EscanearPage() {
   /** Deja la cámara lista para el siguiente cliente sin recargar la pantalla. */
   function handleSiguiente() {
     setResultado(null);
+    setAsignarError(null);
     lastCodeRef.current = null;
     scannerRef.current?.start().catch((err: unknown) => {
       setCameraStatus("error");
@@ -164,6 +172,35 @@ export function EscanearPage() {
         err instanceof Error ? err.message : "No se pudo reanudar la cámara del dispositivo",
       );
     });
+  }
+
+  /**
+   * Asigna la mesa elegida desde el resultado `sin_mesa` y sienta al cliente
+   * de una vez, para no obligar al anfitrión a un segundo paso. Usa la misma
+   * acción `assignTable` del store que ya usa `SelfSeatPage` (en vez de
+   * llamar `api.asignarMesaReservacion` directo aquí) porque esa acción ya
+   * sincroniza el plano (`setStatus` + `refreshPlano`) — duplicar esa lógica
+   * aquí dejaría el plano desactualizado hasta el próximo poll.
+   *
+   * Si algo falla, el escaneo no se pierde: `resultado` sigue en `sin_mesa` y
+   * el error se muestra aparte para poder reintentar con otra mesa.
+   */
+  async function handleAsignarMesa(mesa: RestaurantTable) {
+    if (resultado?.tipo !== "sin_mesa") return;
+    const codigoPublico = resultado.reservacion.codigoPublico;
+    setAsignando(true);
+    setAsignarError(null);
+    try {
+      await assignTable(codigoPublico, mesa.id, mesa.label);
+      const sentada = await checkInByCode(codigoPublico);
+      setResultado({ tipo: "con_mesa", reservacion: sentada });
+    } catch (err) {
+      setAsignarError(
+        err instanceof ApiError ? err.message : "No se pudo asignar la mesa a la reserva",
+      );
+    } finally {
+      setAsignando(false);
+    }
   }
 
   /**
@@ -181,13 +218,13 @@ export function EscanearPage() {
       />
 
       <div className="flex flex-1 items-center justify-center overflow-y-auto px-4 py-6 sm:px-6">
-        <div
-          className={
-            mostrandoResultado
-              ? "grid w-full max-w-md gap-5"
-              : "grid w-full max-w-3xl gap-5 md:grid-cols-2"
-          }
-        >
+        {/*
+          Un único ancho de columna (`max-w-md`) para los dos estados: antes
+          el estado sin resultado usaba un grid de 2 columnas para poner la
+          cámara junto a un card "esperando QR" que no llevaba a ningún lado.
+          Quitado ese card muerto, sólo queda la cámara sola y centrada.
+        */}
+        <div className="flex w-full max-w-md flex-col gap-5">
           <Card className={mostrandoResultado ? "hidden" : "overflow-hidden"}>
             <div className="relative aspect-square w-full bg-black">
               <video ref={videoRef} className="h-full w-full object-cover" muted playsInline />
@@ -210,115 +247,129 @@ export function EscanearPage() {
             </CardBody>
           </Card>
 
-          <Card className="flex flex-col">
-            <CardBody
-              className={
-                mostrandoResultado
-                  ? "flex flex-1 flex-col items-center justify-center gap-4 py-14 text-center sm:py-20"
-                  : "flex flex-1 flex-col items-center justify-center gap-4 py-10 text-center"
-              }
-            >
-              {buscando && <p className="text-sm text-fg-muted">Buscando reserva…</p>}
+          {mostrandoResultado && (
+            <Card className="flex flex-col">
+              <CardBody className="flex flex-1 flex-col items-center justify-center gap-4 py-14 text-center sm:py-20">
+                {buscando && <p className="text-sm text-fg-muted">Buscando reserva…</p>}
 
-              {!buscando && !resultado && (
-                <>
-                  <IconTile tone="neutral" size="xl">
-                    <QrCode size={26} />
-                  </IconTile>
-                  <p className="max-w-[30ch] text-sm text-fg-muted">
-                    Esperando un código QR — aquí aparecerá el resultado de cada escaneo.
-                  </p>
-                </>
-              )}
-
-              {!buscando && resultado?.tipo === "con_mesa" && (
-                <div className="flex flex-col items-center gap-2">
-                  <IconTile tone="free" size="xl">
-                    <CheckCircle2 size={26} />
-                  </IconTile>
-                  <p className="text-lg font-semibold text-fg">{resultado.reservacion.clienteNombre}</p>
-                  <Badge tone="free" className="font-mono text-base tabular-nums">
-                    <Armchair size={14} /> Mesa {resultado.reservacion.mesaEtiqueta}
-                  </Badge>
-                  <p className="text-[12px] text-fg-subtle">
-                    {resultado.reservacion.personas} personas ·{" "}
-                    {formatDateTime(resultado.reservacion.iniciaEn)}
-                  </p>
-                </div>
-              )}
-
-              {!buscando && resultado?.tipo === "sin_mesa" && (
-                <div className="flex flex-col items-center gap-2">
-                  <IconTile tone="reserved" size="xl">
-                    <User size={26} />
-                  </IconTile>
-                  <p className="text-base font-medium text-fg">{resultado.reservacion.clienteNombre}</p>
-                  <p className="max-w-xs text-sm text-status-reserved-fg">
-                    Esta reserva todavía no tiene mesa asignada; pide al cliente que elija una desde
-                    su enlace.
-                  </p>
-                </div>
-              )}
-
-              {!buscando && resultado?.tipo === "ya_escaneada" && (
-                <div className="flex flex-col items-center gap-2">
-                  <IconTile tone="reserved" size="xl">
-                    <AlertTriangle size={26} />
-                  </IconTile>
-                  <p className="text-base font-medium text-fg">{resultado.reservacion.clienteNombre}</p>
-                  {resultado.reservacion.mesaEtiqueta && (
-                    <Badge tone="reserved" className="font-mono text-base tabular-nums">
+                {!buscando && resultado?.tipo === "con_mesa" && (
+                  <div className="flex flex-col items-center gap-2">
+                    <IconTile tone="free" size="xl">
+                      <CheckCircle2 size={26} />
+                    </IconTile>
+                    <p className="text-lg font-semibold text-fg">
+                      {resultado.reservacion.clienteNombre}
+                    </p>
+                    <Badge tone="free" className="font-mono text-base tabular-nums">
                       <Armchair size={14} /> Mesa {resultado.reservacion.mesaEtiqueta}
                     </Badge>
-                  )}
-                  <p className="max-w-xs text-sm text-status-reserved-fg">
-                    Esta reserva ya fue escaneada — el cliente ya está sentado.
-                  </p>
-                </div>
-              )}
+                    <p className="text-[12px] text-fg-subtle">
+                      {resultado.reservacion.personas} personas ·{" "}
+                      {formatDateTime(resultado.reservacion.iniciaEn)}
+                    </p>
+                  </div>
+                )}
 
-              {!buscando && resultado?.tipo === "inactiva" && (
-                <div className="flex flex-col items-center gap-2">
-                  <IconTile tone="danger" size="xl">
-                    <AlertTriangle size={26} />
-                  </IconTile>
-                  <p className="text-base font-medium text-fg">{resultado.reservacion.clienteNombre}</p>
-                  <p className="max-w-xs text-sm text-danger">
-                    Esta reserva ya no está activa (
-                    {resultado.reservacion.estado === "cancelada" ? "cancelada" : "no se presentó"}
-                    ).
-                  </p>
-                </div>
-              )}
+                {!buscando && resultado?.tipo === "sin_mesa" && (
+                  <div className="flex w-full flex-col items-center gap-3">
+                    <IconTile tone="reserved" size="xl">
+                      <User size={26} />
+                    </IconTile>
+                    <p className="text-base font-medium text-fg">
+                      {resultado.reservacion.clienteNombre}
+                    </p>
+                    <p className="max-w-xs text-sm text-status-reserved-fg">
+                      Esta reserva todavía no tiene mesa asignada. Elige una para sentar al
+                      cliente ahora.
+                    </p>
 
-              {!buscando && resultado?.tipo === "no_encontrada" && (
-                <div className="flex flex-col items-center gap-2">
-                  <IconTile tone="danger" size="xl">
-                    <AlertTriangle size={26} />
-                  </IconTile>
-                  <p className="text-base font-medium text-fg">Cliente no registrado</p>
-                  <p className="max-w-xs text-[12px] text-fg-subtle">
-                    Ese código no corresponde a ninguna reserva.
-                  </p>
-                </div>
-              )}
+                    {asignando && <p className="text-sm text-fg-muted">Asignando mesa…</p>}
+                    {asignarError && (
+                      <p role="alert" className="max-w-xs text-[12px] text-danger">
+                        {asignarError}
+                      </p>
+                    )}
 
-              {!buscando && resultado?.tipo === "error" && (
-                <div className="flex flex-col items-center gap-2">
-                  <IconTile tone="danger" size="xl">
-                    <AlertTriangle size={26} />
-                  </IconTile>
-                  <p className="max-w-xs text-sm text-danger">{resultado.mensaje}</p>
-                </div>
-              )}
+                    {activeTemplate.tables.filter((t) => t.status === "free").length === 0 ? (
+                      <p className="max-w-xs text-[12px] text-fg-subtle">
+                        No hay mesas libres en este momento.
+                      </p>
+                    ) : (
+                      <div className="w-full text-left">
+                        <TableCardsPicker
+                          tables={activeTemplate.tables}
+                          onPick={(mesa) => void handleAsignarMesa(mesa)}
+                          disabled={asignando}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
 
-              {resultado && !buscando && (
-                <Button onClick={handleSiguiente} className="mt-2">
-                  Escanear siguiente cliente
-                </Button>
-              )}
-            </CardBody>
-          </Card>
+                {!buscando && resultado?.tipo === "ya_escaneada" && (
+                  <div className="flex flex-col items-center gap-2">
+                    <IconTile tone="reserved" size="xl">
+                      <AlertTriangle size={26} />
+                    </IconTile>
+                    <p className="text-base font-medium text-fg">
+                      {resultado.reservacion.clienteNombre}
+                    </p>
+                    {resultado.reservacion.mesaEtiqueta && (
+                      <Badge tone="reserved" className="font-mono text-base tabular-nums">
+                        <Armchair size={14} /> Mesa {resultado.reservacion.mesaEtiqueta}
+                      </Badge>
+                    )}
+                    <p className="max-w-xs text-sm text-status-reserved-fg">
+                      Esta reserva ya fue escaneada — el cliente ya está sentado.
+                    </p>
+                  </div>
+                )}
+
+                {!buscando && resultado?.tipo === "inactiva" && (
+                  <div className="flex flex-col items-center gap-2">
+                    <IconTile tone="danger" size="xl">
+                      <AlertTriangle size={26} />
+                    </IconTile>
+                    <p className="text-base font-medium text-fg">
+                      {resultado.reservacion.clienteNombre}
+                    </p>
+                    <p className="max-w-xs text-sm text-danger">
+                      Esta reserva ya no está activa (
+                      {resultado.reservacion.estado === "cancelada" ? "cancelada" : "no se presentó"}
+                      ).
+                    </p>
+                  </div>
+                )}
+
+                {!buscando && resultado?.tipo === "no_encontrada" && (
+                  <div className="flex flex-col items-center gap-2">
+                    <IconTile tone="danger" size="xl">
+                      <AlertTriangle size={26} />
+                    </IconTile>
+                    <p className="text-base font-medium text-fg">Cliente no registrado</p>
+                    <p className="max-w-xs text-[12px] text-fg-subtle">
+                      Ese código no corresponde a ninguna reserva.
+                    </p>
+                  </div>
+                )}
+
+                {!buscando && resultado?.tipo === "error" && (
+                  <div className="flex flex-col items-center gap-2">
+                    <IconTile tone="danger" size="xl">
+                      <AlertTriangle size={26} />
+                    </IconTile>
+                    <p className="max-w-xs text-sm text-danger">{resultado.mensaje}</p>
+                  </div>
+                )}
+
+                {resultado && !buscando && (
+                  <Button onClick={handleSiguiente} className="mt-2" disabled={asignando}>
+                    Escanear siguiente cliente
+                  </Button>
+                )}
+              </CardBody>
+            </Card>
+          )}
         </div>
       </div>
     </div>

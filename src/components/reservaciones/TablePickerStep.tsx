@@ -1,5 +1,4 @@
-import { FloorPlanCanvas } from "@/components/floor-plan/FloorPlanCanvas";
-import { STATUS_META, STATUS_ORDER } from "@/components/floor-plan/statusMeta";
+import { TableCardsPicker } from "@/components/floor-plan/TableCardsPicker";
 import { Button } from "@/components/ui/Button";
 import { useFloorPlanStore } from "@/lib/useFloorPlanStore";
 import type { FloorPlanTemplate, RestaurantTable } from "@/lib/types";
@@ -11,25 +10,19 @@ interface TablePickerStepProps {
 }
 
 /**
- * Paso 1 de la reserva: elegir la mesa sobre la vista aérea real del salón.
+ * Paso 1 de la reserva: elegir la mesa desde una lista de cards.
  *
- * Reutiliza el mismo `FloorPlanCanvas` del editor —misma planta, mismos
- * colores de estado— en vez de dibujar otra representación que podría
- * contradecirlo. Aquí es sólo de lectura: `onMoveTable` es un no-op, así que
- * arrastrar no mueve nada, y sólo se pueden elegir las mesas libres.
+ * Antes usaba `FloorPlanCanvas` (la vista aérea del salón), pero en mobile
+ * arrastrar/hacer zoom sobre el plano para tocar la mesa correcta es
+ * incómodo con el pulgar. `TableCardsPicker` ya se encarga de mostrar todas
+ * las mesas con su estado y de que sólo las libres se puedan elegir —
+ * `FloorPlanCanvas` sigue existiendo tal cual para el editor de plano, que sí
+ * necesita la posición real de cada mesa.
  */
 export function TablePickerStep({ template, onPick }: TablePickerStepProps) {
-  const gridSize = useFloorPlanStore((s) => s.gridSize);
   const status = useFloorPlanStore((s) => s.status);
   const error = useFloorPlanStore((s) => s.error);
   const load = useFloorPlanStore((s) => s.load);
-
-  function handleSelect(tableId: string | null) {
-    if (!tableId) return;
-    const table = template.tables.find((t) => t.id === tableId);
-    // Ocupadas y reservadas se ven, pero no se pueden elegir.
-    if (table && table.status === "free") onPick(table);
-  }
 
   if (status === "loading" && template.tables.length === 0) {
     return (
@@ -61,29 +54,11 @@ export function TablePickerStep({ template, onPick }: TablePickerStepProps) {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-fg-muted">
-          Toca una mesa libre en <span className="font-medium text-fg">{template.name}</span>.
-        </p>
-        <ul className="flex items-center gap-3 font-mono text-[11px] tabular-nums text-fg-muted">
-          {STATUS_ORDER.map((tableStatus) => (
-            <li key={tableStatus} className="flex items-center gap-1.5">
-              <span className={`h-2 w-2 rounded-full ${STATUS_META[tableStatus].dotClass}`} />
-              {STATUS_META[tableStatus].label.toLowerCase()}
-            </li>
-          ))}
-        </ul>
-      </div>
+      <p className="text-sm text-fg-muted">
+        Toca una mesa libre en <span className="font-medium text-fg">{template.name}</span>.
+      </p>
 
-      <div className="flex h-[min(46dvh,380px)] overflow-hidden rounded-[var(--radius-lg)] border border-border">
-        <FloorPlanCanvas
-          tables={template.tables}
-          selectedTableId={null}
-          gridSize={gridSize}
-          onSelectTable={handleSelect}
-          onMoveTable={() => {}}
-        />
-      </div>
+      <TableCardsPicker tables={template.tables} onPick={onPick} />
 
       {libres === 0 && (
         <p className="text-[12px] text-status-reserved-fg">
