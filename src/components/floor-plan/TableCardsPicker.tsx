@@ -7,6 +7,16 @@ export interface TableCardsPickerProps {
   onPick: (table: RestaurantTable) => void;
   selectedTableId?: string | null;
   disabled?: boolean;
+  /**
+   * Por defecto (`false`) sólo las mesas libres son tocables — eso es lo que
+   * necesitan `TablePickerStep` (reservar) y `EscanearPage` (sentar): elegir
+   * una mesa ocupada o reservada ahí no tiene sentido de negocio. El editor
+   * de plano (`FloorPlanPage`, vista lista) es distinto: ahí se toca CUALQUIER
+   * mesa para abrir su inspector y editarla (renombrar, sillas, eliminar), sin
+   * importar su estado. `true` habilita eso sin tocar el comportamiento de los
+   * dos usos existentes, que no pasan esta prop.
+   */
+  selectAny?: boolean;
 }
 
 /**
@@ -19,13 +29,16 @@ export interface TableCardsPickerProps {
  * vez de inventar un tercer patrón para elegir mesa.
  *
  * Se muestran TODAS las mesas (no sólo las libres) para que quien elige vea
- * el contexto de ocupación completo; sólo las libres son interactivas.
+ * el contexto de ocupación completo; por defecto sólo las libres son
+ * interactivas (ver `selectAny` para el caso del editor de plano, que
+ * necesita poder tocar cualquier mesa).
  */
 export function TableCardsPicker({
   tables,
   onPick,
   selectedTableId = null,
   disabled = false,
+  selectAny = false,
 }: TableCardsPickerProps) {
   // Libres primero, y dentro de cada grupo por etiqueta con orden numérico
   // ("M-2" antes que "M-10") en vez del orden lexicográfico por defecto.
@@ -50,7 +63,7 @@ export function TableCardsPicker({
         {sorted.map((table) => {
           const meta = STATUS_META[table.status];
           const isSelected = table.id === selectedTableId;
-          const isPickable = table.status === "free" && !disabled;
+          const isPickable = (selectAny || table.status === "free") && !disabled;
           return (
             <button
               key={table.id}

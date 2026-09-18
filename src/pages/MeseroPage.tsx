@@ -7,6 +7,7 @@ import {
   Receipt,
   Search,
   Trash2,
+  X,
 } from "lucide-react";
 
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -45,6 +46,13 @@ import type { Producto } from "@/api";
  * and what it costs.
  * See `useIsDesktopViewport` below for why that fusion is JS-driven instead
  * of pure responsive CSS.
+ *
+ * Mobile also collapses step 1 once a table is chosen: the "Elige una mesa"
+ * grid (half a screen of cards) gives way to a compact "Mesa M-4 ✕" row, so
+ * step 2 doesn't sit below the fold on a phone for the rest of the order.
+ * Tapping the ✕ brings the grid back — see `deselectTable` for what that does
+ * (and does not) do to the cart. Desktop keeps the grid mounted always; it
+ * has the width to spare and step 1/2/3 read top-to-bottom regardless.
  *
  * SELECTED TABLE: brown fill, white text. This is the clearest place in the
  * product where the client's override earns its keep — a waiter glancing down
@@ -153,6 +161,24 @@ export function MeseroPage() {
     setProductQuery("");
   }
 
+  /**
+   * Sólo mobile: la X de la fila compacta de "1. Elige una mesa" limpia la
+   * selección, no el carrito. Fue una decisión deliberada entre dos riesgos:
+   * un toque accidental en la X (fácil con el pulgar, caminando) borrando un
+   * pedido a medio tomar es el peor de los dos — reconstruirlo cuesta tiempo
+   * y puede perder ítems que el cliente ya pidió. El riesgo contrario, enviar
+   * por error las líneas de la mesa anterior a otra mesa, ya está cubierto
+   * sin código extra: `handleSubmit` exige `selectedTableId`, así que el CTA
+   * queda deshabilitado hasta reelegir una mesa, y esa mesa se vuelve a
+   * mostrar en la fila compacta antes de poder enviar — no hay forma de
+   * enviar "a ciegas". El único costo es que el carrito puede quedar
+   * "huérfano" un momento; por eso el grid muestra un aviso mientras eso pasa
+   * (ver el bloque de `cart.length > 0` dentro de `tableCard`).
+   */
+  function deselectTable() {
+    setSelectedTableId(null);
+  }
+
   function addToCart(producto: Producto) {
     setFeedback(null);
     // Un producto por búsqueda: al elegirlo se vacía la caja, lo que además
@@ -249,62 +275,100 @@ export function MeseroPage() {
         {selectedTable && <Badge tone="active">Mesa {selectedTable.label}</Badge>}
       </CardHeader>
       <CardBody>
-        {sortedTables.length === 0 ? (
-          <p className="py-8 text-center text-sm text-fg-muted">
-            {floorStatus === "loading" || floorStatus === "idle"
-              ? "Cargando el plano…"
-              : floorStatus === "error"
-                ? (floorError ?? "No se pudo cargar el plano del salón.")
-                : "No hay mesas en esta plantilla."}
-          </p>
+        {/*
+         * Sólo en mobile (`!isDesktop`) el grid se colapsa una vez elegida la
+         * mesa: en desktop hay ancho de sobra y el grid se queda siempre
+         * visible como antes, sin importar la selección.
+         */}
+        {!isDesktop && selectedTable ? (
+          <div className="flex items-center justify-between gap-2 rounded-[var(--radius-md)] border border-border bg-surface-raised px-3.5 py-2.5">
+            <span className="flex items-center gap-2 font-mono text-sm font-semibold text-fg">
+              <span className={cn("size-2 shrink-0 rounded-full", STATUS_META[selectedTable.status].dotClass)} />
+              Mesa {selectedTable.label}
+            </span>
+            <IconButton
+              icon={<X size={14} />}
+              label={`Cambiar de mesa (quitar selección de ${selectedTable.label})`}
+              size="sm"
+              onClick={deselectTable}
+            />
+          </div>
         ) : (
-          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4">
-            {sortedTables.map((table) => {
-              const meta = STATUS_META[table.status];
-              const isSelected = table.id === selectedTableId;
-              return (
-                <button
-                  key={table.id}
-                  type="button"
-                  aria-pressed={isSelected}
-                  onClick={() => selectTable(table)}
-                  className={cn(
-                    "flex flex-col items-start gap-1 rounded-[var(--radius-md)] border px-3.5 py-3 text-left",
-                    "transition-colors duration-150",
-                    isSelected
-                      ? "border-transparent bg-active"
-                      : "border-border bg-surface-raised hover:border-border-strong hover:bg-surface-hover",
-                  )}
-                >
-                  <div className="flex w-full items-center justify-between gap-2">
-                    <span
+          <>
+            {/*
+             * Aviso mobile-only: si el carrito sigue teniendo líneas mientras
+             * no hay mesa elegida (justo después de tocar la X), se lo
+             * decimos aquí — es el único momento en que el pedido queda
+             * "flotando" sin mesa asociada a la vista. Ver `deselectTable`.
+             */}
+            {!isDesktop && cart.length > 0 && (
+              <div
+                role="status"
+                className="mb-3 flex items-start gap-2 rounded-[var(--radius-md)] border border-status-reserved/30 bg-status-reserved-soft px-3.5 py-2.5 text-[12px] text-status-reserved-fg"
+              >
+                <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                Tu pedido con {cart.length} producto{cart.length === 1 ? "" : "s"} sigue guardado.
+                Elige la mesa correcta para seguir.
+              </div>
+            )}
+            {sortedTables.length === 0 ? (
+              <p className="py-8 text-center text-sm text-fg-muted">
+                {floorStatus === "loading" || floorStatus === "idle"
+                  ? "Cargando el plano…"
+                  : floorStatus === "error"
+                    ? (floorError ?? "No se pudo cargar el plano del salón.")
+                    : "No hay mesas en esta plantilla."}
+              </p>
+            ) : (
+              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4">
+                {sortedTables.map((table) => {
+                  const meta = STATUS_META[table.status];
+                  const isSelected = table.id === selectedTableId;
+                  return (
+                    <button
+                      key={table.id}
+                      type="button"
+                      aria-pressed={isSelected}
+                      onClick={() => selectTable(table)}
                       className={cn(
-                        "font-mono text-sm font-semibold tabular-nums",
-                        isSelected ? "text-active-fg" : "text-fg",
+                        "flex flex-col items-start gap-1 rounded-[var(--radius-md)] border px-3.5 py-3 text-left",
+                        "transition-colors duration-150",
+                        isSelected
+                          ? "border-transparent bg-active"
+                          : "border-border bg-surface-raised hover:border-border-strong hover:bg-surface-hover",
                       )}
                     >
-                      {table.label}
-                    </span>
-                    <span
-                      className={cn(
-                        "size-2 shrink-0 rounded-full",
-                        isSelected ? "bg-white/80" : meta.dotClass,
-                      )}
-                    />
-                  </div>
-                  <span
-                    className={cn(
-                      "w-full truncate text-[11px]",
-                      isSelected ? "text-active-fg/80" : "text-fg-subtle",
-                    )}
-                  >
-                    {meta.label}
-                    {table.occupantName ? ` · ${table.occupantName}` : ""}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+                      <div className="flex w-full items-center justify-between gap-2">
+                        <span
+                          className={cn(
+                            "font-mono text-sm font-semibold tabular-nums",
+                            isSelected ? "text-active-fg" : "text-fg",
+                          )}
+                        >
+                          {table.label}
+                        </span>
+                        <span
+                          className={cn(
+                            "size-2 shrink-0 rounded-full",
+                            isSelected ? "bg-white/80" : meta.dotClass,
+                          )}
+                        />
+                      </div>
+                      <span
+                        className={cn(
+                          "w-full truncate text-[11px]",
+                          isSelected ? "text-active-fg/80" : "text-fg-subtle",
+                        )}
+                      >
+                        {meta.label}
+                        {table.occupantName ? ` · ${table.occupantName}` : ""}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </>
         )}
       </CardBody>
     </Card>

@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import { AlertTriangle, Armchair, CheckCircle2, Info } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
+import { AlertTriangle, Armchair, CheckCircle2, Info, List, Map as MapIcon } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -11,13 +11,110 @@ import {
 } from "@/lib/useFloorPlanStore";
 import { BottomToolbar } from "@/components/floor-plan/BottomToolbar";
 import { FloorPlanCanvas } from "@/components/floor-plan/FloorPlanCanvas";
+import { TableCardsPicker } from "@/components/floor-plan/TableCardsPicker";
 import { TableInspectorPanel } from "@/components/floor-plan/TableInspectorPanel";
 import { MobileTableSheet } from "@/components/floor-plan/MobileTableSheet";
 import { TemplateSwitcher } from "@/components/floor-plan/TemplateSwitcher";
 import { STATUS_META, STATUS_ORDER } from "@/components/floor-plan/statusMeta";
+import { cn } from "@/lib/cn";
+
+type FloorPlanView = "map" | "list";
+
+const VIEW_STORAGE_KEY = "hayai-floorplan-view";
+
+/**
+ * Mismo corte `md` (768px) que ya usa esta pantalla para decidir aside vs.
+ * bottom-sheet (`TableInspectorPanel`, `MobileTableSheet`) — reutilizarlo acá
+ * evita que "desktop" signifique dos anchos distintos dentro de la misma
+ * página.
+ */
+const DESKTOP_QUERY = "(min-width: 768px)";
+
+function getStoredView(): FloorPlanView | null {
+  try {
+    const stored = window.localStorage.getItem(VIEW_STORAGE_KEY);
+    return stored === "map" || stored === "list" ? stored : null;
+  } catch {
+    // Storage no disponible (modo privado, cuota llena, etc.) — se cae al
+    // default por viewport, calculado por quien llama a este helper.
+    return null;
+  }
+}
+
+/**
+ * La preferencia lista/aérea es POR DISPOSITIVO, no por cuenta ni por
+ * restaurante: la tablet del host en la entrada quiere el mapa fijo sobre el
+ * mostrador, y el teléfono del mesero en el salón quiere la lista — son el
+ * mismo restaurante y la misma sesión, así que guardarlo en el backend
+ * mezclaría ambas preferencias entre sí. `localStorage` ya vive por
+ * navegador/dispositivo, que es exactamente el corte que hace falta.
+ *
+ * Sin preferencia guardada, el default se decide una sola vez con el
+ * viewport que hay al montar: mobile arranca en lista (el mapa es incómodo
+ * con el pulgar — el problema que pide resolver este cambio), desktop
+ * arranca en aérea (el uso de siempre, y ahí sí sobra ancho). Una vez el
+ * usuario elige a mano, esa elección manda y no se recalcula por resize.
+ */
+function useFloorPlanView(): [FloorPlanView, (next: FloorPlanView) => void] {
+  const [view, setViewState] = useState<FloorPlanView>(() => {
+    const stored = getStoredView();
+    if (stored) return stored;
+    if (typeof window === "undefined") return "map";
+    return window.matchMedia(DESKTOP_QUERY).matches ? "map" : "list";
+  });
+
+  function setView(next: FloorPlanView) {
+    setViewState(next);
+    try {
+      window.localStorage.setItem(VIEW_STORAGE_KEY, next);
+    } catch {
+      // Igual aplica para esta sesión; sólo no sobrevive a un refresh.
+    }
+  }
+
+  return [view, setView];
+}
+
+/**
+ * Segmented control lista/aérea. Mismo patrón visual que `PaperWidthToggle`
+ * en `FacturaMesaModal` (radiogroup de botones, no un <select>) — es el
+ * precedente de este repo para "elegir una de dos opciones, con las dos
+ * siempre visibles" en vez de esconder la opción no elegida en un menú.
+ */
+function ViewToggle({ value, onChange }: { value: FloorPlanView; onChange: (next: FloorPlanView) => void }) {
+  const options: { value: FloorPlanView; label: string; icon: ReactNode }[] = [
+    { value: "list", label: "Lista", icon: <List size={14} /> },
+    { value: "map", label: "Aérea", icon: <MapIcon size={14} /> },
+  ];
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Vista del plano"
+      className="inline-flex rounded-[var(--radius-md)] border border-border bg-surface-raised p-1"
+    >
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          role="radio"
+          aria-checked={value === option.value}
+          onClick={() => onChange(option.value)}
+          className={cn(
+            "flex items-center gap-1.5 rounded-[var(--radius-sm)] px-2.5 py-1.5 text-[13px] font-medium transition-colors duration-150",
+            value === option.value ? "bg-active text-active-fg" : "text-fg-muted hover:text-fg",
+          )}
+        >
+          {option.icon}
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export function FloorPlanPage() {
   useFloorPlanBootstrap();
+  const [view, setView] = useFloorPlanView();
 
   const templates = useFloorPlanStore((state) => state.templates);
   const editingTemplateId = useFloorPlanStore((state) => state.editingTemplateId);
@@ -105,6 +202,8 @@ export function FloorPlanPage() {
         }
         actions={
           <>
+            <ViewToggle value={view} onChange={setView} />
+
             {isEditingActive ? (
               <span className="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-status-free/30 bg-status-free-soft px-2.5 py-1 text-[12px] font-medium text-status-free-fg">
                 <CheckCircle2 size={14} />
@@ -150,13 +249,42 @@ export function FloorPlanPage() {
 
       <div className="flex flex-1 overflow-hidden">
         <div className="flex flex-1 flex-col overflow-hidden">
-          <FloorPlanCanvas
-            tables={editingTemplate.tables}
-            selectedTableId={selectedTableId}
-            gridSize={gridSize}
-            onSelectTable={selectTable}
-            onMoveTable={moveTable}
-          />
+          {view === "map" ? (
+            <FloorPlanCanvas
+              tables={editingTemplate.tables}
+              selectedTableId={selectedTableId}
+              gridSize={gridSize}
+              onSelectTable={selectTable}
+              onMoveTable={moveTable}
+            />
+          ) : (
+            // Vista lista: mismo fondo/padding que `FloorPlanCanvas` para que
+            // cambiar de vista no salte de layout. `TableCardsPicker` con
+            // `selectAny` abre el mismo inspector/`MobileTableSheet` que tocar
+            // una mesa en el mapa (comparten `selectTable` del store) — sólo
+            // cambia cómo se elige la mesa, no qué pasa después.
+            <div className="flex-1 overflow-y-auto bg-bg-canvas p-3 sm:p-6">
+              <div className="mx-auto flex w-full max-w-3xl flex-col gap-3">
+                <p className="text-[12px] text-fg-subtle">
+                  La lista no mueve mesas de sitio — para reordenar el salón, cambia a la vista
+                  aérea.
+                </p>
+                {editingTemplate.tables.length === 0 ? (
+                  <p className="py-12 text-center text-sm text-fg-muted">
+                    Esta distribución todavía no tiene mesas. Usa el botón de abajo para agregar
+                    la primera.
+                  </p>
+                ) : (
+                  <TableCardsPicker
+                    tables={editingTemplate.tables}
+                    selectedTableId={selectedTableId}
+                    onPick={(table) => selectTable(table.id)}
+                    selectAny
+                  />
+                )}
+              </div>
+            </div>
+          )}
 
           <BottomToolbar onAddTable={(shape) => void addTable(shape)} />
         </div>
