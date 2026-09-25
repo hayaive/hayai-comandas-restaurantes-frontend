@@ -1087,15 +1087,8 @@ export interface ApiClient {
   cobrarMesa(mesaId: string, input: CobrarMesaInput): Promise<Cobro>;
   /** La factura completa, para reimprimirla. */
   getCobro(cobroId: string): Promise<Cobro>;
-  /**
-   * Facturas emitidas de un día operativo.
-   *
-   * Devuelve `null` cuando el backend no sabe contestarlo — hoy es el caso:
-   * `CONTRACT.md` sólo define `GET /cobros/:id`, no hay listado por fecha. Las
-   * pantallas deben distinguir "hoy no se cobró nada" de "esto no se puede
-   * preguntar todavía".
-   */
-  listCobrosDelDia(fecha: string): Promise<Cobro[] | null>;
+  /** Facturas emitidas de un día operativo (`GET /cobros?fecha=`), más recientes primero. */
+  listCobrosDelDia(fecha: string): Promise<Cobro[]>;
 
   // --- Tasa de cambio ---
   /** Responde 200 siempre; `usd`/`eur` son `null` si nunca se registró ninguna. */

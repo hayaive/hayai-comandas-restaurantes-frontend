@@ -100,14 +100,9 @@ interface ComandaState {
   cuentaPorMesa: Record<string, CuentaDeMesa>;
   cuentaMesaStatus: Record<string, Status>;
 
-  /** Facturas del día operativo — alimentan el histórico de Ventas. */
+  /** Facturas del día operativo pedido en `loadCobrosDelDia` — el histórico de Ventas. */
   cobrosDelDia: Cobro[];
-  /**
-   * `false` cuando el backend no sabe listar las facturas de un día y lo único
-   * que se ve son las emitidas en esta sesión. Ventas lo dice explícitamente
-   * en vez de hacer pasar una lista incompleta por el histórico del día.
-   */
-  historicoCompleto: boolean;
+  cobrosDelDiaStatus: Status;
 
   loadCola: () => Promise<void>;
   /** Saca la comanda de la cola. NO la borra: queda cobrable en la mesa. */
@@ -173,7 +168,7 @@ export const useComandaStore = create<ComandaState>((set, get) => ({
   cuentaMesaStatus: {},
 
   cobrosDelDia: [],
-  historicoCompleto: true,
+  cobrosDelDiaStatus: "idle",
 
   loadCola: async () => {
     // `loading` sólo marca el primer arranque: el polling no debe vaciar la
@@ -278,13 +273,12 @@ export const useComandaStore = create<ComandaState>((set, get) => ({
   },
 
   loadCobrosDelDia: async (fecha) => {
-    const delBackend = await api.listCobrosDelDia(fecha);
-    if (delBackend === null) {
-      // Sin endpoint de histórico: se conserva lo cobrado en esta sesión.
-      set({ historicoCompleto: false });
-      return;
+    set({ cobrosDelDiaStatus: "loading" });
+    try {
+      set({ cobrosDelDia: await api.listCobrosDelDia(fecha), cobrosDelDiaStatus: "ready" });
+    } catch {
+      set({ cobrosDelDiaStatus: "error" });
     }
-    set({ cobrosDelDia: delBackend, historicoCompleto: true });
   },
 }));
 

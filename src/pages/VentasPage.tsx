@@ -6,6 +6,7 @@ import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/Card";
 import { StatTile } from "@/components/ui/StatTile";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { PageBody, Section, StaggerGrid } from "@/components/ui/Section";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/primitives/tabs";
@@ -19,20 +20,23 @@ export function VentasPage() {
   const [periodo, setPeriodo] = useState<PeriodoReporte>("dia");
   const { status, error, reporte, productosVendidos, reload } = useSalesReport(periodo);
   const cobrosDelDia = useComandaStore((s) => s.cobrosDelDia);
-  const historicoCompleto = useComandaStore((s) => s.historicoCompleto);
+  const cobrosDelDiaStatus = useComandaStore((s) => s.cobrosDelDiaStatus);
   const loadCobrosDelDia = useComandaStore((s) => s.loadCobrosDelDia);
 
+  // Día operativo que se está viendo en "Cuentas cobradas" — por defecto hoy,
+  // pero el cajero puede pedir cualquier fecha pasada.
+  const [fechaHistorial, setFechaHistorial] = useState(todayIso());
+  const viendoHoy = fechaHistorial === todayIso();
+
   useEffect(() => {
-    void loadCobrosDelDia(todayIso());
-  }, [loadCobrosDelDia]);
+    void loadCobrosDelDia(fechaHistorial);
+  }, [loadCobrosDelDia, fechaHistorial]);
 
   const historial = useMemo(
     () => [...cobrosDelDia].sort((a, b) => b.cobradoEn.localeCompare(a.cobradoEn)),
     [cobrosDelDia],
   );
 
-  // Con el histórico incompleto (el backend no lo expone), los totales del
-  // reporte siguen siendo la cifra buena: la lista de abajo es sólo lo visible.
   const totalHistorial = useMemo(
     () => historial.reduce((sum, c) => sum + Number(c.total), 0),
     [historial],
@@ -53,7 +57,7 @@ export function VentasPage() {
   const deltaPct = reporte ? pctDelta(reporte.total.totalUsd, reporte.comparacion.total.totalUsd) : null;
 
   async function handleRefresh() {
-    await Promise.all([reload(), loadCobrosDelDia(todayIso())]);
+    await Promise.all([reload(), loadCobrosDelDia(fechaHistorial)]);
   }
 
   return (
@@ -133,11 +137,6 @@ export function VentasPage() {
                   // comandas dejó de responder "cuántas mesas vendimos".
                   label="Cuentas"
                   value={reporte.total.cobros}
-                  hint={
-                    periodo !== "dia" || historicoCompleto
-                      ? undefined
-                      : `${historial.length} visibles en esta sesión`
-                  }
                 />
                 <StatTile
                   icon={<Users size={20} />}
@@ -249,7 +248,26 @@ export function VentasPage() {
               </Card>
             </Section>
 
-            <Section title="Cuentas cobradas">
+            <Section
+              title="Cuentas cobradas"
+              action={
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="date"
+                    aria-label="Día a consultar"
+                    value={fechaHistorial}
+                    max={todayIso()}
+                    onChange={(e) => e.target.value && setFechaHistorial(e.target.value)}
+                    className="h-9! w-[150px] text-[13px]!"
+                  />
+                  {!viendoHoy && (
+                    <Button size="sm" variant="secondary" onClick={() => setFechaHistorial(todayIso())}>
+                      Hoy
+                    </Button>
+                  )}
+                </div>
+              }
+            >
               <Card>
                 <CardHeader>
                   <CardTitle>
@@ -260,11 +278,13 @@ export function VentasPage() {
                   </span>
                 </CardHeader>
                 <CardBody className="p-0">
-                  {historial.length === 0 ? (
+                  {cobrosDelDiaStatus === "loading" && historial.length === 0 ? (
+                    <p className="px-5 py-8 text-center text-sm text-fg-muted">Cargando…</p>
+                  ) : historial.length === 0 ? (
                     <p className="px-5 py-8 text-center text-sm text-fg-muted">
-                      {historicoCompleto
+                      {viendoHoy
                         ? "Todavía no se ha cobrado ninguna cuenta hoy."
-                        : "Aún no has cobrado ninguna cuenta en esta sesión."}
+                        : "Ninguna cuenta cobrada ese día."}
                     </p>
                   ) : (
                     <div>
@@ -275,18 +295,6 @@ export function VentasPage() {
                   )}
                 </CardBody>
               </Card>
-
-              {!historicoCompleto && (
-                <p className="text-[12px] leading-relaxed text-fg-subtle">
-                  El histórico muestra sólo las cuentas cobradas en esta sesión: el backend
-                  todavía no expone un listado de facturas por día (falta algo como{" "}
-                  <code className="rounded bg-surface-hover px-1 py-0.5 font-mono text-[11px]">
-                    GET /cobros?fecha=
-                  </code>
-                  , hoy sólo existe <code className="rounded bg-surface-hover px-1 py-0.5 font-mono text-[11px]">GET /cobros/:id</code>).
-                  Las cifras de arriba sí vienen del reporte del período.
-                </p>
-              )}
             </Section>
           </>
         )}

@@ -1740,9 +1740,7 @@ export const mockApi: ApiClient = {
   async listCobrosDelDia(fecha: string) {
     const dia = fecha.slice(0, 10);
     return delay(
-      cobros
-        .filter((c) => c.fechaOperativa === dia && !c.anuladoEn)
-        .sort((a, b) => b.cobradoEn.localeCompare(a.cobradoEn)),
+      cobros.filter((c) => c.fechaOperativa === dia).sort((a, b) => b.cobradoEn.localeCompare(a.cobradoEn)),
     );
   },
 

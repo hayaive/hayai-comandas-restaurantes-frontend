@@ -671,11 +671,11 @@ export const httpApi: ApiClient = {
     ),
   getCobro: async (cobroId) =>
     toCobro(await request<CobroResponse>(`/cobros/${encodeURIComponent(cobroId)}`)),
-  listCobrosDelDia: async () => {
-    // El backend no expone el listado de facturas de un día: `CONTRACT.md`
-    // sólo define `GET /cobros/:id`. Se devuelve `null` (no `[]`) para que
-    // Ventas diga la verdad en vez de fingir que hoy no se cobró nada.
-    return null;
+  listCobrosDelDia: async (fecha: string) => {
+    const rows = await request<CobroResponse[]>(
+      `/cobros?fecha=${encodeURIComponent(fecha.slice(0, 10))}`,
+    );
+    return rows.map(toCobro);
   },
 
   // --- Tasa de cambio ---
