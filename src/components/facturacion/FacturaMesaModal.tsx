@@ -5,6 +5,8 @@ import { Printer } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { cn } from "@/lib/utils";
+import { imprimirSerial, serialDisponible } from "@/lib/escpos";
+import { facturaEscPos } from "./facturaEscPos";
 import {
   FacturaMesaTicket,
   type FacturaMesaData,
@@ -73,8 +75,31 @@ export interface FacturaMesaModalProps {
  */
 export function FacturaMesaModal({ open, onClose, data }: FacturaMesaModalProps) {
   const [paperWidth, setPaperWidth] = useState<FacturaPaperWidth>("58mm");
+  const [imprimiendo, setImprimiendo] = useState(false);
+  const [errorImpresion, setErrorImpresion] = useState<string | null>(null);
 
   usePrintPageSize(paperWidth, open && data != null);
+
+  /**
+   * Con Web Serial (Chrome/Edge escritorio) va directo a la térmica, sin
+   * diálogo: sólo la primera vez se elige el puerto COM. Si el navegador no
+   * lo soporta, o el cajero cierra el selector sin elegir, cae al
+   * `window.print()` de siempre.
+   */
+  async function imprimir() {
+    if (!data) return;
+    if (!serialDisponible()) return window.print();
+    setImprimiendo(true);
+    setErrorImpresion(null);
+    try {
+      await imprimirSerial(facturaEscPos(data, paperWidth));
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "NotFoundError") window.print();
+      else setErrorImpresion(err instanceof Error ? err.message : String(err));
+    } finally {
+      setImprimiendo(false);
+    }
+  }
 
   return (
     <>
@@ -89,8 +114,8 @@ export function FacturaMesaModal({ open, onClose, data }: FacturaMesaModalProps)
             <Button variant="secondary" onClick={onClose}>
               Cerrar
             </Button>
-            <Button variant="primary" onClick={() => window.print()} disabled={!data}>
-              <Printer size={14} /> Imprimir
+            <Button variant="primary" onClick={imprimir} disabled={!data || imprimiendo}>
+              <Printer size={14} /> {imprimiendo ? "Imprimiendo…" : "Imprimir"}
             </Button>
           </>
         }
@@ -98,6 +123,12 @@ export function FacturaMesaModal({ open, onClose, data }: FacturaMesaModalProps)
         {data && (
           <div className="flex flex-col items-center gap-4">
             <PaperWidthToggle value={paperWidth} onChange={setPaperWidth} />
+            {errorImpresion && (
+              <p role="alert" className="text-center text-[13px] text-danger">
+                No se pudo imprimir: {errorImpresion}. Revisa que la impresora esté encendida y
+                emparejada.
+              </p>
+            )}
             <div className="w-full overflow-x-auto rounded-[var(--radius-md)] border border-dashed border-border bg-surface-sunken p-4">
               <FacturaMesaTicket data={data} paperWidth={paperWidth} className="shadow-[var(--shadow-token-md)]" />
             </div>

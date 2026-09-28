@@ -1,14 +1,9 @@
 import { Coffee } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import {
-  formatDateTime,
-  formatPrecioCobro,
-  formatTasaValor,
-  formatTime,
-  formatUsd,
-} from "@/lib/format";
+import { formatDateTime, formatTasaValor, formatTime, formatUsd } from "@/lib/format";
 import type { MostrarPreciosEn } from "@/api";
+import { facturaMontos, formatCantidad } from "./facturaEscPos";
 
 /**
  * Factura/recibo de cobro de una mesa — pensado para imprimirse en una
@@ -151,43 +146,9 @@ export function FacturaMesaTicket({
   id,
   className,
 }: FacturaMesaTicketProps) {
-  const totalBsFmt = formatBsAmount(data.totalBs);
-  const descuento = withValue(data.descuento);
-  const impuesto = withValue(data.impuesto);
-  const propina = withValue(data.propina);
+  const { money, totalPrincipal, mostrarReferenciaUsd, descuento, impuesto, propina } =
+    facturaMontos(data);
   const variasComandas = data.comandas.length > 1;
-  const vista = data.mostrarPreciosEn ?? "ambas";
-
-  /**
-   * Cada línea del ticket, en la vista de precios configurada
-   * (`mostrarPreciosEn`). Usa `formatPrecioCobro` — no `formatPrecioVivo` —
-   * porque la conversión aquí SIEMPRE va con `data.tasaValor`, la tasa
-   * CONGELADA en el cobro, no la vigente de hoy: reimprimir una factura vieja
-   * tiene que dar exactamente las mismas cifras que el día que se cobró (ver
-   * la nota grande en `src/lib/format.ts`). Sin tasa registrada ese día,
-   * `formatPrecioCobro` ya degrada solo a USD en vez de repetir "tasa no
-   * disponible" en cada renglón.
-   */
-  const money = (usd: string | number): string => formatPrecioCobro(usd, vista, data.tasaValor);
-
-  /**
-   * La fila de TOTAL es la única que NO pasa por `money()`: usa
-   * `data.totalBs`, ya calculado y congelado por el backend al cobrar, en vez
-   * de convertir `data.total` aquí (que podría quedar a un céntimo de
-   * distancia por redondeo — ver el comentario junto a la fila más abajo).
-   * Por eso necesita su propia versión de la degradación sin tasa, para
-   * decidir si esa fila se imprime en Bs o cae a USD.
-   */
-  const vistaTotalEfectiva: MostrarPreciosEn =
-    (vista === "bs" || vista === "ambas") && !data.tasaValor ? "usd" : vista;
-  const totalPrincipal =
-    vistaTotalEfectiva === "usd" ? formatUsd(data.total) : (totalBsFmt ?? formatUsd(data.total));
-  // La referencia en dólares (y la nota de tasa) sólo se imprime en vista
-  // "ambas": es justo la que promete mostrar las dos monedas. En "usd" no hay
-  // bolívares que referenciar, y en "bs" el dueño pidió explícitamente sólo
-  // bolívares — imprimir un monto en USD ahí, aunque sea "de referencia",
-  // sería colar la moneda que pidió no mostrar.
-  const mostrarReferenciaUsd = vistaTotalEfectiva === "ambas" && Boolean(data.tasaValor);
 
   return (
     <div
@@ -310,29 +271,6 @@ export function FacturaMesaTicket({
       </div>
     </div>
   );
-}
-
-/** `undefined`/`null`/"0" se tratan igual: la línea no se imprime. */
-function withValue(value: string | null | undefined): string | null {
-  if (value == null) return null;
-  const n = Number(value);
-  return Number.isFinite(n) && n !== 0 ? value : null;
-}
-
-/** Ya viene calculado y congelado por el backend — sólo se formatea para imprimir. */
-function formatBsAmount(value: string | number | null | undefined): string | null {
-  if (value == null) return null;
-  const n = typeof value === "string" ? Number(value) : value;
-  if (!Number.isFinite(n)) return null;
-  return `Bs ${n.toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-/** `ComandaItem.cantidad` es `Decimal(14,3)` en el backend — hasta 3
- * decimales para ítems que se venden por peso, sin redondear de más. */
-function formatCantidad(value: string | number): string {
-  const n = typeof value === "string" ? Number(value) : value;
-  if (!Number.isFinite(n)) return String(value);
-  return Number.isInteger(n) ? String(n) : n.toFixed(3).replace(/\.?0+$/, "");
 }
 
 const Sep = () => <div className="my-1.5 border-t border-dashed border-black" />;
