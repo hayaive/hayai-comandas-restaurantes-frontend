@@ -92,7 +92,7 @@ export function FacturaMesaModal({ open, onClose, data }: FacturaMesaModalProps)
     setImprimiendo(true);
     setErrorImpresion(null);
     try {
-      await imprimirTermica(facturaEscPos(data, paperWidth));
+      await imprimirTermica(await facturaEscPos(data, paperWidth));
     } catch (err) {
       if (err instanceof DOMException && err.name === "NotFoundError") window.print();
       else setErrorImpresion(err instanceof Error ? err.message : String(err));

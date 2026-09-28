@@ -121,9 +121,11 @@ async function imprimirBle(bt: BluetoothLike, bytes: Uint8Array<ArrayBuffer>): P
     }
   }
   const char = bleChar;
-  const escribir = char.properties.writeWithoutResponse
-    ? (c: Uint8Array<ArrayBuffer>) => char.writeValueWithoutResponse(c)
-    : (c: Uint8Array<ArrayBuffer>) => char.writeValueWithResponse(c);
+  // Con respuesta cuando se puede: es el control de flujo que evita
+  // desbordar el búfer de la impresora con los KB de una imagen.
+  const escribir = char.properties.write
+    ? (c: Uint8Array<ArrayBuffer>) => char.writeValueWithResponse(c)
+    : (c: Uint8Array<ArrayBuffer>) => char.writeValueWithoutResponse(c);
   for (let i = 0; i < bytes.length; i += BLE_CHUNK) {
     await escribir(bytes.slice(i, i + BLE_CHUNK));
   }
@@ -201,9 +203,58 @@ export class Ticket {
     if (gap >= 1) return this.text(l + " ".repeat(gap) + r);
     return this.text(l).text(r.padStart(this.cols));
   }
-  /** Avanza papel y corta (las que no tienen cuchilla ignoran el corte). */
+  /** Imagen 1 bit (`GS v 0`); respeta `align`. */
+  image(r: Raster): this {
+    this.buf.push(GS, 0x76, 0x30, 0, r.bytesFila & 0xff, r.bytesFila >> 8, r.alto & 0xff, r.alto >> 8);
+    for (const b of r.bits) this.buf.push(b);
+    return this;
+  }
+  /**
+   * Avanza el papel hasta la cuchilla y corta. `GS V 66 n` (función B) es
+   * el corte "avanza y corta" que calcula solo la distancia a la cuchilla;
+   * el `GS V 1` de después es para las que sólo entienden la función A. Las
+   * portátiles sin cuchilla ignoran ambos: el avance deja el ticket listo
+   * para rasgar en la sierra.
+   */
   bytes(): Uint8Array<ArrayBuffer> {
-    this.buf.push(ESC, 0x64, 4, GS, 0x56, 0x01);
+    this.buf.push(ESC, 0x64, AVANCE_FINAL, GS, 0x56, 0x42, 0, GS, 0x56, 0x01);
     return Uint8Array.from(this.buf);
   }
+}
+
+/** Líneas en blanco antes del corte: que el pie no quede bajo el cabezal. */
+const AVANCE_FINAL = 4;
+
+export interface Raster {
+  bytesFila: number;
+  alto: number;
+  bits: Uint8Array;
+}
+
+/**
+ * Carga una imagen (PNG, SVG como data URL…) a `ancho` puntos y la pasa a 1
+ * bit: negro donde es oscura y opaca, blanco lo demás (el fondo transparente
+ * del PNG queda en blanco). 8 puntos = 1mm en térmicas de 203dpi.
+ */
+export async function rasterizar(src: string, ancho: number): Promise<Raster> {
+  const img = new Image();
+  img.src = src;
+  await img.decode();
+  const alto = Math.round((ancho * img.naturalHeight) / img.naturalWidth) || ancho;
+  const canvas = document.createElement("canvas");
+  canvas.width = ancho;
+  canvas.height = alto;
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(img, 0, 0, ancho, alto);
+  const { data } = ctx.getImageData(0, 0, ancho, alto);
+  const bytesFila = Math.ceil(ancho / 8);
+  const bits = new Uint8Array(bytesFila * alto);
+  for (let y = 0; y < alto; y++) {
+    for (let x = 0; x < ancho; x++) {
+      const i = (y * ancho + x) * 4;
+      const luz = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+      if (data[i + 3] >= 128 && luz < 128) bits[y * bytesFila + (x >> 3)] |= 0x80 >> (x & 7);
+    }
+  }
+  return { bytesFila, alto, bits };
 }

@@ -1,5 +1,5 @@
 import { formatDateTime, formatPrecioCobro, formatTasaValor, formatTime, formatUsd } from "@/lib/format";
-import { Ticket } from "@/lib/escpos";
+import { rasterizar, Ticket } from "@/lib/escpos";
 import type { MostrarPreciosEn } from "@/api";
 import type { FacturaMesaData, FacturaPaperWidth } from "./FacturaMesaTicket";
 
@@ -55,16 +55,25 @@ export function facturaMontos(data: FacturaMesaData) {
 
 /**
  * La misma factura que `FacturaMesaTicket`, en bytes ESC/POS para mandarla
- * directo a la térmica (`imprimirSerial`). Sin logo: el raster de imagen
- * varía mucho entre modelos baratos.
+ * directo a la térmica (`imprimirTermica`). El logo y la taza van como
+ * imagen de 1 bit; si alguna no carga, el ticket sale igual sin ella.
  */
-export function facturaEscPos(data: FacturaMesaData, paperWidth: FacturaPaperWidth): Uint8Array<ArrayBuffer> {
+export async function facturaEscPos(
+  data: FacturaMesaData,
+  paperWidth: FacturaPaperWidth,
+): Promise<Uint8Array<ArrayBuffer>> {
+  const [logo, taza] = await Promise.all([
+    rasterizar("/logo-mono.png", LOGO_PUNTOS).catch(() => null),
+    rasterizar(TAZA_SVG, TAZA_PUNTOS).catch(() => null),
+  ]);
   const { money, totalPrincipal, mostrarReferenciaUsd, descuento, impuesto, propina } =
     facturaMontos(data);
   const variasComandas = data.comandas.length > 1;
   const t = new Ticket(paperWidth === "80mm" ? 48 : 32);
 
-  t.align("center").bold(true).tall(true).text(data.restauranteNombre.toUpperCase()).tall(false).bold(false);
+  t.align("center");
+  if (logo) t.image(logo);
+  t.bold(true).tall(true).text(data.restauranteNombre.toUpperCase()).tall(false).bold(false);
   if (data.restauranteRif) t.text(data.restauranteRif);
   t.align("left").sep();
   t.align("center").bold(true).text("FACTURA DE COBRO").bold(false).align("left");
@@ -103,9 +112,24 @@ export function facturaEscPos(data: FacturaMesaData, paperWidth: FacturaPaperWid
   }
   t.sep();
   t.align("center").bold(true).text(data.mensajeFooter ?? "¡Gracias por su visita!").bold(false);
+  if (taza) t.image(taza);
 
   return t.bytes();
 }
+
+/** Tamaños en puntos (8 = 1mm): el logo ~18mm, la taza ~6mm, como en pantalla. */
+const LOGO_PUNTOS = 144;
+const TAZA_PUNTOS = 48;
+
+/** El ícono `Coffee` de lucide (el mismo del ticket en pantalla), como SVG suelto. */
+const TAZA_SVG =
+  "data:image/svg+xml," +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M10 2v2"/><path d="M14 2v2"/><path d="M6 2v2"/>' +
+      '<path d="M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1"/>' +
+      "</svg>",
+  );
 
 /** `undefined`/`null`/"0" se tratan igual: la línea no se imprime. */
 function withValue(value: string | null | undefined): string | null {
