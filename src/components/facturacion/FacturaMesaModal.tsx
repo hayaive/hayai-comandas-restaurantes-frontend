@@ -5,7 +5,7 @@ import { Printer } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { cn } from "@/lib/utils";
-import { imprimirSerial, serialDisponible } from "@/lib/escpos";
+import { impresionDirectaDisponible, imprimirTermica } from "@/lib/escpos";
 import { facturaEscPos } from "./facturaEscPos";
 import {
   FacturaMesaTicket,
@@ -81,18 +81,18 @@ export function FacturaMesaModal({ open, onClose, data }: FacturaMesaModalProps)
   usePrintPageSize(paperWidth, open && data != null);
 
   /**
-   * Con Web Serial (Chrome/Edge escritorio) va directo a la térmica, sin
-   * diálogo: sólo la primera vez se elige el puerto COM. Si el navegador no
+   * Por Web Serial o Web Bluetooth va directo a la térmica, sin
+   * diálogo: sólo la primera vez se elige la impresora. Si el navegador no
    * lo soporta, o el cajero cierra el selector sin elegir, cae al
    * `window.print()` de siempre.
    */
   async function imprimir() {
     if (!data) return;
-    if (!serialDisponible()) return window.print();
+    if (!impresionDirectaDisponible()) return window.print();
     setImprimiendo(true);
     setErrorImpresion(null);
     try {
-      await imprimirSerial(facturaEscPos(data, paperWidth));
+      await imprimirTermica(facturaEscPos(data, paperWidth));
     } catch (err) {
       if (err instanceof DOMException && err.name === "NotFoundError") window.print();
       else setErrorImpresion(err instanceof Error ? err.message : String(err));

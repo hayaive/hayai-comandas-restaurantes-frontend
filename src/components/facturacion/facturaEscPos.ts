@@ -58,7 +58,7 @@ export function facturaMontos(data: FacturaMesaData) {
  * directo a la térmica (`imprimirSerial`). Sin logo: el raster de imagen
  * varía mucho entre modelos baratos.
  */
-export function facturaEscPos(data: FacturaMesaData, paperWidth: FacturaPaperWidth): Uint8Array {
+export function facturaEscPos(data: FacturaMesaData, paperWidth: FacturaPaperWidth): Uint8Array<ArrayBuffer> {
   const { money, totalPrincipal, mostrarReferenciaUsd, descuento, impuesto, propina } =
     facturaMontos(data);
   const variasComandas = data.comandas.length > 1;

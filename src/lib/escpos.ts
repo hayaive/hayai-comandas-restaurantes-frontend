@@ -1,14 +1,19 @@
 /**
- * Impresión directa a una térmica ESC/POS por Web Serial (Chrome/Edge de
- * escritorio), sin diálogo de impresión.
+ * Impresión directa a una térmica ESC/POS, sin diálogo de impresión.
  *
- * Una térmica emparejada por Bluetooth en Windows expone un puerto COM
- * virtual (SPP). La primera vez el navegador pide elegir el puerto —hay que
- * elegir el "saliente"—; después `getPorts()` lo devuelve ya autorizado y se
- * imprime directo.
+ * Dos transportes, según lo que exponga la impresora:
+ *
+ * - Web Serial (Chrome/Edge escritorio, Chrome Android 138+): Bluetooth
+ *   clásico (SPP). En Windows la térmica emparejada es un puerto COM —hay
+ *   que elegir el "saliente"—; después `getPorts()` lo devuelve ya
+ *   autorizado y se imprime directo, incluso tras recargar.
+ * - Web Bluetooth (Chrome Android sobre todo): térmicas portátiles BLE. En
+ *   Android el selector de puerto serie NO las muestra aunque estén
+ *   emparejadas, por eso ahí va primero BLE. El dispositivo elegido se
+ *   recuerda mientras la app esté abierta.
  */
 
-// Web Serial no viene en lib.dom de TS: sólo lo que se usa aquí.
+// Ni Web Serial ni Web Bluetooth vienen en lib.dom de TS: sólo lo que se usa aquí.
 interface SerialPortLike {
   open(options: { baudRate: number }): Promise<void>;
   close(): Promise<void>;
@@ -18,25 +23,53 @@ interface SerialLike {
   getPorts(): Promise<SerialPortLike[]>;
   requestPort(): Promise<SerialPortLike>;
 }
-
-function serial(): SerialLike | null {
-  return (navigator as Navigator & { serial?: SerialLike }).serial ?? null;
+interface BleCharacteristic {
+  uuid: string;
+  properties: { write: boolean; writeWithoutResponse: boolean };
+  writeValueWithResponse(data: BufferSource): Promise<void>;
+  writeValueWithoutResponse(data: BufferSource): Promise<void>;
+}
+interface BleService {
+  getCharacteristics(): Promise<BleCharacteristic[]>;
+}
+interface BleDevice {
+  gatt?: {
+    connected: boolean;
+    connect(): Promise<{ getPrimaryServices(): Promise<BleService[]> }>;
+  };
+}
+interface BluetoothLike {
+  requestDevice(options: { acceptAllDevices: true; optionalServices: string[] }): Promise<BleDevice>;
+  getDevices?(): Promise<BleDevice[]>;
 }
 
-export const serialDisponible = (): boolean => serial() != null;
+const nav = navigator as Navigator & { serial?: SerialLike; bluetooth?: BluetoothLike };
+const esAndroid = /Android/i.test(navigator.userAgent);
+
+export const impresionDirectaDisponible = (): boolean => nav.serial != null || nav.bluetooth != null;
+
+/**
+ * Manda los bytes a la térmica. Un puerto serie ya autorizado gana siempre;
+ * si no hay, Android prueba BLE y escritorio el selector de puerto serie.
+ *
+ * Los selectores sólo abren dentro de un gesto del usuario (el click de
+ * "Imprimir"): llamar directo desde el handler, sin `await` antes. Si el
+ * usuario cierra el selector sin elegir, rechaza con `NotFoundError`.
+ */
+export async function imprimirTermica(bytes: Uint8Array<ArrayBuffer>): Promise<void> {
+  const [autorizado] = (await nav.serial?.getPorts()) ?? [];
+  if (autorizado) return escribirSerial(autorizado, bytes);
+  if (nav.bluetooth && (esAndroid || !nav.serial)) return imprimirBle(nav.bluetooth, bytes);
+  if (nav.serial) return escribirSerial(await nav.serial.requestPort(), bytes);
+  throw new Error("Este navegador no puede imprimir directo");
+}
+
+/* --------------------------------- Serial --------------------------------- */
 
 /** Calibración por impresora: el SPP ignora el baud, pero algunas por cable no. */
 const BAUD_RATE = 9600;
 
-/**
- * `requestPort()` sólo funciona dentro de un gesto del usuario (el click de
- * "Imprimir"), así que esto tiene que llamarse directo desde el handler.
- */
-export async function imprimirSerial(bytes: Uint8Array): Promise<void> {
-  const api = serial();
-  if (!api) throw new Error("Este navegador no soporta Web Serial");
-  const [autorizado] = await api.getPorts();
-  const port = autorizado ?? (await api.requestPort());
+async function escribirSerial(port: SerialPortLike, bytes: Uint8Array): Promise<void> {
   await port.open({ baudRate: BAUD_RATE });
   try {
     const writer = port.writable!.getWriter();
@@ -48,6 +81,63 @@ export async function imprimirSerial(bytes: Uint8Array): Promise<void> {
   } finally {
     await port.close();
   }
+}
+
+/* ---------------------------------- BLE ----------------------------------- */
+
+/**
+ * Servicios GATT de "UART transparente" que usan las térmicas BLE baratas.
+ * Web Bluetooth sólo deja tocar los servicios listados aquí: si una
+ * impresora no imprime, falta su UUID en esta lista.
+ */
+const BLE_SERVICIOS = [
+  "000018f0-0000-1000-8000-00805f9b34fb",
+  "e7810a71-73ae-499d-8c15-faa9aef0c3f2",
+  "49535343-fe7d-4ae5-8fa9-9fafd205e455",
+  "0000ff00-0000-1000-8000-00805f9b34fb",
+  "0000ffe0-0000-1000-8000-00805f9b34fb",
+  "0000fff0-0000-1000-8000-00805f9b34fb",
+];
+
+/** Bytes por escritura. Más grande imprime más rápido; si el ticket sale cortado, bajarlo (mínimo seguro: 20). */
+const BLE_CHUNK = 100;
+
+let bleDevice: BleDevice | null = null;
+let bleChar: BleCharacteristic | null = null;
+
+async function imprimirBle(bt: BluetoothLike, bytes: Uint8Array<ArrayBuffer>): Promise<void> {
+  // ponytail: el dispositivo se recuerda sólo en memoria; tras recargar se
+  // vuelve a elegir, salvo que el navegador ya exponga `getDevices()`.
+  bleDevice ??= (await bt.getDevices?.())?.[0] ?? null;
+  if (!bleDevice) {
+    bleDevice = await bt.requestDevice({ acceptAllDevices: true, optionalServices: BLE_SERVICIOS });
+  }
+  if (!bleChar || !bleDevice.gatt?.connected) {
+    try {
+      bleChar = await caracteristicaEscritura(bleDevice);
+    } catch (err) {
+      bleDevice = bleChar = null; // la próxima vez se vuelve a elegir
+      throw err;
+    }
+  }
+  const char = bleChar;
+  const escribir = char.properties.writeWithoutResponse
+    ? (c: Uint8Array<ArrayBuffer>) => char.writeValueWithoutResponse(c)
+    : (c: Uint8Array<ArrayBuffer>) => char.writeValueWithResponse(c);
+  for (let i = 0; i < bytes.length; i += BLE_CHUNK) {
+    await escribir(bytes.slice(i, i + BLE_CHUNK));
+  }
+}
+
+async function caracteristicaEscritura(device: BleDevice): Promise<BleCharacteristic> {
+  if (!device.gatt) throw new Error("El dispositivo elegido no es una impresora BLE");
+  const server = await device.gatt.connect();
+  for (const servicio of await server.getPrimaryServices()) {
+    for (const c of await servicio.getCharacteristics()) {
+      if (c.properties.write || c.properties.writeWithoutResponse) return c;
+    }
+  }
+  throw new Error("La impresora no expone un canal de impresión conocido");
 }
 
 /* ---------------------------- Construcción ESC/POS --------------------------- */
@@ -112,7 +202,7 @@ export class Ticket {
     return this.text(l).text(r.padStart(this.cols));
   }
   /** Avanza papel y corta (las que no tienen cuchilla ignoran el corte). */
-  bytes(): Uint8Array {
+  bytes(): Uint8Array<ArrayBuffer> {
     this.buf.push(ESC, 0x64, 4, GS, 0x56, 0x01);
     return Uint8Array.from(this.buf);
   }

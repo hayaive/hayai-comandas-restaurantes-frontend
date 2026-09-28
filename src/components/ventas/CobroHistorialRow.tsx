@@ -1,9 +1,13 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Printer } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
+import { IconButton } from "@/components/ui/IconButton";
 import { cn } from "@/lib/cn";
 import type { Cobro, MetodoPago } from "@/api";
 import { formatTime, formatUsd } from "@/lib/format";
+import { FacturaMesaModal } from "@/components/facturacion/FacturaMesaModal";
+import { cobroAFacturaMesa } from "@/components/facturacion/facturaMesaData";
+import type { FacturaMesaData } from "@/components/facturacion/FacturaMesaTicket";
 
 const METODO_LABEL: Record<MetodoPago, string> = {
   efectivo_usd: "Efectivo USD",
@@ -26,6 +30,7 @@ const METODO_LABEL: Record<MetodoPago, string> = {
  */
 export function CobroHistorialRow({ cobro }: { cobro: Cobro }) {
   const [open, setOpen] = useState(false);
+  const [factura, setFactura] = useState<FacturaMesaData | null>(null);
   const detalleId = `historial-${cobro.id}`;
   const mesaEtiqueta = cobro.mesa?.etiqueta ?? cobro.comandas[0]?.mesaEtiqueta ?? "—";
   const items = cobro.comandas.flatMap((comanda) =>
@@ -37,37 +42,51 @@ export function CobroHistorialRow({ cobro }: { cobro: Cobro }) {
 
   return (
     <div className="border-b border-border last:border-b-0">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        aria-controls={detalleId}
-        className="flex w-full items-center gap-3 px-5 py-3.5 text-left transition-colors duration-150 hover:bg-surface-hover"
-      >
-        <span className="text-fg-subtle">
-          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        </span>
-        <span className="font-mono text-[13px] tabular-nums font-semibold text-fg">
-          #{cobro.numeroDia}
-        </span>
-        <span className="flex-1 truncate text-sm text-fg">
-          Mesa {mesaEtiqueta}
-          <span className="text-fg-muted">
-            {" "}
-            · {cobro.comandas.length}{" "}
-            {cobro.comandas.length === 1 ? "comanda" : "comandas"}
+      <div className="flex items-center gap-1 pr-3">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          aria-controls={detalleId}
+          className="flex min-w-0 flex-1 items-center gap-3 px-5 py-3.5 text-left transition-colors duration-150 hover:bg-surface-hover"
+        >
+          <span className="text-fg-subtle">
+            {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </span>
-        </span>
-        <span className="hidden font-mono text-[12px] text-fg-subtle sm:inline">
-          {formatTime(cobro.cobradoEn)}
-        </span>
-        <span className="hidden text-[12px] text-fg-muted md:inline">
-          {items.length} {items.length === 1 ? "ítem" : "ítems"}
-        </span>
-        <span className="font-mono text-sm tabular-nums font-semibold text-fg">
-          {formatUsd(cobro.total)}
-        </span>
-      </button>
+          <span className="font-mono text-[13px] tabular-nums font-semibold text-fg">
+            #{cobro.numeroDia}
+          </span>
+          <span className="min-w-0 flex-1 truncate text-sm text-fg">
+            Mesa {mesaEtiqueta}
+            <span className="text-fg-muted">
+              {" "}
+              · {cobro.comandas.length}{" "}
+              {cobro.comandas.length === 1 ? "comanda" : "comandas"}
+            </span>
+          </span>
+          <span className="hidden font-mono text-[12px] text-fg-subtle sm:inline">
+            {formatTime(cobro.cobradoEn)}
+          </span>
+          <span className="hidden text-[12px] text-fg-muted md:inline">
+            {items.length} {items.length === 1 ? "ítem" : "ítems"}
+          </span>
+          <span className="font-mono text-sm tabular-nums font-semibold text-fg">
+            {formatUsd(cobro.total)}
+          </span>
+        </button>
+        <IconButton
+          icon={<Printer size={16} />}
+          label="Reimprimir factura"
+          variant="outline"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            setFactura(cobroAFacturaMesa(cobro));
+          }}
+        />
+      </div>
+
+      <FacturaMesaModal open={factura != null} data={factura} onClose={() => setFactura(null)} />
 
       {open && (
         <div id={detalleId} className="bg-surface-sunken px-5 pb-5 pl-12">
