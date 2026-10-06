@@ -335,6 +335,12 @@ export interface CobrarMesaInput {
   propina?: number;
   descuento?: number;
   comandaIds?: string[];
+  /**
+   * Nombre que sale en la factura. La caja lo manda SIEMPRE (lo que el cajero
+   * ve es lo que se imprime); vacío = "Consumidor final". Si se omite, el
+   * servidor lo resuelve (comandas → reserva).
+   */
+  clienteNombre?: string | null;
   pagos: PagoInput[];
 }
 
@@ -634,6 +640,8 @@ export interface Comanda {
   numeroDia: number;
   comensales: number;
   meseroId?: string | null;
+  /** Lo que escribió el mesero al tomar el pedido. `null` = no lo dijo. */
+  clienteNombre?: string | null;
   /** Derivado por el servidor. Nunca se manda en un PATCH. */
   estado: EstadoComanda;
   creadaEn: string;
@@ -724,6 +732,11 @@ export interface CuentaDeMesa {
   cuenta: CuentaMesa | null;
   /** Las comandas vivas que la componen, con sus líneas, en orden FIFO. */
   comandas: Comanda[];
+  /**
+   * Nombre del cliente que el servidor propone para la factura (comandas →
+   * reserva). `null` si no hay ninguno.
+   */
+  clienteNombreSugerido: string | null;
 }
 
 /**
@@ -742,6 +755,8 @@ export interface Cobro {
   fechaOperativa: string;
   turno: TurnoServicio;
   comensales: number;
+  /** Nombre congelado en la factura. `null` = "Consumidor final". */
+  clienteNombre?: string | null;
   subtotal: string;
   descuento: string;
   impuesto: string;
@@ -977,6 +992,8 @@ export interface CreateComandaInput {
   /** Atarla a la reserva la deja `sentada` y permite cerrarla al cobrar. */
   reservacionId?: string;
   notas?: string;
+  /** Nombre del cliente (trim; se omite si está vacío). Máx. 120. */
+  clienteNombre?: string;
   items: AddComandaItemInput[];
   /**
    * Sólo para pintar el resultado sin releer el plano — el backend no lo

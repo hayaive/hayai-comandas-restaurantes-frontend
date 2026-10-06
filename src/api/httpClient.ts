@@ -312,6 +312,7 @@ interface ComandaResponse {
   numeroDia: number;
   comensales: number;
   meseroId?: string | null;
+  clienteNombre?: string | null;
   estado: Comanda["estado"];
   creadaEn: string;
   despachadaEn?: string | null;
@@ -361,6 +362,7 @@ function toComanda(raw: ComandaResponse, mesaEtiquetaFallback?: string): Comanda
     numeroDia: raw.numeroDia,
     comensales: raw.comensales,
     meseroId: raw.meseroId ?? null,
+    clienteNombre: raw.clienteNombre ?? null,
     estado: raw.estado,
     creadaEn: raw.creadaEn,
     despachadaEn: raw.despachadaEn ?? null,
@@ -380,6 +382,7 @@ interface CobroResponse {
   fechaOperativa: string;
   turno: Cobro["turno"];
   comensales: number;
+  clienteNombre?: string | null;
   subtotal: string | number;
   descuento: string | number;
   impuesto: string | number;
@@ -415,6 +418,7 @@ function toCobro(raw: CobroResponse): Cobro {
     fechaOperativa: raw.fechaOperativa,
     turno: raw.turno,
     comensales: raw.comensales,
+    clienteNombre: raw.clienteNombre ?? null,
     subtotal: decimalString(raw.subtotal),
     descuento: decimalString(raw.descuento),
     impuesto: decimalString(raw.impuesto),
@@ -601,6 +605,7 @@ export const httpApi: ApiClient = {
         comensales: input.comensales,
         reservacionId: input.reservacionId,
         notas: input.notas,
+        clienteNombre: input.clienteNombre,
         items: input.items,
       }),
     });
@@ -655,11 +660,13 @@ export const httpApi: ApiClient = {
       mesa: Mesa;
       cuenta: CuentaMesaRow | null;
       comandas: ComandaResponse[];
+      clienteNombreSugerido?: string | null;
     }>(`/mesas/${encodeURIComponent(mesaId)}/cuenta`);
     return {
       mesa: raw.mesa,
       cuenta: raw.cuenta ? toCuentaMesa(raw.cuenta) : null,
       comandas: (raw.comandas ?? []).map((comanda) => toComanda(comanda, raw.mesa?.etiqueta)),
+      clienteNombreSugerido: raw.clienteNombreSugerido ?? null,
     } satisfies CuentaDeMesa;
   },
   cobrarMesa: async (mesaId, input: CobrarMesaInput) =>

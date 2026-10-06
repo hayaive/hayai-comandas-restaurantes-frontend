@@ -29,12 +29,6 @@ import type { FacturaMesaData } from "./FacturaMesaTicket";
 export interface FacturaMesaContexto {
   /** Etiqueta de la mesa. `cobro.mesa` sólo viene en `GET /cobros/:id`. */
   mesaEtiqueta?: string | null;
-  /**
-   * Nombre del cliente. NO es un campo de `Cobro` ni de `Comanda`: lo aporta la
-   * pantalla desde la reserva sentada (`v_mesa_estado.sentadaCliente`) cuando
-   * la hay. Sin reserva, el ticket imprime "Consumidor final".
-   */
-  clienteNombre?: string | null;
 }
 
 export function cobroAFacturaMesa(
@@ -44,7 +38,9 @@ export function cobroAFacturaMesa(
   const restaurante = useRestauranteStore.getState().restaurante;
   return {
     mesaEtiqueta: contexto.mesaEtiqueta ?? cobro.mesa?.etiqueta ?? "—",
-    clienteNombre: contexto.clienteNombre ?? null,
+    // Congelado en el cobro al emitirlo, así que la reimpresión sale igual.
+    // Sin nombre, el ticket imprime "Consumidor final".
+    clienteNombre: cobro.clienteNombre ?? null,
     comensales: cobro.comensales,
     comandas: cobro.comandas.map((comanda) => ({
       id: comanda.id,

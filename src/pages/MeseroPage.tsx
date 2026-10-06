@@ -237,11 +237,15 @@ export function MeseroPage() {
       const table = template?.tables.find((t) => t.id === selectedTableId);
       if (!table) throw new Error("La mesa seleccionada ya no existe");
 
+      // Sólo si el campo está a la vista: con una mesa ya ocupada se esconde, y
+      // un nombre escrito antes en otra mesa no debe viajar a esta.
+      const nombre = showClienteInput ? clienteNombre.trim() : "";
       await useComandaStore.getState().crearComanda({
         tipo: "mesa",
         mesaId: table.id,
         mesaEtiqueta: table.label,
         comensales: table.seats,
+        clienteNombre: nombre || undefined,
         items: cart.map((line) => ({ productoId: line.productoId, cantidad: line.cantidad })),
       });
 

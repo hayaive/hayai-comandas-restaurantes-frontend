@@ -70,7 +70,7 @@ export interface CobrarMesaModalProps {
   open: boolean;
   mesaId: string | null;
   mesaEtiqueta?: string | null;
-  /** Desde la reserva sentada del plano; el backend no lo trae en el cobro. */
+  /** Respaldo del plano (reserva sentada) si la cuenta no trae `clienteNombreSugerido`. */
   clienteNombre?: string | null;
   onClose: () => void;
   /** Se dispara con la factura ya emitida, por si la pantalla quiere recargar. */
@@ -92,6 +92,9 @@ export function CobrarMesaModal({
   const tasaUsd = useTasaStore((s) => s.vigente?.usd ?? null);
   const guardarTasa = useTasaStore((s) => s.guardarManual);
 
+  const [cliente, setCliente] = useState("");
+  /** Mientras el cajero no lo toque, el campo sigue a la sugerencia del servidor. */
+  const [clienteTocado, setClienteTocado] = useState(false);
   const [propina, setPropina] = useState("");
   const [descuento, setDescuento] = useState("");
   const [pagos, setPagos] = useState<PagoDraft[]>([pagoInicial()]);
@@ -116,6 +119,8 @@ export function CobrarMesaModal({
   // sería cobrar de más sin que nadie lo note.
   useEffect(() => {
     if (!open) return;
+    setCliente("");
+    setClienteTocado(false);
     setPropina("");
     setDescuento("");
     setPagos([pagoInicial()]);
@@ -123,6 +128,11 @@ export function CobrarMesaModal({
     setTasaPrompt(null);
     setTasaValor("");
   }, [open, mesaId]);
+
+  const sugerido = detalle?.clienteNombreSugerido ?? clienteNombre ?? "";
+  useEffect(() => {
+    if (open && !clienteTocado) setCliente(sugerido);
+  }, [open, clienteTocado, sugerido]);
 
   const porCobrar = Number(cuenta?.totalPorCobrar ?? 0);
   const enCocina = Number(cuenta?.totalEnCocina ?? 0);
@@ -197,6 +207,9 @@ export function CobrarMesaModal({
       const cobro = await cobrarMesa(mesaId, {
         ...(numeroPropina > 0 ? { propina: numeroPropina } : {}),
         ...(numeroDescuento > 0 ? { descuento: numeroDescuento } : {}),
+        // Siempre se manda: lo que el cajero ve es lo que se imprime. Vacío =
+        // "Consumidor final" (el servidor lo guarda como NULL).
+        clienteNombre: cliente.trim() || null,
         pagos: entradas,
       });
       // La factura se arma con lo que devolvió el backend, nunca con lo que
@@ -204,7 +217,6 @@ export function CobrarMesaModal({
       setFactura(
         cobroAFacturaMesa(cobro, {
           mesaEtiqueta: mesaEtiqueta ?? cuenta?.mesaEtiqueta ?? detalle?.mesa.etiqueta,
-          clienteNombre,
         }),
       );
       onCobrado?.(cobro);
@@ -328,6 +340,19 @@ export function CobrarMesaModal({
                 </span>
               </p>
             )}
+
+            <Input
+              label="Cliente"
+              value={cliente}
+              disabled={busy}
+              maxLength={120}
+              placeholder="Consumidor final"
+              hint="Es el nombre que sale en la factura. Déjalo vacío para Consumidor final."
+              onChange={(e) => {
+                setClienteTocado(true);
+                setCliente(e.target.value);
+              }}
+            />
 
             <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Input

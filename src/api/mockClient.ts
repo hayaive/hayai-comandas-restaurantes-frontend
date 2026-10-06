@@ -836,6 +836,27 @@ function cobrosHoy(): Cobro[] {
 }
 
 /** Comandas vivas: ni cobradas ni anuladas. Son las que ocupan una mesa. */
+/**
+ * Espejo de `ComandasService.resolverClienteNombre` del backend: el del cajero
+ * si viene definido (vacío = null); si no, el primer nombre de las comandas;
+ * si no, el de la reserva de la primera comanda que la tenga o la `sentada`
+ * de la mesa. Las comandas llegan en orden de creación.
+ */
+function resolverClienteNombre(
+  mesaId: string,
+  cubiertas: Comanda[],
+  dto?: string | null,
+): string | null {
+  if (dto !== undefined) return dto?.trim() || null;
+  const deComandas = cubiertas.find((c) => c.clienteNombre?.trim())?.clienteNombre?.trim();
+  if (deComandas) return deComandas;
+  const reservacionId = cubiertas.find((c) => c.reservacionId)?.reservacionId;
+  const reserva = reservacionId
+    ? reservaciones.find((r) => r.id === reservacionId)
+    : reservaciones.find((r) => r.mesaId === mesaId && r.estado === "sentada");
+  return reserva?.clienteNombre.trim() || null;
+}
+
 function comandasVivas(mesaId?: string): Comanda[] {
   return comandas.filter(
     (c) =>
@@ -1489,6 +1510,7 @@ export const mockApi: ApiClient = {
       numeroDia: contadorComanda,
       comensales: input.comensales ?? 1,
       meseroId: null,
+      clienteNombre: input.clienteNombre?.trim() || null,
       estado: "pendiente",
       creadaEn: new Date().toISOString(),
       despachadaEn: null,
@@ -1620,10 +1642,12 @@ export const mockApi: ApiClient = {
     // 200 con `cuenta: null` cuando la mesa está libre: "no debe nada" es una
     // respuesta. El 404 se reserva para una mesa que no existe.
     const mesa = mesaById(mesaId);
+    const vivas = comandasVivas(mesaId).sort((a, b) => a.creadaEn.localeCompare(b.creadaEn));
     return delay({
       mesa,
       cuenta: cuentaDeMesaRow(mesaId),
-      comandas: comandasVivas(mesaId).sort((a, b) => a.creadaEn.localeCompare(b.creadaEn)),
+      comandas: vivas,
+      clienteNombreSugerido: resolverClienteNombre(mesaId, vivas),
     });
   },
 
@@ -1695,6 +1719,7 @@ export const mockApi: ApiClient = {
       fechaOperativa: isoDate(ahora),
       turno: turnoDe(ahora.getHours()),
       comensales: Math.max(...cubiertas.map((c) => c.comensales)),
+      clienteNombre: resolverClienteNombre(mesaId, cubiertas, input.clienteNombre),
       subtotal: money(subtotal),
       descuento: money(descuento),
       impuesto: "0.00",
